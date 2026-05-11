@@ -1,0 +1,108 @@
+/**
+ * 多租户管理服务测试
+ */
+import {
+  createTenant,
+  getTenant,
+  updateTenant,
+  deleteTenant,
+  listTenants,
+  createTenantApiKey,
+  deleteTenantApiKey,
+  verifyTenantApiKey,
+} from './tenant';
+import type { TenantConfig } from './tenant';
+
+describe('Tenant Service', () => {
+  // Helper to create valid tenant config
+  const createValidConfig = (name: string): Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at'> => ({
+    name,
+    status: 'active',
+    plan: 'free',
+    settings: {},
+    limits: {
+      daily_requests: 1000,
+      daily_tokens: 100000,
+      monthly_cost: 100,
+      max_api_keys: 5,
+      concurrent_requests: 10,
+    },
+  });
+
+  describe('createTenant', () => {
+    it('should create new tenant', () => {
+      const tenant = createTenant(createValidConfig('New Tenant'));
+      expect(tenant.tenant_id).toMatch(/^tenant_/);
+      expect(tenant.name).toBe('New Tenant');
+      expect(tenant.plan).toBe('free');
+    });
+  });
+
+  describe('getTenant', () => {
+    it('should return default tenant', () => {
+      const tenant = getTenant('default');
+      expect(tenant).toBeDefined();
+      expect(tenant?.tenant_id).toBe('default');
+    });
+
+    it('should return null for non-existent tenant', () => {
+      const tenant = getTenant('non-existent');
+      expect(tenant).toBeNull();
+    });
+  });
+
+  describe('updateTenant', () => {
+    it('should update tenant properties', () => {
+      const updated = updateTenant('default', { name: 'Updated Name' });
+      expect(updated?.name).toBe('Updated Name');
+    });
+
+    it('should return null for non-existent tenant', () => {
+      const updated = updateTenant('non-existent', { name: 'Test' });
+      expect(updated).toBeNull();
+    });
+  });
+
+  describe('deleteTenant', () => {
+    it('should not delete default tenant', () => {
+      const result = deleteTenant('default');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('listTenants', () => {
+    it('should return array of tenants', () => {
+      const tenants = listTenants();
+      expect(Array.isArray(tenants)).toBe(true);
+      expect(tenants.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('createTenantApiKey', () => {
+    it('should add API key to tenant', () => {
+      const result = createTenantApiKey('default', 'Test Key');
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('deleteTenantApiKey', () => {
+    it('should remove API key from tenant', () => {
+      const key = createTenantApiKey('default', 'Test');
+      const result = deleteTenantApiKey(key!.key);
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('verifyTenantApiKey', () => {
+    it('should verify API key', () => {
+      const key = createTenantApiKey('default', 'Test');
+      const result = verifyTenantApiKey(key!.key);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should reject invalid key', () => {
+      const result = verifyTenantApiKey('sk-invalid-key');
+      expect(result.valid).toBe(false);
+    });
+  });
+});

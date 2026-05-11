@@ -1,0 +1,269 @@
+/**
+ * AI Gateway - 公共类型定义
+ * 所有类型定义必须在此文件集中管理
+ */
+
+// ===== 通用类型 =====
+
+/** 请求ID类型 */
+export type RequestId = string;
+
+/** 租户ID类型 */
+export type TenantId = string;
+
+/** API Key类型 */
+export type ApiKey = string;
+
+// ===== 请求类型 =====
+
+/** Chat Completion 请求消息 */
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  name?: string;
+}
+
+/** Chat Completion 请求体 */
+export interface ChatCompletionRequest {
+  model: string;
+  messages: ChatMessage[];
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
+  stream?: boolean;
+  stop?: string | string[];
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  user?: string;
+  tools?: ChatTool[];
+  tool_choice?: ChatToolChoice;
+}
+
+/** Chat工具定义 */
+export interface ChatTool {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+/** 工具选择 */
+export interface ChatToolChoice {
+  type: 'function';
+  function: { name: string };
+}
+
+/** Embedding 请求体 */
+export interface EmbeddingRequest {
+  model: string;
+  input: string | string[];
+  encoding_format?: 'float' | 'base64';
+  dimensions?: number;
+}
+
+// ===== 响应类型 =====
+
+/** Chat Completion 响应消息 */
+export interface ChatChoice {
+  index: number;
+  message: ChatMessage;
+  finish_reason: 'stop' | 'length' | 'tool_calls' | null;
+  delta?: ChatMessage;
+}
+
+/** Chat Completion 完整响应 */
+export interface ChatCompletionResponse {
+  id: string;
+  object: 'chat.completion';
+  created: number;
+  model: string;
+  choices: ChatChoice[];
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+/** Streaming Chat Completion chunk */
+export interface ChatCompletionChunk {
+  id: string;
+  object: 'chat.completion.chunk';
+  created: number;
+  model: string;
+  choices: Array<{
+    index: number;
+    delta: ChatMessage;
+    finish_reason: 'stop' | 'length' | null;
+  }>;
+}
+
+/** Embedding 响应 */
+export interface EmbeddingResponse {
+  object: 'list';
+  data: Array<{
+    object: 'embedding';
+    embedding: number[];
+    index: number;
+  }>;
+  model: string;
+  usage: {
+    prompt_tokens: number;
+    total_tokens: number;
+  };
+}
+
+// ===== Provider 类型 =====
+
+/** Provider 配置接口 */
+export interface IProviderConfig {
+  provider: string;
+  base_url: string;
+  api_key?: string;
+  timeout?: number;
+  max_retries?: number;
+  headers?: Record<string, string>;
+}
+
+/** Provider 能力定义 */
+export interface IProviderCapabilities {
+  chat: boolean;
+  embed: boolean;
+  streaming: boolean;
+  vision: boolean;
+  function_call: boolean;
+}
+
+/** Provider 接口 */
+export interface IProvider {
+  name: string;
+  capabilities: IProviderCapabilities;
+  chat(request: ChatCompletionRequest, config: IProviderConfig): Promise<ChatCompletionResponse>;
+  chatStream(request: ChatCompletionRequest, config: IProviderConfig): Promise<ReadableStream>;
+  embed(request: EmbeddingRequest, config: IProviderConfig): Promise<EmbeddingResponse>;
+}
+
+// ===== 路由类型 =====
+
+/** 路由策略 */
+export interface IRoutingStrategy {
+  name: string;
+  rules: IRoutingRule[];
+  fallback?: string;
+}
+
+/** 路由规则 */
+export interface IRoutingRule {
+  model: string;
+  provider: string;
+  max_tokens?: number;
+  priority?: number;
+}
+
+// ===== 鉴权类型 =====
+
+/** API Key 元数据 */
+export interface IApiKeyMeta {
+  key: string;
+  tenant_id: TenantId;
+  name: string;
+  created_at: number;
+  expires_at?: number;
+  limits?: {
+    daily_requests?: number;
+    daily_tokens?: number;
+  };
+}
+
+/** 鉴权结果 */
+export interface IAuthResult {
+  valid: boolean;
+  tenant_id?: TenantId;
+  api_key_meta?: IApiKeyMeta;
+  error?: string;
+}
+
+// ===== 日志类型 =====
+
+/** 请求日志数据 */
+export interface IRequestLog {
+  request_id: RequestId;
+  tenant_id?: TenantId;
+  timestamp: number;
+  method: string;
+  path: string;
+  provider?: string;
+  model?: string;
+  status_code: number;
+  duration_ms: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  error?: string;
+}
+
+// ===== 配置类型 =====
+
+/** 网关配置 */
+export interface IGatewayConfig {
+  port: number;
+  host: string;
+  log_level: 'debug' | 'info' | 'warn' | 'error';
+  providers: Record<string, IProviderConfig>;
+  routing: IRoutingStrategy[];
+  auth: {
+    enabled: boolean;
+    api_keys: IApiKeyMeta[];
+  };
+  rate_limit: {
+    enabled: boolean;
+    qps: number;
+    burst: number;
+  };
+  cost_control?: {
+    monthly_budget?: number;
+    warn_threshold?: number;
+  };
+  failover?: {
+    enabled: boolean;
+    failureThreshold: number;
+    successThreshold: number;
+    healthCheckInterval: number;
+    healthCheckTimeout: number;
+    healthCheckModel: string;
+  };
+  loadBalance?: {
+    strategy: 'roundRobin' | 'random' | 'weighted' | 'leastRequest';
+    providers: Record<string, { weight: number; maxRps?: number }>;
+  };
+  /** 动态 Provider 配置 */
+  dynamicProviders?: DynamicProviderConfig[];
+}
+
+/** 动态 Provider 配置 */
+export interface DynamicProviderConfig {
+  name: string;
+  base_url: string;
+  api_key?: string;
+  auth_header?: string; // 自定义认证 header 名称
+  auth_prefix?: string; // 认证前缀 (Bearer, ApiKey 等)
+  endpoints: {
+    chat?: string;
+    chat_stream?: string;
+    embeddings?: string;
+    models?: string;
+  };
+  capabilities?: Partial<IProviderCapabilities>;
+}
+
+// ===== 错误类型 =====
+
+/** Gateway 错误类型 */
+export type GatewayErrorType =
+  | 'invalid_request_error'
+  | 'authentication_error'
+  | 'rate_limit_error'
+  | 'provider_error'
+  | 'internal_error';
