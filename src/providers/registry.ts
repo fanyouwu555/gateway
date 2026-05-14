@@ -6,8 +6,13 @@ import { registerProvider } from './index';
 import { openaiProvider } from './openai';
 import { deepseekProvider } from './deepseek';
 import { anthropicProvider } from './anthropic';
+import { mistralProvider } from './mistral';
+import { groqProvider } from './groq';
+import { googleProvider } from './google';
+import { moonshotProvider } from './moonshot';
 import { DynamicProvider } from './dynamic';
 import { getConfig } from '../config';
+import { writeLog } from '../middleware/logger';
 
 /**
  * 初始化所有Provider
@@ -17,6 +22,10 @@ export function initProviders(): void {
   registerProvider('openai', openaiProvider);
   registerProvider('deepseek', deepseekProvider);
   registerProvider('anthropic', anthropicProvider);
+  registerProvider('mistral', mistralProvider);
+  registerProvider('groq', groqProvider);
+  registerProvider('google', googleProvider);
+  registerProvider('moonshot', moonshotProvider);
 
   // 注册动态Provider (从配置)
   const config = getConfig();
@@ -24,12 +33,14 @@ export function initProviders(): void {
     for (const dp of config.dynamicProviders) {
       const provider = new DynamicProvider(dp);
       registerProvider(dp.name, provider);
-      console.log(`[Provider] Registered dynamic provider: ${dp.name}`);
+      writeLog('info', 'Registered dynamic provider', { name: dp.name });
     }
   }
 
-  console.log('[Provider] Initialized: openai, deepseek, anthropic' +
-    (config.dynamicProviders?.length ? ` + ${config.dynamicProviders.length} dynamic` : ''));
+  writeLog('info', 'Provider initialization complete', {
+    providers: ['openai', 'deepseek', 'anthropic', 'mistral', 'groq', 'google', 'moonshot'],
+    dynamicCount: config.dynamicProviders?.length || 0,
+  });
 }
 
-export { openaiProvider, deepseekProvider, anthropicProvider };
+export { openaiProvider, deepseekProvider, anthropicProvider, mistralProvider, groqProvider, googleProvider, moonshotProvider };

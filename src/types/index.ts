@@ -121,10 +121,24 @@ export interface EmbeddingResponse {
 export interface IProviderConfig {
   provider: string;
   base_url: string;
+  /** 单个 API Key（兼容单 Key 场景） */
   api_key?: string;
+  /** 多个 API Key（用于负载均衡），优先级高于 api_key */
+  api_keys?: string[];
   timeout?: number;
   max_retries?: number;
   headers?: Record<string, string>;
+}
+
+/** 获取可用于调用的 API Keys */
+export function getProviderApiKeys(config: IProviderConfig): string[] {
+  if (config.api_keys && config.api_keys.length > 0) {
+    return config.api_keys;
+  }
+  if (config.api_key) {
+    return [config.api_key];
+  }
+  return [];
 }
 
 /** Provider 能力定义 */
@@ -152,6 +166,8 @@ export interface IRoutingStrategy {
   name: string;
   rules: IRoutingRule[];
   fallback?: string;
+  /** Provider 成本排序（从低到高），用于 cost 策略 */
+  cost_order?: string[];
 }
 
 /** 路由规则 */
@@ -171,6 +187,7 @@ export interface IApiKeyMeta {
   name: string;
   created_at: number;
   expires_at?: number;
+  is_admin?: boolean;
   limits?: {
     daily_requests?: number;
     daily_tokens?: number;
@@ -238,6 +255,24 @@ export interface IGatewayConfig {
     strategy: 'roundRobin' | 'random' | 'weighted' | 'leastRequest';
     providers: Record<string, { weight: number; maxRps?: number }>;
   };
+  /** 缓存配置 */
+  cache?: {
+    enabled: boolean;
+    ttl: number; // 毫秒
+    max_size: number;
+  };
+  /** 会话历史配置 */
+  session?: {
+    max_sessions: number;
+    max_messages_per_session: number;
+    ttl: number; // 毫秒
+  };
+  /** 限流清理间隔（毫秒） */
+  rate_limit_clean_interval?: number;
+  /** Token 定价配置 (每 1M tokens 美元价格) */
+  pricing?: Record<string, { input: number; output: number }>;
+  /** 默认模型名称 */
+  default_model?: string;
   /** 动态 Provider 配置 */
   dynamicProviders?: DynamicProviderConfig[];
 }

@@ -119,3 +119,98 @@ export function validateString(
 
   return str;
 }
+
+/**
+ * Provider 错误规范化
+ * 将不同 Provider 的错误转换为统一格式
+ */
+type ProviderErrorResult = {
+  message: string;
+  type: ErrorType;
+  code: string;
+  status: number;
+};
+
+export function normalizeProviderError(error: unknown, provider?: string): ProviderErrorResult {
+  const tag = provider ? `[${provider}] ` : '';
+
+  // HTTP Response 类型错误
+  if (error instanceof Response) {
+    const status = error.status;
+    if (status === 429) {
+      return {
+        message: `${tag}Rate limited by provider`,
+        type: 'rate_limit_error',
+        code: 'provider_rate_limited',
+        status: 429,
+      };
+    }
+    if (status === 401 || status === 403) {
+      return {
+        message: `${tag}Provider authentication failed`,
+        type: 'authentication_error',
+        code: 'provider_auth_failed',
+        status: 502,
+      };
+    }
+    if (status >= 500) {
+      return {
+        message: `${tag}Provider server error (${status})`,
+        type: 'provider_error',
+        code: 'provider_server_error',
+        status: 502,
+      };
+    }
+    return {
+      message: `${tag}Provider returned status ${status}`,
+      type: 'provider_error',
+      code: 'provider_error',
+      status: 502,
+    };
+  }
+
+  // 网络/超时错误
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('econnrefused') || msg.includes('econnreset') || msg.includes('enotfound')) {
+      return {
+        message: `${tag}Provider unreachable`,
+        type: 'provider_error',
+        code: 'provider_unreachable',
+        status: 502,
+      };
+    }
+    if (msg.includes('timeout') || msg.includes('timed out')) {
+      return {
+        message: `${tag}Provider request timed out`,
+        type: 'provider_error',
+        code: 'provider_timeout',
+        status: 504,
+      };
+    }
+    if (msg.includes('rate limit') || msg.includes('too many requests')) {
+      return {
+        message: `${tag}Rate limited by provider`,
+        type: 'rate_limit_error',
+        code: 'provider_rate_limited',
+        status: 429,
+      };
+    }
+    if (msg.includes('empty') && (msg.includes('response') || msg.includes('reply'))) {
+      return {
+        message: `${tag}Provider returned empty response`,
+        type: 'provider_error',
+        code: 'empty_response',
+        status: 502,
+      };
+    }
+  }
+
+  // 默认
+  return {
+    message: `${tag}Provider error`,
+    type: 'provider_error',
+    code: 'provider_error',
+    status: 502,
+  };
+}

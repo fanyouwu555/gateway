@@ -4,6 +4,7 @@
  */
 import type { Context } from 'hono';
 import type { ChatCompletionRequest, ChatCompletionResponse } from '../types';
+import { writeLog } from '../middleware/logger';
 
 /**
  * 插件类型
@@ -134,7 +135,7 @@ class PluginManager {
           result = modified;
         }
       } catch (error) {
-        console.error(`[Plugin] Request plugin ${plugin.config.id} error:`, error);
+        writeLog('error', 'Request plugin error', { plugin_id: plugin.config.id, error: error instanceof Error ? error.message : String(error) });
       }
     }
 
@@ -156,7 +157,7 @@ class PluginManager {
           result = modified;
         }
       } catch (error) {
-        console.error(`[Plugin] Response plugin ${plugin.config.id} error:`, error);
+        writeLog('error', 'Response plugin error', { plugin_id: plugin.config.id, error: error instanceof Error ? error.message : String(error) });
       }
     }
 
@@ -178,7 +179,7 @@ class PluginManager {
           reasons.push(`[${plugin.config.name}] ${result.reason}`);
         }
       } catch (error) {
-        console.error(`[Plugin] Guardrail plugin ${plugin.config.id} error:`, error);
+        writeLog('error', 'Guardrail plugin error', { plugin_id: plugin.config.id, error: error instanceof Error ? error.message : String(error) });
       }
     }
 
@@ -200,7 +201,7 @@ class PluginManager {
       try {
         result = await plugin.transform(c, result);
       } catch (error) {
-        console.error(`[Plugin] Transform plugin ${plugin.config.id} error:`, error);
+        writeLog('error', 'Transform plugin error', { plugin_id: plugin.config.id, error: error instanceof Error ? error.message : String(error) });
       }
     }
 
@@ -345,9 +346,10 @@ export function createLoggingPlugin(): TransformPlugin {
     },
     async transform(c: Context, data: unknown): Promise<unknown> {
       const start = Date.now();
-      await (c as unknown as { next: () => Promise<void> }).next?.();
+      const context = c as Context & { next?: () => Promise<void> };
+      await context.next?.();
       const duration = Date.now() - start;
-      console.log(`[Plugin] Request processed in ${duration}ms`);
+      writeLog('info', 'Plugin request processed', { duration_ms: duration });
       return data;
     },
   };

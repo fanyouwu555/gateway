@@ -1,19 +1,19 @@
 /**
- * DeepSeek Provider
+ * Groq Provider
  * API 兼容 OpenAI 协议
  */
 import { OpenAICompatibleProvider } from '../openai-compatible';
 
-export const deepseekProvider = new OpenAICompatibleProvider({
-  name: 'deepseek',
+export const groqProvider = new OpenAICompatibleProvider({
+  name: 'groq',
   capabilities: {
     chat: true,
-    embed: true,
+    embed: false,
     streaming: true,
     vision: false,
     function_call: false,
   },
   fields: {
-    // DeepSeek 支持基础参数，无需特殊字段
+    // Groq 支持基础参数
   },
 });

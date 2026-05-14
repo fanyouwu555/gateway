@@ -1,58 +1,11 @@
 /**
  * 请求日志中间件
+ * 日志核心功能在 src/utils/logger.ts
  */
 import type { Context, Next } from 'hono';
-import { generateRequestId, getTimestamp, maskApiKey } from '../utils';
+import { generateRequestId, getTimestamp } from '../utils';
+import { writeLog } from '../utils/logger';
 import type { IRequestLog } from '../types';
-
-/**
- * 日志级别
- */
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-const LOG_LEVELS: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-};
-
-/**
- * 获取当前日志级别
- */
-function getCurrentLogLevel(): LogLevel {
-  const level = (process.env.LOG_LEVEL?.toLowerCase() || 'info') as LogLevel;
-  return LOG_LEVELS[level] !== undefined ? level : 'info';
-}
-
-/**
- * 写入结构化日志 (JSON格式)
- */
-function writeLog(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
-  const currentLevelNum = LOG_LEVELS[getCurrentLogLevel()];
-  const levelNum = LOG_LEVELS[level];
-  if (levelNum < currentLevelNum) {
-    return;
-  }
-
-  const logEntry = {
-    timestamp: new Date().toISOString(),
-    level: level.toUpperCase(),
-    message,
-    ...meta,
-  };
-
-  // 生产环境输出JSON，便于日志收集
-  if (process.env.NODE_ENV === 'production') {
-    console.log(JSON.stringify(logEntry));
-  } else {
-    // 开发环境友好格式
-    console.log(
-      `[${logEntry.timestamp}] [${logEntry.level}] ${logEntry.message}`,
-      meta ? meta : ''
-    );
-  }
-}
 
 /**
  * 日志中间件
@@ -74,6 +27,13 @@ export async function loggerMiddleware(c: Context, next: Next): Promise<void> {
 
   await next();
 
+  // 将请求ID注入响应头
+  try {
+    c.res.headers.set('X-Request-Id', requestId);
+  } catch {
+    writeLog('warn', 'Failed to set X-Request-Id header', { request_id: requestId });
+  }
+
   const duration = getTimestamp() - startTime;
   const status = c.res.status;
   const provider = c.get('provider');
@@ -94,34 +54,10 @@ export async function loggerMiddleware(c: Context, next: Next): Promise<void> {
   };
 
   // 记录请求完成
-  const level: LogLevel = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
+  const level: 'error' | 'warn' | 'info' = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
   writeLog(level, 'Request completed', logData as unknown as Record<string, unknown>);
 }
 
-/**
- * 请求错误日志
- */
-export function logError(requestId: string, error: Error, context?: Record<string, unknown>): void {
-  writeLog('error', 'Request error', {
-    request_id: requestId,
-    error: error.message,
-    stack: error.stack,
-    ...context,
-  });
-}
-
-/**
- * 敏感信息脱敏辅助函数
- */
-export function sanitizeLogData(data: Record<string, unknown>): Record<string, unknown> {
-  const sanitized = { ...data };
-  const sensitiveKeys = ['api_key', 'authorization', 'password', 'token', 'secret'];
-
-  for (const key of sensitiveKeys) {
-    if (sanitized[key] && typeof sanitized[key] === 'string') {
-      sanitized[key] = maskApiKey(sanitized[key] as string);
-    }
-  }
-
-  return sanitized;
-}
+// 重新导出核心日志功能，方便其他模块统一引用
+export { writeLog, logError, sanitizeLogData } from '../utils/logger';
+export type { LogLevel } from '../utils/logger';

@@ -2,8 +2,8 @@
  * 智能路由服务
  * 根据请求特征自动选择最优Provider
  */
-import type { ChatCompletionRequest } from '../types';
-import { getRoutingStrategy } from '../config';
+import type { ChatCompletionRequest, IRoutingStrategy } from '../types';
+import { getRoutingStrategy, getConfig } from '../config';
 
 /**
  * 路由决策
@@ -53,7 +53,7 @@ class SmartRouter {
       // 返回默认
       return {
         provider: 'openai',
-        model: 'gpt-4o-mini',
+        model: getConfig().default_model || 'gpt-4o-mini',
         reason: 'default',
         confidence: 0.5,
       };
@@ -79,8 +79,11 @@ class SmartRouter {
     request: ChatCompletionRequest,
     rules: { model: string; provider: string }[]
   ): RoutingDecision {
-    // 简单的成本排序
-    const costOrder = ['deepseek', 'openai', 'anthropic'];
+    const strategyConfig = getRoutingStrategy();
+    // 从配置读取成本排序，无配置则使用默认排序
+    const costOrder: string[] = (strategyConfig as IRoutingStrategy)?.cost_order ?? [
+      'deepseek', 'moonshot', 'groq', 'openai', 'mistral', 'anthropic', 'google',
+    ];
     const sorted = [...rules].sort((a, b) => {
       const aIndex = costOrder.indexOf(a.provider);
       const bIndex = costOrder.indexOf(b.provider);

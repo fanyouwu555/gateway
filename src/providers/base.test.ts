@@ -15,6 +15,7 @@ describe('Provider Registry', () => {
       expect(names).toContain('openai');
       expect(names).toContain('deepseek');
       expect(names).toContain('anthropic');
+      expect(names).toContain('moonshot');
     });
   });
 

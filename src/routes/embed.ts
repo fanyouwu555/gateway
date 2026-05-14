@@ -6,7 +6,8 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { getProviderForModel } from '../config';
 import { createEmbedding } from '../providers';
-import type { EmbeddingRequest } from '../types';
+import { embeddingRequestSchema } from '../validation';
+import { logError } from '../middleware/logger';
 
 const embedRouter = new Hono();
 
@@ -15,21 +16,24 @@ const embedRouter = new Hono();
  */
 async function handleEmbedding(c: Context): Promise<Response> {
   try {
-    const request = (await c.req.json()) as EmbeddingRequest;
-    const model = request.model;
-
-    if (!model) {
+    const parsed = embeddingRequestSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      const firstError = parsed.error.errors[0];
       return c.json(
         {
           error: {
-            message: 'Missing required field: model',
+            message: firstError?.message || 'Invalid request',
             type: 'invalid_request_error',
-            code: 'missing_model',
+            code: 'invalid_request',
+            param: firstError?.path?.join('.'),
           },
         },
         400
       );
     }
+
+    const request = parsed.data;
+    const model = request.model;
 
     // Embedding模型通常以-开头，如 text-embedding-3-small
     // 这里简化处理，默认使用配置的provider
@@ -42,13 +46,13 @@ async function handleEmbedding(c: Context): Promise<Response> {
     const response = await createEmbedding(providerName, request);
     return c.json(response, 200);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Embed] Error:', message);
+    const err = error instanceof Error ? error : new Error('Unknown error');
+    logError(c.get('request_id'), err, { component: 'embed' });
 
     return c.json(
       {
         error: {
-          message,
+          message: err.message,
           type: 'provider_error',
           code: 'provider_request_failed',
         },

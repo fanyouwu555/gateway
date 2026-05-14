@@ -5,7 +5,8 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { IGatewayConfig, IProviderConfig } from '../types';
-import { getEnv } from '../utils';
+import { getEnv, ensureKeyHashed } from '../utils';
+import { writeLog } from '../utils/logger';
 
 // 默认配置
 const DEFAULT_CONFIG: IGatewayConfig = {
@@ -20,6 +21,11 @@ const DEFAULT_CONFIG: IGatewayConfig = {
         { model: 'gpt-4o', provider: 'openai' },
         { model: 'gpt-4o-mini', provider: 'openai' },
         { model: 'deepseek-chat', provider: 'deepseek' },
+        { model: 'mistral', provider: 'mistral' },
+        { model: 'mistral-large', provider: 'mistral' },
+        { model: 'llama', provider: 'groq' },
+        { model: 'mixtral', provider: 'groq' },
+        { model: 'gemini', provider: 'google' },
       ],
     },
   ],
@@ -44,6 +50,19 @@ const DEFAULT_CONFIG: IGatewayConfig = {
     strategy: 'roundRobin',
     providers: {},
   },
+  cache: {
+    enabled: true,
+    ttl: 3600000,
+    max_size: 1000,
+  },
+  session: {
+    max_sessions: 1000,
+    max_messages_per_session: 100,
+    ttl: 3600000,
+  },
+  default_model: getEnv('DEFAULT_MODEL', 'gpt-4o-mini'),
+  rate_limit_clean_interval: 60000,
+  pricing: {},
 };
 
 /**
@@ -55,7 +74,8 @@ function loadConfigFile(configPath?: string): Partial<IGatewayConfig> {
   try {
     const content = readFileSync(resolve(path), 'utf-8');
     return JSON.parse(content);
-  } catch {
+  } catch (err) {
+    writeLog('warn', 'Failed to load config file', { path, error: err instanceof Error ? err.message : String(err) });
     return {};
   }
 }
@@ -74,6 +94,23 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
       name: `key-${index + 1}`,
       created_at: Date.now(),
     }));
+  }
+
+  // 从环境变量读取管理员 API Keys (格式: API_ADMIN_KEYS=adminkey1,adminkey2)
+  // 这些 key 会在 auto-hash 步骤中自动哈希
+  const adminKeysEnv = getEnv('API_ADMIN_KEYS');
+  if (adminKeysEnv) {
+    const keys = adminKeysEnv.split(',').filter(Boolean);
+    for (const rawKey of keys) {
+      const trimmed = rawKey.trim();
+      config.auth.api_keys.push({
+        key: trimmed,
+        tenant_id: 'admin',
+        name: 'admin-key',
+        created_at: Date.now(),
+        is_admin: true,
+      });
+    }
   }
 
   // 从环境变量读取Provider配置
@@ -101,6 +138,46 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
       provider: 'anthropic',
       base_url: getEnv('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
       api_key: anthropicKey,
+    };
+  }
+
+  // Mistral
+  const mistralKey = getEnv('MISTRAL_API_KEY');
+  if (mistralKey) {
+    config.providers.mistral = {
+      provider: 'mistral',
+      base_url: getEnv('MISTRAL_BASE_URL', 'https://api.mistral.ai/v1'),
+      api_key: mistralKey,
+    };
+  }
+
+  // Groq
+  const groqKey = getEnv('GROQ_API_KEY');
+  if (groqKey) {
+    config.providers.groq = {
+      provider: 'groq',
+      base_url: getEnv('GROQ_BASE_URL', 'https://api.groq.com/openai/v1'),
+      api_key: groqKey,
+    };
+  }
+
+  // Moonshot (Kimi)
+  const moonshotKey = getEnv('MOONSHOT_API_KEY');
+  if (moonshotKey) {
+    config.providers.moonshot = {
+      provider: 'moonshot',
+      base_url: getEnv('MOONSHOT_BASE_URL', 'https://api.moonshot.cn/v1'),
+      api_key: moonshotKey,
+    };
+  }
+
+  // Google
+  const googleKey = getEnv('GOOGLE_API_KEY');
+  if (googleKey) {
+    config.providers.google = {
+      provider: 'google',
+      base_url: getEnv('GOOGLE_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+      api_key: googleKey,
     };
   }
 
@@ -133,6 +210,12 @@ export function initConfig(configPath?: string): IGatewayConfig {
   if (!config.port || config.port <= 0) {
     throw new Error('Invalid port configuration');
   }
+
+  // 自动哈希 API Key（将明文 key 转为 scrypt 哈希）
+  config.auth.api_keys = config.auth.api_keys.map((k) => ({
+    ...k,
+    key: ensureKeyHashed(k.key),
+  }));
 
   return config;
 }
@@ -187,6 +270,32 @@ export function getProviderForModel(model: string): string | undefined {
  */
 export function reloadConfig(configPath?: string): IGatewayConfig {
   _config = initConfig(configPath);
+  return _config;
+}
+
+/**
+ * 直接更新运行中的配置（不持久化到文件）
+ * 用于管理 API 的运行时配置更新
+ */
+export function setConfig(updates: Partial<IGatewayConfig>): IGatewayConfig {
+  if (!_config) {
+    _config = initConfig();
+  }
+  _config = { ..._config, ...updates };
+
+  // 如果更新了 providers，需要合并而非覆盖
+  if (updates.providers) {
+    _config.providers = { ..._config.providers, ...updates.providers };
+  }
+
+  // 自动哈希新增的 API Key
+  if (updates.auth?.api_keys) {
+    _config.auth.api_keys = _config.auth.api_keys.map((k) => ({
+      ...k,
+      key: ensureKeyHashed(k.key),
+    }));
+  }
+
   return _config;
 }
 

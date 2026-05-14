@@ -5,6 +5,7 @@
 import type { TenantId } from '../types';
 import { getTenantUsage } from './metrics';
 import { getConfig } from '../config';
+import { writeLog } from '../middleware/logger';
 
 /**
  * 配额检查结果
@@ -147,11 +148,12 @@ export function checkQuota(tenantId: TenantId): QuotaCheckResult {
 
   // 警告阈值
   if (usage.total_cost >= budget * warnThreshold) {
-    console.warn(
-      `[Quota] Tenant ${tenantId} has used ${Math.round(
-        (usage.total_cost / budget) * 100
-      )}% of monthly budget`
-    );
+    writeLog('warn', 'Tenant quota warning', {
+      tenant_id: tenantId,
+      usage_percent: Math.round((usage.total_cost / budget) * 100),
+      total_cost: usage.total_cost,
+      budget,
+    });
   }
 
   // 检查自定义限制

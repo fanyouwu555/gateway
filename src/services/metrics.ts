@@ -6,6 +6,7 @@
 import type { TenantId, RequestId } from '../types';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
+import { writeLog } from '../middleware/logger';
 
 interface TokenUsage {
   prompt_tokens: number;
@@ -57,9 +58,13 @@ class MetricsStore {
 
     // 异步写入存储
     if (this.useStorage && this.store) {
-      this.store.lPush(this.storageKey, JSON.stringify(metric)).catch(() => {});
+      this.store.lPush(this.storageKey, JSON.stringify(metric)).catch((err) => {
+        writeLog('warn', 'Failed to push metrics to storage', { error: err instanceof Error ? err.message : String(err) });
+      });
       // 修剪存储中的历史
-      this.store.lTrim(this.storageKey, 0, this.maxSize - 1).catch(() => {});
+      this.store.lTrim(this.storageKey, 0, this.maxSize - 1).catch((err) => {
+        writeLog('warn', 'Failed to trim metrics storage', { error: err instanceof Error ? err.message : String(err) });
+      });
     }
   }
 
@@ -87,20 +92,23 @@ const metricsStore = new MetricsStore();
 
 /**
  * Token 价格（每 1M tokens 的价格，美元）
+ * 从配置中读取, 允许运行时覆盖
  */
-const TOKEN_PRICING: Record<string, { input: number; output: number }> = {
-  // OpenAI
-  'gpt-4o': { input: 5.0, output: 15.0 },
-  'gpt-4o-mini': { input: 0.15, output: 0.6 },
-  'gpt-4-turbo': { input: 10.0, output: 30.0 },
-  'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
-  // DeepSeek
-  'deepseek-chat': { input: 0.27, output: 1.1 },
-  'deepseek-coder': { input: 0.27, output: 1.1 },
-  // Anthropic
-  'claude-3-5-sonnet': { input: 3.0, output: 15.0 },
-  'claude-3-opus': { input: 15.0, output: 75.0 },
-};
+let _pricing: Record<string, { input: number; output: number }> = {};
+
+/**
+ * 初始化定价（从配置加载）
+ */
+export function initPricing(pricing?: Record<string, { input: number; output: number }>): void {
+  _pricing = pricing || {};
+}
+
+/**
+ * 获取定价配置
+ */
+export function getPricing(): Record<string, { input: number; output: number }> {
+  return _pricing;
+}
 
 /**
  * 计算请求费用
@@ -109,7 +117,7 @@ export function calculateCost(
   model: string,
   tokens: TokenUsage
 ): number | undefined {
-  const pricing = TOKEN_PRICING[model];
+  const pricing = _pricing[model];
   if (!pricing) {
     return undefined;
   }

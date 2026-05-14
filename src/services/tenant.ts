@@ -3,7 +3,7 @@
  * 租户配置、API Key管理、配额控制
  */
 import type { TenantId, IApiKeyMeta } from '../types';
-import { generateRequestId } from '../utils';
+import { generateRequestId, hashApiKey, verifyApiKey } from '../utils';
 
 /**
  * 租户配置
@@ -137,6 +137,7 @@ class TenantStore {
 
   /**
    * 为租户创建API Key
+   * Key 以哈希形式存储，与认证中间件的 verifyApiKey() 兼容
    */
   createApiKey(tenantId: TenantId, name: string, expiresAt?: number): IApiKeyMeta | null {
     const tenant = this.tenants.get(tenantId);
@@ -148,24 +149,41 @@ class TenantStore {
       return null;
     }
 
-    const key = `sk-${tenantId.slice(0, 8)}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const plaintextKey = `sk-${tenantId.slice(0, 8)}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    // 存储哈希值，与 auth middleware 的 verifyApiKey() 兼容
+    const hashedKey = hashApiKey(plaintextKey);
     const meta: IApiKeyMeta = {
-      key,
+      key: hashedKey,
       tenant_id: tenantId,
       name,
       created_at: Date.now(),
       expires_at: expiresAt,
     };
 
-    this.apiKeys.set(key, { key, tenant_id: tenantId, meta });
-    return meta;
+    this.apiKeys.set(hashedKey, { key: hashedKey, tenant_id: tenantId, meta });
+    // 返回明文 key（调用方需在创建时保存，之后无法再次获取）
+    return { ...meta, key: plaintextKey };
+  }
+
+  /**
+   * 通过哈希值查找 API Key 记录（线性扫描）
+   * 因为 scrypt 哈希非确定性，无法直接 get
+   */
+  private findApiKeyByPlaintext(plaintextKey: string): { key: string; tenant_id: TenantId; meta: IApiKeyMeta } | undefined {
+    for (const record of this.apiKeys.values()) {
+      if (verifyApiKey(plaintextKey, record.key)) {
+        return record;
+      }
+    }
+    return undefined;
   }
 
   /**
    * 验证API Key
+   * 输入为明文，通过 verifyApiKey 遍历查找匹配项
    */
   verifyApiKey(key: string): { valid: boolean; tenant_id?: TenantId; meta?: IApiKeyMeta; error?: string } {
-    const record = this.apiKeys.get(key);
+    const record = this.findApiKeyByPlaintext(key);
     if (!record) {
       return { valid: false, error: 'Invalid API key' };
     }
@@ -188,10 +206,17 @@ class TenantStore {
   }
 
   /**
-   * 删除API Key
+   * 删除API Key（支持明文输入）
    */
   deleteApiKey(key: string): boolean {
-    return this.apiKeys.delete(key);
+    // 先尝试直接删除（如果 key 已经是哈希值）
+    if (this.apiKeys.delete(key)) return true;
+    // 否则通过 verifyApiKey 查找并删除
+    const record = this.findApiKeyByPlaintext(key);
+    if (record) {
+      return this.apiKeys.delete(record.key);
+    }
+    return false;
   }
 
   /**
@@ -203,6 +228,17 @@ class TenantStore {
       if (record.tenant_id === tenantId) {
         keys.push(record.meta);
       }
+    }
+    return keys;
+  }
+
+  /**
+   * 获取所有租户的所有 API Keys
+   */
+  getAllApiKeys(): IApiKeyMeta[] {
+    const keys: IApiKeyMeta[] = [];
+    for (const record of this.apiKeys.values()) {
+      keys.push(record.meta);
     }
     return keys;
   }
@@ -295,6 +331,13 @@ export function deleteTenantApiKey(key: string): boolean {
  */
 export function getTenantApiKeys(tenantId: TenantId): IApiKeyMeta[] {
   return tenantStore.getApiKeysByTenant(tenantId);
+}
+
+/**
+ * 获取所有租户的所有 API Keys（用于全局鉴权）
+ */
+export function getAllTenantApiKeys(): IApiKeyMeta[] {
+  return tenantStore.getAllApiKeys();
 }
 
 /**

@@ -8,9 +8,18 @@ import {
   getAllMetrics,
   clearMetrics,
   calculateCost,
+  initPricing,
 } from '../services/metrics';
 
 describe('Metrics Service', () => {
+  beforeAll(() => {
+    // 初始化测试用定价
+    initPricing({
+      'gpt-4o': { input: 5.0, output: 15.0 },
+      'deepseek-chat': { input: 0.27, output: 1.1 },
+    });
+  });
+
   beforeEach(() => {
     clearMetrics();
   });

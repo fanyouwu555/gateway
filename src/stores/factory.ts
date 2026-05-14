@@ -4,6 +4,7 @@
 import type { IKVStore, IStorageFactory, StorageType } from './interface';
 import { MemoryKVStore } from './memory';
 import { RedisKVStore, createRedisConfigFromEnv, type RedisConfig } from './redis';
+import { writeLog } from '../middleware/logger';
 
 /**
  * 存储配置
@@ -53,7 +54,7 @@ export function initStorageFactory(config?: StorageConfig): StorageFactory {
   };
 
   globalFactory = new StorageFactory(defaultConfig);
-  console.log(`[Storage] Initialized: ${defaultConfig.type}`);
+  writeLog('info', 'Storage initialized', { type: defaultConfig.type });
   return globalFactory;
 }
 

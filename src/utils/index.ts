@@ -1,6 +1,7 @@
 /**
  * 工具函数库
  */
+import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 import type { RequestId } from '../types';
 
@@ -110,4 +111,58 @@ export function safeJsonParse<T>(
  */
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ===== API Key 安全存储 =====
+
+/** 哈希配置 */
+const HASH_CONFIG = {
+  keyLength: 64,
+  saltLength: 16,
+  prefix: '$scrypt$',
+} as const;
+
+/**
+ * 对 API Key 进行哈希（使用 scrypt）
+ */
+export function hashApiKey(apiKey: string): string {
+  const salt = randomBytes(HASH_CONFIG.saltLength).toString('hex');
+  const derivedKey = scryptSync(apiKey, salt, HASH_CONFIG.keyLength);
+  return `${HASH_CONFIG.prefix}${salt}:${derivedKey.toString('hex')}`;
+}
+
+/**
+ * 验证 API Key 是否匹配哈希
+ * 注意：存储的 key 必须是哈希格式（以 $scrypt$ 开头）
+ */
+export function verifyApiKey(apiKey: string, hashed: string): boolean {
+  if (!hashed.startsWith(HASH_CONFIG.prefix)) {
+    return false;
+  }
+
+  const stripped = hashed.slice(HASH_CONFIG.prefix.length);
+  const [salt, keyHex] = stripped.split(':');
+  if (!salt || !keyHex) return false;
+
+  const derivedKey = scryptSync(apiKey, salt, HASH_CONFIG.keyLength);
+  const keyBuf = Buffer.from(keyHex, 'hex');
+
+  // 常量时间比较，防止时序攻击
+  if (derivedKey.length !== keyBuf.length) return false;
+  return timingSafeEqual(derivedKey, keyBuf);
+}
+
+/**
+ * 判断字符串是否为哈希格式
+ */
+function isHashedKey(key: string): boolean {
+  return key.startsWith(HASH_CONFIG.prefix);
+}
+
+/**
+ * 将 API Key 哈希化（如尚未哈希）
+ */
+export function ensureKeyHashed(key: string): string {
+  if (isHashedKey(key)) return key;
+  return hashApiKey(key);
 }

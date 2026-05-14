@@ -6,13 +6,14 @@ import type { Context, Next } from 'hono';
 import type { Server } from 'http';
 import type { ChatCompletionRequest } from '../types';
 import { generateRequestId } from '../utils';
-import { getProviderForModel } from '../config';
+import { getProviderForModel, getConfig } from '../config';
 import { chatCompleteStream } from '../providers';
+import { writeLog } from './logger';
 
 /**
  * WebSocket 连接信息
  */
-interface WSConnection {
+export interface WSConnection {
   id: string;
   tenant_id: string;
   model: string;
@@ -31,7 +32,7 @@ class WebSocketManager {
    */
   init(_server: Server): void {
     // WebSocket支持需要单独处理，这里提供基础框架
-    console.log('[WebSocket] Manager initialized');
+    writeLog('info', '[WebSocket] Manager initialized');
   }
 
   /**
@@ -74,6 +75,19 @@ class WebSocketManager {
   }
 
   /**
+   * 获取租户连接列表
+   */
+  getConnectionsByTenant(tenantId: string): WSConnection[] {
+    const result: WSConnection[] = [];
+    for (const conn of this.connections.values()) {
+      if (conn.tenant_id === tenantId) {
+        result.push(conn);
+      }
+    }
+    return result;
+  }
+
+  /**
    * 获取租户连接数
    */
   getTenantConnections(tenantId: string): number {
@@ -84,6 +98,13 @@ class WebSocketManager {
       }
     }
     return count;
+  }
+
+  /**
+   * 清除所有连接（用于测试）
+   */
+  clear(): void {
+    this.connections.clear();
   }
 
   /**
@@ -141,7 +162,7 @@ export async function handleWebSocketHandshake(c: Context, next: Next): Promise<
     // WebSocket握手处理
     // 注意：生产环境需要使用 @hono/node-ws 或原生ws库
     const tenantId = c.get('tenant_id') || 'default';
-    const model = c.req.query('model') || 'gpt-4o-mini';
+    const model = c.req.query('model') || getConfig().default_model || 'gpt-4o-mini';
 
     // 创建连接记录
     const connId = wsManager.addConnection(tenantId, model);
@@ -151,7 +172,7 @@ export async function handleWebSocketHandshake(c: Context, next: Next): Promise<
     c.text('WebSocket handshake not implemented in this version');
 
     // 注意：完整WebSocket支持需要额外配置
-    console.log(`[WebSocket] Connection request: ${connId}, model: ${model}`);
+    writeLog('info', 'WebSocket connection request', { connection_id: connId, model });
   } else {
     await next();
   }
@@ -166,7 +187,7 @@ export function sendWSMessage(connectionId: string, data: unknown): boolean {
 
   wsManager.updateActivity(connectionId);
   // 实际发送需要完整的WebSocket实现
-  console.log(`[WebSocket] Would send to ${connectionId}:`, JSON.stringify(data).slice(0, 100));
+  writeLog('debug', 'WebSocket would send message', { connection_id: connectionId, data_preview: JSON.stringify(data).slice(0, 100) });
   return true;
 }
 
@@ -175,7 +196,7 @@ export function sendWSMessage(connectionId: string, data: unknown): boolean {
  */
 export function broadcastToTenant(tenantId: string, _data: unknown): number {
   // 实际广播需要完整的WebSocket实现
-  console.log(`[WebSocket] Would broadcast to tenant ${tenantId}`);
+  writeLog('debug', 'WebSocket would broadcast to tenant', { tenant_id: tenantId });
   return 0;
 }
 
@@ -191,6 +212,41 @@ export function closeConnection(connectionId: string): boolean {
  */
 export function getWebSocketStats() {
   return wsManager.getStats();
+}
+
+/**
+ * 添加连接
+ */
+export function addConnection(tenantId: string, model: string): string {
+  return wsManager.addConnection(tenantId, model);
+}
+
+/**
+ * 移除连接
+ */
+export function removeConnection(id: string): boolean {
+  return wsManager.removeConnection(id);
+}
+
+/**
+ * 获取连接
+ */
+export function getConnection(id: string): WSConnection | null {
+  return wsManager.getConnection(id);
+}
+
+/**
+ * 获取租户的所有连接
+ */
+export function getConnectionsByTenant(tenantId: string): WSConnection[] {
+  return wsManager.getConnectionsByTenant(tenantId);
+}
+
+/**
+ * 重置所有连接
+ */
+export function resetWebSocketConnections(): void {
+  wsManager.clear();
 }
 
 /**
@@ -239,7 +295,7 @@ export async function handleRealtimeChat(c: Context): Promise<Response> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return c.json(
-      { error: { message, type: 'provider_error' } },
+      { error: { message, type: 'provider_error', code: 'provider_error' } },
       500
     );
   }

@@ -211,7 +211,21 @@ class SessionStore {
 }
 
 // 单例
-const sessionStore = new SessionStore();
+let sessionStore = new SessionStore();
+
+/**
+ * 初始化会话存储（从配置加载）
+ */
+export function initSessionStore(config?: {
+  max_sessions?: number;
+  max_messages_per_session?: number;
+  ttl?: number;
+}): void {
+  const maxSessions = config?.max_sessions ?? 1000;
+  const maxMessagesPerSession = config?.max_messages_per_session ?? 100;
+  const ttl = config?.ttl ?? 3600000;
+  sessionStore = new SessionStore(maxSessions, maxMessagesPerSession, ttl);
+}
 
 /**
  * 创建新会话

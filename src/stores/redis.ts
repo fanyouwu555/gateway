@@ -4,6 +4,7 @@
  */
 import Redis, { type RedisOptions } from 'ioredis';
 import type { IKVStore, StorageType } from './interface';
+import { writeLog } from '../middleware/logger';
 
 /**
  * Redis 配置
@@ -64,12 +65,12 @@ export class RedisKVStore implements IKVStore {
     }
 
     this.client.on('error', (err) => {
-      console.error('[Redis] Connection error:', err.message);
+      writeLog('error', 'Redis connection error', { error: err.message });
       this.connected = false;
     });
 
     this.client.on('connect', () => {
-      console.log('[Redis] Connected');
+      writeLog('info', 'Redis connected');
       this.connected = true;
     });
 

@@ -6,6 +6,7 @@
 import { getProviderConfig, getConfig } from '../config';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
+import { writeLog } from '../middleware/logger';
 
 /**
  * Failover 配置
@@ -52,13 +53,14 @@ class FailoverManager {
 
   constructor() {
     const appConfig = getConfig();
-    this.config = appConfig.failover || {
+    this.config = {
       enabled: false,
       failureThreshold: 3,
       successThreshold: 2,
-      healthCheckInterval: 60000, // 1分钟
+      healthCheckInterval: 60000,
       healthCheckTimeout: 5000,
       healthCheckModel: 'gpt-4o-mini',
+      ...appConfig.failover,
     };
 
     // 初始化存储
@@ -88,9 +90,9 @@ class FailoverManager {
         const health = JSON.parse(value) as TokenHealth;
         this.tokenHealth.set(key, health);
       }
-      console.log(`[Failover] Loaded ${this.tokenHealth.size} health states from storage`);
-    } catch {
-      // 加载失败，使用内存状态
+      writeLog('info', 'Loaded health states from storage', { count: this.tokenHealth.size });
+    } catch (err) {
+      writeLog('warn', 'Failed to load health state from storage, using in-memory', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -102,8 +104,8 @@ class FailoverManager {
 
     try {
       await this.store.hSet('health', key, JSON.stringify(health));
-    } catch {
-      // 忽略保存错误
+    } catch (err) {
+      writeLog('warn', 'Failed to save health state', { key, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -197,7 +199,7 @@ class FailoverManager {
     // 已有检查中
     if (this.healthCheckTimers.has(key)) return;
 
-    console.log(`[Failover] Starting health check for ${provider}`);
+    writeLog('info', 'Starting health check', { provider });
 
     // 定时健康检查
     const timer = setInterval(async () => {
@@ -249,7 +251,7 @@ class FailoverManager {
             updatedHealth.isHealthy = true;
             updatedHealth.failureCount = 0;
             this.stopHealthCheck(key);
-            console.log(`[Failover] Token recovered: ${provider}`);
+            writeLog('info', 'Token recovered', { provider });
           }
           this.tokenHealth.set(key, updatedHealth);
         }

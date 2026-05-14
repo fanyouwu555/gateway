@@ -1,19 +1,57 @@
 /**
  * 限流中间件测试
  */
-import { rateLimitMiddleware } from '../middleware/ratelimit';
+import { Hono } from 'hono';
+import { rateLimitMiddleware, cleanRateLimitStore } from './ratelimit';
+
+// Mock config
+jest.mock('../config', () => ({
+  getConfig: () => ({
+    rate_limit: {
+      enabled: true,
+      qps: 1000, // High QPS for testing to avoid test flakiness
+      burst: 1000,
+    },
+    auth: { enabled: false, api_keys: [] },
+  }),
+}));
 
 describe('RateLimit Middleware', () => {
-  describe('基本功能', () => {
-    it('should be defined', () => {
-      expect(rateLimitMiddleware).toBeDefined();
-    });
+  let app: Hono;
 
-    it('should be an async function', () => {
-      expect(typeof rateLimitMiddleware).toBe('function');
+  beforeEach(() => {
+    cleanRateLimitStore();
+    app = new Hono();
+    app.use('*', rateLimitMiddleware);
+    app.get('/test', (c) => c.json({ ok: true }));
+  });
+
+  it('should allow requests within rate limit', async () => {
+    const res = await app.request('/test');
+    expect(res.status).toBe(200);
+    const remaining = res.headers.get('X-RateLimit-Remaining');
+    expect(remaining).toBeDefined();
+  });
+
+  it('should set rate limit headers', async () => {
+    const res = await app.request('/test');
+    expect(res.headers.get('X-RateLimit-Remaining')).toBeDefined();
+    expect(res.headers.get('X-RateLimit-Limit')).toBe('1000');
+  });
+
+  it('should allow multiple requests', async () => {
+    const results = await Promise.all([
+      app.request('/test'),
+      app.request('/test'),
+      app.request('/test'),
+    ]);
+    results.forEach((res) => {
+      expect(res.status).toBe(200);
     });
   });
 
-  // 注意：完整的限流测试需要完整的 Hono Context mock
-  // 这里跳过复杂的集成测试，仅确保模块正确加载
+  it('should be defined and async', () => {
+    expect(rateLimitMiddleware).toBeDefined();
+    expect(typeof rateLimitMiddleware).toBe('function');
+  });
 });

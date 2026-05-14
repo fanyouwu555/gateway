@@ -6,6 +6,7 @@
 import type { ChatCompletionRequest } from '../types';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
+import { writeLog } from '../middleware/logger';
 
 /**
  * 缓存条目
@@ -178,8 +179,8 @@ class CacheStore<T> {
 
     // 异步写入存储 (fire-and-forget)
     if (this.useStorage && this.store) {
-      this.store.set(key, JSON.stringify(entry), ttl || this.ttl).catch(() => {
-        // 忽略存储错误，不影响主流程
+      this.store.set(key, JSON.stringify(entry), ttl || this.ttl).catch((err) => {
+        writeLog('warn', 'Failed to persist cache entry', { error: err instanceof Error ? err.message : String(err) });
       });
     }
   }
@@ -244,7 +245,16 @@ class CacheStore<T> {
 }
 
 // 单例
-const cacheStore = new CacheStore<string>();
+let cacheStore = new CacheStore<string>();
+
+/**
+ * 初始化缓存（从配置加载）
+ */
+export function initCache(config?: { ttl?: number; max_size?: number }): void {
+  const ttl = config?.ttl ?? 3600000;
+  const maxSize = config?.max_size ?? 1000;
+  cacheStore = new CacheStore<string>(maxSize, ttl);
+}
 
 /**
  * 简化版缓存键生成（用于精确匹配）
