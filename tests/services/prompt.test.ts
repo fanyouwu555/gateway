@@ -10,7 +10,7 @@ import {
   deleteTemplate,
   parseTemplate,
   validateVariables,
-} from '../services/prompt';
+} from '../../src/services/prompt';
 
 describe('Prompt Service', () => {
   describe('listTemplates', () => {

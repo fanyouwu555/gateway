@@ -1,11 +1,11 @@
 /**
  * 负载均衡服务测试
  */
-import { loadBalanceManager } from './loadbalancer';
-import type { IProviderConfig } from '../types';
+import { loadBalanceManager } from '../../src/../src/services/loadbalancer';
+import type { IProviderConfig } from '../../src/types';
 
 // 模拟 config
-jest.mock('../config', () => ({
+jest.mock('../../src/config', () => ({
   getConfig: () => ({
     loadBalance: {
       strategy: 'roundRobin',
@@ -157,7 +157,7 @@ describe('LoadBalanceManager', () => {
   });
 });
 
-import { getLoadBalanceStrategy } from './loadbalancer';
+import { getLoadBalanceStrategy } from '../../src/../src/services/loadbalancer';
 
 describe('getLoadBalanceStrategy', () => {
   it('should return strategy', () => {

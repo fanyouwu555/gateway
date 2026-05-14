@@ -2,13 +2,13 @@
  * 认证中间件测试
  */
 import { Hono } from 'hono';
-import { authMiddleware, generateTestApiKey } from './auth';
+import { authMiddleware, generateTestApiKey } from '../../src/../src/middleware/auth';
 
 // Mock config — keys are always hashed
 // Note: hash computation is inside the factory to avoid jest.mock hoisting issues
-jest.mock('../config', () => {
+jest.mock('../../src/config', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { hashApiKey } = require('../utils');
+  const { hashApiKey } = require('../../src/utils');
   const testKeyHash = hashApiKey('sk-test-12345678');
   const anotherKeyHash = hashApiKey('sk-another-12345678');
   const expiredKeyHash = hashApiKey('sk-expired-key');

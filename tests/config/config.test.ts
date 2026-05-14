@@ -1,7 +1,7 @@
 /**
  * 配置管理测试
  */
-import { getConfig, getProviderConfig, getRoutingStrategy, getProviderForModel, reloadConfig } from './index';
+import { getConfig, getProviderConfig, getRoutingStrategy, getProviderForModel, reloadConfig } from '../../src/../src/config/index';
 
 // 测试环境变量
 const originalEnv = process.env;

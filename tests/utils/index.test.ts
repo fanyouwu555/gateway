@@ -11,7 +11,7 @@ import {
   getRetryDelay,
   safeJsonParse,
   delay,
-} from '../utils';
+} from '../../src/utils';
 
 describe('Utils', () => {
   describe('generateRequestId', () => {

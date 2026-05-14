@@ -1,8 +1,8 @@
 /**
  * Provider Registry 测试
  */
-import { getProviderNames, hasProvider } from '../providers';
-import { initProviders } from '../providers/registry';
+import { getProviderNames, hasProvider } from '../../src/providers';
+import { initProviders } from '../../src/providers/registry';
 
 describe('Provider Registry', () => {
   beforeAll(() => {

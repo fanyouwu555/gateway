@@ -2,10 +2,10 @@
  * 限流中间件测试
  */
 import { Hono } from 'hono';
-import { rateLimitMiddleware, cleanRateLimitStore } from './ratelimit';
+import { rateLimitMiddleware, cleanRateLimitStore } from '../../src/../src/middleware/ratelimit';
 
 // Mock config
-jest.mock('../config', () => ({
+jest.mock('../../src/config', () => ({
   getConfig: () => ({
     rate_limit: {
       enabled: true,

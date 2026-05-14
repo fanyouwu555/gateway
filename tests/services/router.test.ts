@@ -7,8 +7,8 @@ import {
   recordError,
   getRouterStatus,
   setRouterContext,
-} from '../services/router';
-import type { ChatCompletionRequest } from '../types';
+} from '../../src/services/router';
+import type { ChatCompletionRequest } from '../../src/types';
 
 describe('Router Service', () => {
   describe('smartRoute', () => {

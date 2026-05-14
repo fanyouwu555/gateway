@@ -11,7 +11,7 @@ import type {
   IAuthResult,
   IRequestLog,
   GatewayErrorType,
-} from '../types';
+} from '../../src/types';
 
 describe('Types', () => {
   describe('ChatCompletionRequest', () => {

@@ -1,8 +1,8 @@
 /**
  * 动态 Provider 测试
  */
-import { DynamicProvider } from './dynamic';
-import type { DynamicProviderConfig } from '../types';
+import { DynamicProvider } from '../../src/../src/providers/dynamic';
+import type { DynamicProviderConfig } from '../../src/types';
 
 describe('DynamicProvider', () => {
   describe('constructor', () => {

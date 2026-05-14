@@ -1,10 +1,10 @@
 /**
  * Failover 服务测试
  */
-import { failoverManager } from './failover';
+import { failoverManager } from '../../src/../src/services/failover';
 
 // 模拟 config
-jest.mock('../config', () => ({
+jest.mock('../../src/config', () => ({
   getConfig: () => ({
     failover: {
       enabled: true,
@@ -29,9 +29,9 @@ jest.mock('../config', () => ({
   },
 }));
 
-import type { IProviderConfig } from '../types';
+import type { IProviderConfig } from '../../src/types';
 
-jest.mock('../config', () => ({
+jest.mock('../../src/config', () => ({
   getProviderConfig: (name: string) => {
     const config: Record<string, IProviderConfig> = {
       openai: {
@@ -172,7 +172,7 @@ describe('FailoverManager', () => {
   });
 });
 
-import { getFailoverConfig } from './failover';
+import { getFailoverConfig } from '../../src/../src/services/failover';
 
 describe('getFailoverConfig', () => {
   it('should return config object', () => {

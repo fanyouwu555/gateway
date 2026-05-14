@@ -9,7 +9,7 @@ import {
   getHistory,
   clearSession,
   getSessionStats,
-} from '../services/history';
+} from '../../src/services/history';
 
 describe('History Service', () => {
   describe('createSession', () => {

@@ -1,7 +1,7 @@
 /**
  * 内存存储测试
  */
-import { MemoryKVStore } from './memory';
+import { MemoryKVStore } from '../../src/../src/stores/memory';
 
 describe('MemoryKVStore', () => {
   let store: MemoryKVStore;

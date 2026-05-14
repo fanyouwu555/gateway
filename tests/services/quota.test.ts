@@ -1,10 +1,10 @@
 /**
  * 配额管理服务测试
  */
-import { checkQuota, setTenantLimits, getQuotaStatus } from './quota';
+import { checkQuota, setTenantLimits, getQuotaStatus } from '../../src/../src/services/quota';
 
 // Mock config
-jest.mock('../config', () => ({
+jest.mock('../../src/config', () => ({
   getConfig: () => ({
     cost_control: {
       monthly_budget: 100,
@@ -14,7 +14,7 @@ jest.mock('../config', () => ({
 }));
 
 // Mock metrics
-jest.mock('./metrics', () => ({
+jest.mock('../../src/../src/services/metrics', () => ({
   getTenantUsage: () => ({
     total_requests: 0,
     total_tokens: 0,

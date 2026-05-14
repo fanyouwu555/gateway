@@ -10,8 +10,8 @@ import {
   createTenantApiKey,
   deleteTenantApiKey,
   verifyTenantApiKey,
-} from './tenant';
-import type { TenantConfig } from './tenant';
+} from '../../src/../src/services/tenant';
+import type { TenantConfig } from '../../src/../src/services/tenant';
 
 describe('Tenant Service', () => {
   // Helper to create valid tenant config

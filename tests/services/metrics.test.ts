@@ -9,7 +9,7 @@ import {
   clearMetrics,
   calculateCost,
   initPricing,
-} from '../services/metrics';
+} from '../../src/services/metrics';
 
 describe('Metrics Service', () => {
   beforeAll(() => {

@@ -8,8 +8,8 @@ import {
   deleteCache,
   getCacheStats,
   createCacheStore,
-} from '../services/cache';
-import type { ChatCompletionRequest } from '../types';
+} from '../../src/services/cache';
+import type { ChatCompletionRequest } from '../../src/types';
 
 describe('Cache Service', () => {
   describe('generateCacheKey', () => {

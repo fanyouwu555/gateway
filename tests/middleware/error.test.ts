@@ -1,7 +1,7 @@
 /**
  * 错误处理中间件测试
  */
-import { GatewayError, requireParam, validateString } from './error';
+import { GatewayError, requireParam, validateString } from '../../src/../src/middleware/error';
 
 describe('GatewayError', () => {
   describe('constructor', () => {
