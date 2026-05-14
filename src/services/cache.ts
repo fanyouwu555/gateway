@@ -6,7 +6,7 @@
 import type { ChatCompletionRequest } from '../types';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * 缓存条目
@@ -254,6 +254,13 @@ export function initCache(config?: { ttl?: number; max_size?: number }): void {
   const ttl = config?.ttl ?? 3600000;
   const maxSize = config?.max_size ?? 1000;
   cacheStore = new CacheStore<string>(maxSize, ttl);
+}
+
+/**
+ * 重置缓存（用于测试隔离）
+ */
+export function resetCache(): void {
+  cacheStore = new CacheStore<string>();
 }
 
 /**

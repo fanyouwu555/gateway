@@ -6,7 +6,7 @@ import type { Context, Next } from 'hono';
 import { getConfig } from '../config';
 import { createRedisConfigFromEnv } from '../stores/redis';
 import type Redis from 'ioredis';
-import { writeLog } from './logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * 令牌桶状态
@@ -224,6 +224,14 @@ class RedisRateLimitStore {
 // 限流存储实例
 let rateLimitStore: RateLimitStore | null = null;
 let redisRateLimitStore: RedisRateLimitStore | null = null;
+
+/**
+ * 重置限流存储（用于测试隔离）
+ */
+export function resetRateLimitStore(): void {
+  rateLimitStore = null;
+  redisRateLimitStore = null;
+}
 
 /**
  * 是否使用 Redis 限流

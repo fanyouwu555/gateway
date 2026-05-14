@@ -4,7 +4,7 @@
  */
 import Redis, { type RedisOptions } from 'ioredis';
 import type { IKVStore, StorageType } from './interface';
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * Redis 配置

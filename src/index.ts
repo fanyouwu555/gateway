@@ -13,14 +13,15 @@ import { initCache } from './services/cache';
 import { initSessionStore } from './services/history';
 import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
-import { writeLog } from './middleware/logger';
+import { writeLog } from './utils/logger';
 
 // 创建 Hono 应用实例
 const app = createApp();
 
 /**
  * 启动 HTTP 服务器
- * 使用原生 node:http 而非 @hono/node-server，以支持跨平台 CORS 预检
+ * 使用原生 node:http 代理到 Hono fetch
+ * CORS 由 Hono cors() 中间件处理（src/app.ts）
  */
 async function startServer() {
   // 初始化 Providers
@@ -49,17 +50,6 @@ async function startServer() {
 
   // 所有 HTTP 请求通过 Hono 的 fetch 处理
   server.on('request', async (req: IncomingMessage, res: ServerResponse) => {
-    // 处理 CORS 预检请求
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-model');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
     // 构建完整 URL
     const host = req.headers.host || `localhost:${config.port}`;
     const fullUrl = `http://${host}${req.url}`;

@@ -6,7 +6,7 @@
 import type { TenantId, RequestId } from '../types';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 interface TokenUsage {
   prompt_tokens: number;
@@ -88,7 +88,15 @@ class MetricsStore {
 }
 
 // 单例
-const metricsStore = new MetricsStore();
+let metricsStore = new MetricsStore();
+
+/**
+ * 重置指标存储（用于测试隔离）
+ */
+export function resetMetricsStore(): void {
+  metricsStore = new MetricsStore();
+  _pricing = {};
+}
 
 /**
  * Token 价格（每 1M tokens 的价格，美元）

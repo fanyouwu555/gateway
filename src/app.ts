@@ -14,53 +14,82 @@ import embedRouter from './routes/embed';
 import modelRouter from './routes/model';
 import adminRouter from './routes/admin';
 import { GatewayError } from './middleware/error';
-import { writeLog } from './middleware/logger';
+import { writeLog } from './utils/logger';
 import { getProviderNames } from './providers';
 import { getCacheStats } from './services/cache';
 import { getSessionStats } from './services/history';
 
 /**
  * 创建 Hono 应用实例
+ * 路由注册顺序利用 Hono 中间件作用域实现：
+ *   - 公共路由（/health, /, /metrics）直接在 app 上注册，不受 auth/ratelimit 影响
+ *   - 受保护路由通过 Hono sub-app 分组，统一应用 auth + ratelimit 中间件
+ *   - 全局中间件（cors, logger, metrics）仍然作用于所有路由
  */
 export function createApp(): Hono {
   const app = new Hono();
+  const protectedApi = new Hono();
 
-  // ===== 全局中间件 =====
+  // ===== 全局中间件（作用于所有路由，包括 sub-app） =====
   app.use('*', cors());
   app.use('*', loggerMiddleware);
   app.use('*', metricsMiddleware);
 
-  // 认证中间件（排除健康检查）
-  app.use('*', async (c, next) => {
-    if (c.req.path === '/health' || c.req.path === '/') {
-      await next();
-    } else {
-      await authMiddleware(c, next);
-    }
+  // ===== 公共路由（不受 auth / ratelimit 影响） =====
+  app.get('/health', (c) => {
+    const providers = getProviderNames();
+    const cacheStats = getCacheStats();
+    const sessionStats = getSessionStats();
+
+    return c.json({
+      status: 'ok',
+      timestamp: Date.now(),
+      uptime: process.uptime(),
+      version: '1.0.0',
+      services: {
+        providers: providers.map((p) => ({ name: p, status: 'active' })),
+        cache: { size: cacheStats.size, hit_rate: cacheStats.hit_rate },
+        sessions: { total: sessionStats.total_sessions },
+      },
+    });
   });
 
-  // 限流中间件（排除健康检查）
-  app.use('*', async (c, next) => {
-    if (c.req.path === '/health' || c.req.path === '/') {
-      await next();
-    } else {
-      await rateLimitMiddleware(c, next);
-    }
+  app.get('/metrics', metricsHandler);
+
+  app.get('/', (c) => {
+    return c.json({
+      name: 'AI Gateway',
+      version: '1.0.0',
+      endpoints: {
+        health: '/health',
+        chat: '/v1/chat/completions',
+        embed: '/v1/embeddings',
+        models: '/v1/models',
+      },
+    });
   });
+
+  // ===== 受保护路由（需要 auth + ratelimit） =====
+  protectedApi.use('*', authMiddleware);
+  protectedApi.use('*', rateLimitMiddleware);
 
   // 管理 API 权限中间件（需要 admin API Key）
-  app.use('/v1/tenants*', requireAdmin);
-  app.use('/v1/config*', requireAdmin);
-  app.use('/v1/plugins*', requireAdmin);
-  app.use('/v1/usage*', requireAdmin);
-  app.use('/v1/quota*', requireAdmin);
-  app.use('/v1/cache*', requireAdmin);
-  app.use('/v1/ws/*', requireAdmin);
+  protectedApi.use('/v1/tenants*', requireAdmin);
+  protectedApi.use('/v1/config*', requireAdmin);
+  protectedApi.use('/v1/plugins*', requireAdmin);
+  protectedApi.use('/v1/usage*', requireAdmin);
+  protectedApi.use('/v1/quota*', requireAdmin);
+  protectedApi.use('/v1/cache*', requireAdmin);
+  protectedApi.use('/v1/ws/*', requireAdmin);
 
-  // ===== 路由 =====
-  app.route('/', chatRouter);
-  app.route('/', embedRouter);
-  app.route('/', modelRouter);
+  // 注册路由处理器
+  protectedApi.route('/', chatRouter);
+  protectedApi.route('/', embedRouter);
+  protectedApi.route('/', modelRouter);
+  protectedApi.route('/', adminRouter);
+
+  // 挂载受保护路由到主应用
+  app.route('/', protectedApi);
 
   // ===== 全局错误处理 =====
   app.onError((err, c) => {
@@ -100,45 +129,6 @@ export function createApp(): Hono {
       404
     )
   );
-
-  // ===== 健康检查 =====
-  app.get('/health', (c) => {
-    const providers = getProviderNames();
-    const cacheStats = getCacheStats();
-    const sessionStats = getSessionStats();
-
-    return c.json({
-      status: 'ok',
-      timestamp: Date.now(),
-      uptime: process.uptime(),
-      version: '1.0.0',
-      services: {
-        providers: providers.map((p) => ({ name: p, status: 'active' })),
-        cache: { size: cacheStats.size, hit_rate: cacheStats.hit_rate },
-        sessions: { total: sessionStats.total_sessions },
-      },
-    });
-  });
-
-  // ===== Prometheus 指标端点 =====
-  app.get('/metrics', metricsHandler);
-
-  // ===== 根路径 =====
-  app.get('/', (c) => {
-    return c.json({
-      name: 'AI Gateway',
-      version: '1.0.0',
-      endpoints: {
-        health: '/health',
-        chat: '/v1/chat/completions',
-        embed: '/v1/embeddings',
-        models: '/v1/models',
-      },
-    });
-  });
-
-  // ===== 管理 API 路由（最后注册，避免覆盖前面的路由） =====
-  app.route('/', adminRouter);
 
   return app;
 }

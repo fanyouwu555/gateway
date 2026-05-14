@@ -8,7 +8,7 @@ import type { ChatCompletionRequest } from '../types';
 import { generateRequestId } from '../utils';
 import { getProviderForModel, getConfig } from '../config';
 import { chatCompleteStream } from '../providers';
-import { writeLog } from './logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * WebSocket 连接信息

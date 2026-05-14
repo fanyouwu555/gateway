@@ -12,7 +12,7 @@ import { googleProvider } from './google';
 import { moonshotProvider } from './moonshot';
 import { DynamicProvider } from './dynamic';
 import { getConfig } from '../config';
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * 初始化所有Provider

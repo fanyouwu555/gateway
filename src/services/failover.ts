@@ -6,7 +6,7 @@
 import { getProviderConfig, getConfig } from '../config';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * Failover 配置

@@ -269,7 +269,14 @@ class SmartRouter {
 }
 
 // 单例
-const smartRouter = new SmartRouter();
+let smartRouter = new SmartRouter();
+
+/**
+ * 重置路由器（用于测试隔离）
+ */
+export function resetRouter(): void {
+  smartRouter = new SmartRouter();
+}
 
 /**
  * 执行智能路由

@@ -2,7 +2,7 @@
  * 重试服务
  * 为 Provider 调用提供指数退避重试机制
  */
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * 重试选项

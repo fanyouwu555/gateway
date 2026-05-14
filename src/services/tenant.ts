@@ -263,7 +263,14 @@ class TenantStore {
 }
 
 // 单例
-const tenantStore = new TenantStore();
+let tenantStore = new TenantStore();
+
+/**
+ * 重置租户存储（用于测试隔离）
+ */
+export function resetTenantStore(): void {
+  tenantStore = new TenantStore();
+}
 
 /**
  * 创建租户

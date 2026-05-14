@@ -4,7 +4,7 @@
 import type { IKVStore, IStorageFactory, StorageType } from './interface';
 import { MemoryKVStore } from './memory';
 import { RedisKVStore, createRedisConfigFromEnv, type RedisConfig } from './redis';
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * 存储配置
@@ -66,6 +66,13 @@ export function getStorageFactory(): StorageFactory {
     globalFactory = initStorageFactory();
   }
   return globalFactory;
+}
+
+/**
+ * 重置存储工厂（用于测试隔离）
+ */
+export function resetStorageFactory(): void {
+  globalFactory = null;
 }
 
 /**

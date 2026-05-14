@@ -13,9 +13,36 @@ import type {
 } from '../types';
 import { getProviderApiKeys } from '../types';
 import { getConfig, getProviderConfig, getRoutingStrategy } from '../config';
-import { failoverManager } from '../services/failover';
-import { loadBalanceManager } from '../services/loadbalancer';
+import { failoverManager as defaultFailover } from '../services/failover';
+import { loadBalanceManager as defaultLoadBalancer } from '../services/loadbalancer';
+
+type FailoverManager = typeof defaultFailover;
+type LoadBalanceManager = typeof defaultLoadBalancer;
 import { withRetry } from '../services/retry';
+
+// 可注入依赖（默认使用全局单例）
+let activeFailover: FailoverManager = defaultFailover;
+let activeLoadBalancer: LoadBalanceManager = defaultLoadBalancer;
+
+/**
+ * 设置 Provider 模块依赖（注入模式替代跨层直接 import）
+ * 用于测试时注入 mock 实例，或生产切换实现
+ */
+export function setProviderDeps(deps: {
+  failoverManager?: FailoverManager;
+  loadBalanceManager?: LoadBalanceManager;
+}): void {
+  if (deps.failoverManager !== undefined) activeFailover = deps.failoverManager;
+  if (deps.loadBalanceManager !== undefined) activeLoadBalancer = deps.loadBalanceManager;
+}
+
+/**
+ * 重置 Provider 模块依赖为默认全局单例
+ */
+export function resetProviderDeps(): void {
+  activeFailover = defaultFailover;
+  activeLoadBalancer = defaultLoadBalancer;
+}
 
 // Provider映射
 const providers = new Map<string, IProvider>();
@@ -39,6 +66,13 @@ export function getProvider(name: string): IProvider | undefined {
  */
 export function getProviderNames(): string[] {
   return Array.from(providers.keys());
+}
+
+/**
+ * 重置 Provider 注册表（用于测试隔离）
+ */
+export function resetProviders(): void {
+  providers.clear();
 }
 
 /**
@@ -82,7 +116,7 @@ async function callProviderWithRetry(
   }
 
   // 使用 LoadBalancer 选择一个 Key（多 Key 场景）
-  const selection = loadBalanceManager.selectToken(provider.name, availableKeys);
+  const selection = activeLoadBalancer.selectToken(provider.name, availableKeys);
   const activeKey = selection?.apiKey || availableKeys[0];
 
   // 创建带选中 Key 的配置副本
@@ -92,7 +126,7 @@ async function callProviderWithRetry(
   if (stream) {
     // 流式调用不重试（流建立后无法回滚）
     const result = await provider.chatStream(request, callConfig);
-    failoverManager.recordSuccess(provider.name, activeKey);
+    activeFailover.recordSuccess(provider.name, activeKey);
     return result;
   }
 
@@ -100,10 +134,10 @@ async function callProviderWithRetry(
     async () => {
       try {
         const result = await provider.chat(request, callConfig);
-        failoverManager.recordSuccess(provider.name, activeKey);
+        activeFailover.recordSuccess(provider.name, activeKey);
         return result;
       } catch (error) {
-        failoverManager.recordFailure(provider.name, activeKey);
+        activeFailover.recordFailure(provider.name, activeKey);
         throw error;
       }
     },
@@ -150,7 +184,7 @@ export async function chatComplete(
 
     // 检查 failover 健康状态（跳过不健康的 Provider）
     if (failoverConfig?.enabled && currentProvider !== providerName) {
-      const token = failoverManager.getAvailableToken(currentProvider);
+      const token = activeFailover.getAvailableToken(currentProvider);
       if (!token) {
         errors.push({ provider: currentProvider, error: 'Provider unhealthy' });
         continue;

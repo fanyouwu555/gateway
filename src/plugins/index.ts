@@ -4,7 +4,7 @@
  */
 import type { Context } from 'hono';
 import type { ChatCompletionRequest, ChatCompletionResponse } from '../types';
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * 插件类型
@@ -235,7 +235,14 @@ class PluginManager {
 }
 
 // 单例
-const pluginManager = new PluginManager();
+let pluginManager = new PluginManager();
+
+/**
+ * 重置插件管理器（用于测试隔离）
+ */
+export function resetPluginManager(): void {
+  pluginManager = new PluginManager();
+}
 
 /**
  * 注册插件

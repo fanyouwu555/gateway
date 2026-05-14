@@ -5,7 +5,7 @@
 import type { TenantId } from '../types';
 import { getTenantUsage } from './metrics';
 import { getConfig } from '../config';
-import { writeLog } from '../middleware/logger';
+import { writeLog } from '../utils/logger';
 
 /**
  * 配额检查结果
@@ -120,7 +120,14 @@ class QuotaStore {
 }
 
 // 单例
-const quotaStore = new QuotaStore();
+let quotaStore = new QuotaStore();
+
+/**
+ * 重置配额存储（用于测试隔离）
+ */
+export function resetQuotaStore(): void {
+  quotaStore = new QuotaStore();
+}
 
 /**
  * 检查配额

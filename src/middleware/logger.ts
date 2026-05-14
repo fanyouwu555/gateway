@@ -58,6 +58,3 @@ export async function loggerMiddleware(c: Context, next: Next): Promise<void> {
   writeLog(level, 'Request completed', logData as unknown as Record<string, unknown>);
 }
 
-// 重新导出核心日志功能，方便其他模块统一引用
-export { writeLog, logError, sanitizeLogData } from '../utils/logger';
-export type { LogLevel } from '../utils/logger';

@@ -7,7 +7,7 @@ import type { Context } from 'hono';
 import { getProviderForModel } from '../config';
 import { createEmbedding } from '../providers';
 import { embeddingRequestSchema } from '../validation';
-import { logError } from '../middleware/logger';
+import { logError } from '../utils/logger';
 
 const embedRouter = new Hono();
 
