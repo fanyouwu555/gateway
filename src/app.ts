@@ -91,12 +91,12 @@ export function createApp(): Hono {
   protectedApi.use('*', rateLimitMiddleware);
 
   // 管理 API 权限中间件（需要 admin API Key）
-  protectedApi.use('/v1/tenants*', requireAdmin);
-  protectedApi.use('/v1/config*', requireAdmin);
-  protectedApi.use('/v1/plugins*', requireAdmin);
-  protectedApi.use('/v1/usage*', requireAdmin);
-  protectedApi.use('/v1/quota*', requireAdmin);
-  protectedApi.use('/v1/cache*', requireAdmin);
+  protectedApi.use('/v1/tenants/*', requireAdmin);
+  protectedApi.use('/v1/config/*', requireAdmin);
+  protectedApi.use('/v1/plugins/*', requireAdmin);
+  protectedApi.use('/v1/usage/*', requireAdmin);
+  protectedApi.use('/v1/quota/*', requireAdmin);
+  protectedApi.use('/v1/cache/*', requireAdmin);
   protectedApi.use('/v1/ws/*', requireAdmin);
 
   // 注册路由处理器
