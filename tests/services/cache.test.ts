@@ -54,37 +54,37 @@ describe('Cache Service', () => {
   });
 
   describe('getCache & setCache', () => {
-    it('should store and retrieve cache', () => {
+    it('should store and retrieve cache', async () => {
       const request: ChatCompletionRequest = {
         model: 'gpt-4o',
         messages: [{ role: 'user', content: 'Test' }],
       };
       const response = '{"result": "cached response"}';
 
-      setCache(request, response);
-      const cached = getCache(request);
+      await setCache(request, response);
+      const cached = await getCache(request);
       expect(cached).toBe(response);
     });
 
-    it('should return null for non-existent cache', () => {
+    it('should return null for non-existent cache', async () => {
       const request: ChatCompletionRequest = {
         model: 'gpt-4o',
         messages: [{ role: 'user', content: 'Never cached' }],
       };
-      const cached = getCache(request);
+      const cached = await getCache(request);
       expect(cached).toBeNull();
     });
   });
 
   describe('deleteCache', () => {
-    it('should delete cache entry', () => {
+    it('should delete cache entry', async () => {
       const request: ChatCompletionRequest = {
         model: 'gpt-4o',
         messages: [{ role: 'user', content: 'Test' }],
       };
-      setCache(request, 'test');
+      await setCache(request, 'test');
       deleteCache(request);
-      expect(getCache(request)).toBeNull();
+      expect(await getCache(request)).toBeNull();
     });
   });
 
@@ -100,6 +100,39 @@ describe('Cache Service', () => {
     it('should create cache store with custom config', () => {
       const store = createCacheStore<string>(100, 60000);
       expect(store).toBeDefined();
+    });
+  });
+
+  describe('Semantic Cache', () => {
+    it('should find semantically similar requests', async () => {
+      const request1: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'How to create a React component?' }],
+      };
+      const request2: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'How to create React component?' }],
+      };
+      const response = '{"result": "You can create a component with JSX"}';
+
+      await setCache(request1, response);
+      const cached = await getCache(request2);
+      expect(cached).toBe(response);
+    });
+
+    it('should not find semantically dissimilar requests', async () => {
+      const request1: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'How to create a React component?' }],
+      };
+      const request2: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'What is machine learning?' }],
+      };
+
+      await setCache(request1, 'response1');
+      const cached = await getCache(request2);
+      expect(cached).toBeNull();
     });
   });
 });

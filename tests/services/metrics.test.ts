@@ -9,6 +9,11 @@ import {
   clearMetrics,
   calculateCost,
   initPricing,
+  getTimeSeriesMetrics,
+  getProviderStats,
+  getAllTenantsStats,
+  getDashboardOverview,
+  getStatusCodeStats,
 } from '../../src/services/metrics';
 
 describe('Metrics Service', () => {
@@ -132,6 +137,122 @@ describe('Metrics Service', () => {
       clearMetrics();
       const metrics = getAllMetrics();
       expect(metrics).toHaveLength(0);
+    });
+  });
+
+  describe('getTimeSeriesMetrics', () => {
+    it('should return aggregated time series data', () => {
+      const now = Date.now();
+
+      // 记录一些请求，时间分布在不同的小时
+      recordMetric('req-1', 'tenant-1', 'openai', 'gpt-4o', 100, 200, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+      recordMetric('req-2', 'tenant-1', 'openai', 'gpt-4o', 200, 200, {
+        prompt_tokens: 20,
+        completion_tokens: 10,
+        total_tokens: 30,
+      });
+
+      const series = getTimeSeriesMetrics(now - 100000, now + 100000, 'hour');
+      expect(Array.isArray(series)).toBe(true);
+      expect(series.length).toBeGreaterThan(0);
+      expect(series[0]).toHaveProperty('total_requests');
+      expect(series[0]).toHaveProperty('total_tokens');
+      expect(series[0]).toHaveProperty('success_rate');
+    });
+  });
+
+  describe('getProviderStats', () => {
+    it('should return provider level statistics', () => {
+      recordMetric('req-1', 'tenant-1', 'openai', 'gpt-4o', 100, 200, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+      recordMetric('req-2', 'tenant-1', 'deepseek', 'deepseek-chat', 150, 200, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+
+      const stats = getProviderStats(0, Date.now() + 10000);
+      expect(Array.isArray(stats)).toBe(true);
+      expect(stats.length).toBe(2);
+      expect(stats[0]).toHaveProperty('provider');
+      expect(stats[0]).toHaveProperty('total_requests');
+      expect(stats[0]).toHaveProperty('by_model');
+    });
+  });
+
+  describe('getAllTenantsStats', () => {
+    it('should return all tenant statistics', () => {
+      recordMetric('req-1', 'tenant-1', 'openai', 'gpt-4o', 100, 200, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+      recordMetric('req-2', 'tenant-2', 'openai', 'gpt-4o', 100, 200, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+
+      const stats = getAllTenantsStats(0, Date.now() + 10000);
+      expect(stats.length).toBe(2);
+      expect(stats[0]).toHaveProperty('tenant_id');
+      expect(stats[0]).toHaveProperty('by_provider');
+      expect(stats[0]).toHaveProperty('by_model');
+    });
+  });
+
+  describe('getDashboardOverview', () => {
+    it('should return comprehensive dashboard statistics', () => {
+      recordMetric('req-1', 'tenant-1', 'openai', 'gpt-4o', 100, 200, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+      recordMetric('req-2', 'tenant-1', 'deepseek', 'deepseek-chat', 100, 500, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+
+      const overview = getDashboardOverview(0, Date.now() + 10000);
+      expect(overview).toHaveProperty('total_requests', 2);
+      expect(overview).toHaveProperty('total_tokens', 30);
+      expect(overview).toHaveProperty('total_cost');
+      expect(overview).toHaveProperty('success_rate');
+      expect(overview).toHaveProperty('total_providers', 2);
+      expect(overview).toHaveProperty('total_models', 2);
+      expect(overview).toHaveProperty('total_tenants', 1);
+    });
+  });
+
+  describe('getStatusCodeStats', () => {
+    it('should return status code distribution', () => {
+      recordMetric('req-1', 'tenant-1', 'openai', 'gpt-4o', 100, 200, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+      recordMetric('req-2', 'tenant-1', 'openai', 'gpt-4o', 100, 200, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+      recordMetric('req-3', 'tenant-1', 'openai', 'gpt-4o', 100, 500, {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+      });
+
+      const stats = getStatusCodeStats(0, Date.now() + 10000);
+      expect(stats['200']).toBe(2);
+      expect(stats['500']).toBe(1);
     });
   });
 });

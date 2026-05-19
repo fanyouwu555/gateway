@@ -88,14 +88,14 @@ describe('Integration Tests', () => {
       expect(key1).toBe(key2);
     });
 
-    it('should return null for non-existent cache', () => {
-      const result = getCache(mockRequest);
+    it('should return null for non-existent cache', async () => {
+      const result = await getCache(mockRequest);
       expect(result).toBeNull();
     });
 
-    it('should set and get cache', () => {
-      setCache(mockRequest, 'cached-response');
-      const result = getCache(mockRequest);
+    it('should set and get cache', async () => {
+      await setCache(mockRequest, 'cached-response');
+      const result = await getCache(mockRequest);
       expect(result).toBe('cached-response');
     });
 
