@@ -9,6 +9,22 @@ import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
 
 /**
+ * 语义缓存配置
+ */
+export interface SemanticCacheConfig {
+  enabled: boolean;
+  threshold: number; // Jaccard 相似度阈值，0-1
+}
+
+/**
+ * 默认语义缓存配置
+ */
+const DEFAULT_SEMANTIC_CONFIG: SemanticCacheConfig = {
+  enabled: true,
+  threshold: 0.85,
+};
+
+/**
  * 缓存条目
  */
 interface CacheEntry<T> {
@@ -28,11 +44,13 @@ class CacheStore<T> {
   private readonly ttl: number; // 毫秒
   private store: IKVStore | null = null;
   private useStorage = false;
+  private semanticConfig: SemanticCacheConfig;
 
-  constructor(maxSize = 1000, ttl = 3600000) {
+  constructor(maxSize = 1000, ttl = 3600000, semanticConfig?: Partial<SemanticCacheConfig>) {
     // 默认1小时TTL
     this.maxSize = maxSize;
     this.ttl = ttl;
+    this.semanticConfig = { ...DEFAULT_SEMANTIC_CONFIG, ...semanticConfig };
 
     // 初始化存储 (Redis 或 Memory)
     const useStorage = process.env.CACHE_STORAGE === 'redis';
@@ -64,6 +82,86 @@ class CacheStore<T> {
       String(request.max_tokens || ''),
     ];
     return parts.join('|');
+  }
+
+  /**
+   * 简单的 Token 分词（按空格和标点分割）
+   */
+  private tokenize(text: string): Set<string> {
+    return new Set(
+      text
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .split(/\s+/)
+        .filter((t) => t.length > 1)
+    );
+  }
+
+  /**
+   * 计算 Jaccard 相似度
+   */
+  private jaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
+    if (setA.size === 0 || setB.size === 0) return 0;
+
+    let intersection = 0;
+    for (const token of setA) {
+      if (setB.has(token)) {
+        intersection++;
+      }
+    }
+
+    const union = setA.size + setB.size - intersection;
+    return intersection / union;
+  }
+
+  /**
+   * 从请求中提取文本内容
+   */
+  private extractTextFromRequest(request: ChatCompletionRequest): string {
+    return request.messages.map((m) => m.content).join(' ');
+  }
+
+  /**
+   * 语义查找 - 基于 Jaccard 相似度查找缓存
+   */
+  semanticFind(request: ChatCompletionRequest): T | null {
+    if (!this.semanticConfig.enabled) return null;
+
+    const requestTokens = this.tokenize(this.extractTextFromRequest(request));
+
+    // 遍历所有缓存条目，找最相似的
+    let bestMatch: { entry: CacheEntry<T>; similarity: number } | null = null;
+    const now = Date.now();
+
+    for (const entry of this.cache.values()) {
+      if (now > entry.expires_at) continue;
+
+      // 从 key 中解析出 request 文本（简化：只比较当前 key）
+      // 实际实现：存储时也保存 token set
+      const keyParts = entry.key.split('|');
+      if (keyParts.length < 2) continue;
+
+      try {
+        const messages = JSON.parse(keyParts[1]);
+        const cachedText = messages.map((m: { content: string }) => m.content).join(' ');
+        const cachedTokens = this.tokenize(cachedText);
+        const similarity = this.jaccardSimilarity(requestTokens, cachedTokens);
+
+        if (similarity >= this.semanticConfig.threshold && (!bestMatch || similarity > bestMatch.similarity)) {
+          bestMatch = { entry, similarity };
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (bestMatch) {
+      bestMatch.entry.hit_count++;
+      writeLog('debug', 'Semantic cache hit', { similarity: bestMatch.similarity });
+      return bestMatch.entry.value;
+    }
+
+    return null;
   }
 
   /**
@@ -271,23 +369,39 @@ export function generateCacheKey(request: ChatCompletionRequest): string {
 }
 
 /**
- * 获取缓存
+ * 获取缓存（异步，支持 Redis 和语义查找）
  */
-export function getCache(request: ChatCompletionRequest): string | null {
+export async function getCache(request: ChatCompletionRequest, useSemantic = true): Promise<string | null> {
   const key = generateCacheKey(request);
-  return cacheStore.get(key);
+
+  // 1. 先精确查找
+  const exactMatch = await cacheStore.getAsync(key);
+  if (exactMatch) {
+    writeLog('debug', 'Exact cache hit');
+    return exactMatch;
+  }
+
+  // 2. 语义查找（仅内存）
+  if (useSemantic) {
+    const semanticMatch = cacheStore.semanticFind(request);
+    if (semanticMatch) {
+      return semanticMatch;
+    }
+  }
+
+  return null;
 }
 
 /**
- * 设置缓存
+ * 设置缓存（异步，支持 Redis）
  */
-export function setCache(
+export async function setCache(
   request: ChatCompletionRequest,
   response: string,
   ttl?: number
-): void {
+): Promise<void> {
   const key = generateCacheKey(request);
-  cacheStore.set(key, response, ttl);
+  await cacheStore.setAsync(key, response, ttl);
 }
 
 /**

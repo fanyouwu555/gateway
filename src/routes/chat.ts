@@ -13,6 +13,8 @@ import { chatCompletionRequestSchema } from '../validation';
 import { writeLog } from '../utils/logger';
 import { smartRoute, type RouterStrategy } from '../services/router';
 import { runGuardrailPlugins, runRequestPlugins, runResponsePlugins } from '../plugins';
+import { getCache, setCache } from '../services/cache';
+import { getConfig } from '../config';
 
 const chatRouter = new Hono();
 
@@ -38,6 +40,17 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     }
 
     let request = parsed.data;
+
+    // 0. 缓存检查（非流式请求）
+    const config = getConfig();
+    if (config.cache?.enabled && !request.stream) {
+      const cached = await getCache(request);
+      if (cached) {
+        writeLog('debug', 'Cache hit', { model: request.model });
+        c.set('cache_hit', true);
+        return c.json(JSON.parse(cached), 200);
+      }
+    }
 
     // 1. 运行 Guardrail 插件（拦截不合规请求）
     const guardrailResult = await runGuardrailPlugins(c, request);
@@ -113,6 +126,13 @@ async function handleChatCompletion(c: Context): Promise<Response> {
 
     // 5. 运行响应插件（转换/增强响应）
     response = await runResponsePlugins(c, response);
+
+    // 6. 缓存响应（非流式请求）
+    if (config.cache?.enabled && !request.stream) {
+      setCache(request, JSON.stringify(response)).catch((err) => {
+        writeLog('warn', 'Failed to cache response', { error: err instanceof Error ? err.message : String(err) });
+      });
+    }
 
     return c.json(response, 200);
   } catch (error) {

@@ -80,8 +80,8 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     return;
   }
 
-  // 从Header获取API Key
-  const apiKey = c.req.header('x-api-key') || c.req.header('Authorization')?.replace('Bearer ', '');
+  // 从Header或Query参数获取API Key (WebSocket使用query参数)
+  const apiKey = c.req.header('x-api-key') || c.req.header('Authorization')?.replace('Bearer ', '') || c.req.query('api_key');
 
   if (!apiKey) {
     return c.json({

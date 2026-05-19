@@ -5,6 +5,7 @@
 import type { Context, Next } from 'hono';
 import { generateRequestId, getTimestamp } from '../utils';
 import { writeLog } from '../utils/logger';
+import { recordMetric } from '../services/metrics';
 import type { IRequestLog } from '../types';
 
 /**
@@ -56,5 +57,33 @@ export async function loggerMiddleware(c: Context, next: Next): Promise<void> {
   // 记录请求完成
   const level: 'error' | 'warn' | 'info' = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
   writeLog(level, 'Request completed', logData as unknown as Record<string, unknown>);
+
+  // 记录指标并广播（只对聊天和嵌入请求）
+  if (c.req.path.includes('/chat/completions') || c.req.path.includes('/embeddings')) {
+    // 从响应上下文获取 token 使用量
+    const promptTokens = c.get('prompt_tokens') || 0;
+    const completionTokens = c.get('completion_tokens') || 0;
+
+    try {
+      recordMetric(
+        requestId,
+        tenantId,
+        provider || 'unknown',
+        model || 'unknown',
+        duration,
+        status,
+        {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: promptTokens + completionTokens,
+        }
+      );
+    } catch (err) {
+      writeLog('warn', 'Failed to record metric', {
+        request_id: requestId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 }
 

@@ -5,6 +5,9 @@
  */
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Context } from 'hono';
+import { WebSocketServer } from 'ws';
+import type { WebSocket } from 'ws';
 import { createApp } from './app';
 import { getConfig } from './config';
 import { initProviders } from './providers/registry';
@@ -14,6 +17,7 @@ import { initSessionStore } from './services/history';
 import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
 import { writeLog } from './utils/logger';
+import { initWebSocket, handleWSConnection } from './middleware/websocket';
 
 // 创建 Hono 应用实例
 const app = createApp();
@@ -47,6 +51,82 @@ async function startServer() {
   initRateLimitCleanInterval(config.rate_limit_clean_interval);
 
   const server = createServer();
+
+  // 初始化 WebSocket 管理器
+  initWebSocket();
+
+  // 创建 WebSocket 服务器
+  const wss = new WebSocketServer({ noServer: true });
+
+  // 处理 WebSocket 升级
+  server.on('upgrade', async (req: IncomingMessage, socket, head) => {
+    const host = req.headers.host || `localhost:${config.port}`;
+    const fullUrl = `http://${host}${req.url}`;
+
+    // 只处理 /v1/ws 路径的升级请求
+    if (!req.url?.startsWith('/v1/ws')) {
+      socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // 通过 Hono 运行认证中间件
+    const headers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (typeof value === 'string') {
+        headers[key] = value;
+      } else if (Array.isArray(value)) {
+        headers[key] = value.join(', ');
+      }
+    }
+
+    try {
+      const mockRequest = new Request(fullUrl, {
+        method: 'GET',
+        headers,
+      });
+
+      const response = await app.fetch(mockRequest);
+
+      // 检查认证是否通过（状态码 401 表示失败）
+      if (response.status === 401) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      // 从响应中提取 tenant_id（通过一个临时的 header 传递）
+      const tenantId = response.headers.get('x-tenant-id') || 'default';
+
+      // 认证通过，升级连接
+      wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
+        wss.emit('connection', ws, { tenantId, path: req.url });
+      });
+    } catch (err) {
+      writeLog('error', '[WebSocket] Upgrade failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+      socket.destroy();
+    }
+  });
+
+  // WebSocket 连接建立后处理
+  wss.on('connection', (ws, request: { tenantId: string; path: string }) => {
+    // 从路径中提取 model 参数
+    const url = new URL(request.path, 'http://localhost');
+    const model = url.searchParams.get('model') || getConfig().default_model || 'gpt-4o-mini';
+
+    // 创建一个模拟的 Context 对象
+    const mockContext = {
+      get: (key: string) => key === 'tenant_id' ? request.tenantId : undefined,
+      req: {
+        query: (key: string) => key === 'model' ? model : undefined,
+      },
+    } as unknown as Context;
+
+    handleWSConnection(ws, mockContext);
+  });
 
   // 所有 HTTP 请求通过 Hono 的 fetch 处理
   server.on('request', async (req: IncomingMessage, res: ServerResponse) => {

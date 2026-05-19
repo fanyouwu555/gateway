@@ -1,12 +1,21 @@
 /**
  * 限流中间件
- * 基于令牌桶算法实现
+ * 支持内存令牌桶（单实例）和 Redis 滑动窗口（分布式）
  */
 import type { Context, Next } from 'hono';
 import { getConfig } from '../config';
 import { createRedisConfigFromEnv } from '../stores/redis';
 import type Redis from 'ioredis';
 import { writeLog } from '../utils/logger';
+
+/**
+ * 限流存储接口
+ */
+interface IRateLimitStore {
+  consume(c: Context, tokens?: number): Promise<boolean> | boolean;
+  getRemainingTokens(c: Context): Promise<number> | number;
+  clean(maxAge?: number): void;
+}
 
 /**
  * 令牌桶状态
@@ -17,9 +26,10 @@ interface TokenBucket {
 }
 
 /**
- * 限流存储（生产环境应使用 Redis）
+ * 内存限流存储（令牌桶算法）
+ * 适合单实例部署场景
  */
-class RateLimitStore {
+class MemoryRateLimitStore implements IRateLimitStore {
   private buckets = new Map<string, TokenBucket>();
   private readonly qps: number;
   private readonly burst: number;
@@ -62,7 +72,7 @@ class RateLimitStore {
   /**
    * 尝试消费令牌
    */
-  consume(c: Context, tokens = 1): boolean {
+  async consume(c: Context, tokens = 1): Promise<boolean> {
     const key = this.getClientKey(c);
     let bucket = this.buckets.get(key);
 
@@ -89,7 +99,7 @@ class RateLimitStore {
   /**
    * 获取剩余令牌数（用于调试）
    */
-  getRemainingTokens(c: Context): number {
+  async getRemainingTokens(c: Context): Promise<number> {
     const key = this.getClientKey(c);
     const bucket = this.buckets.get(key);
 
@@ -119,9 +129,9 @@ class RateLimitStore {
 
 /**
  * Redis 限流存储（生产环境）
- * 基于滑动窗口计数器实现，支持跨实例共享
+ * 基于精确滑动窗口计数器实现，支持跨多实例共享
  */
-class RedisRateLimitStore {
+class RedisRateLimitStore implements IRateLimitStore {
   private client: Redis | null = null;
   private readonly burst: number;
 
@@ -170,7 +180,7 @@ class RedisRateLimitStore {
 
   /**
    * 尝试消费令牌（原子操作）
-   * 使用滑动窗口：每秒一个窗口，统计前 1s + 当前窗口的请求数
+   * 使用精确滑动窗口：统计前一窗口的加权部分 + 当前窗口的请求数
    */
   async consume(c: Context, _tokens = 1): Promise<boolean> {
     if (!this.client) {
@@ -181,21 +191,47 @@ class RedisRateLimitStore {
     const key = this.getClientKey(c);
     const now = Date.now();
     const windowMs = 1000; // 1 秒窗口
-    const windowKey = `${key}:${Math.floor(now / windowMs)}`;
+
+    const currentWindowIdx = Math.floor(now / windowMs);
+    const previousWindowIdx = currentWindowIdx - 1;
+    const windowProgress = (now % windowMs) / windowMs; // 0-1 当前窗口进度
+
+    const currentKey = `${key}:${currentWindowIdx}`;
+    const previousKey = `${key}:${previousWindowIdx}`;
 
     try {
-      // 使用 MULTI 事务原子操作
-      const multi = this.client.multi();
-      multi.incr(windowKey);
-      multi.expire(windowKey, 2); // 2 秒过期
-      const results = await multi.exec();
-      if (!results) return true;
+      // 使用 Lua 脚本保证原子性
+      const luaScript = `
+        local currentKey = KEYS[1]
+        local previousKey = KEYS[2]
+        local windowProgress = tonumber(ARGV[1])
+        local burst = tonumber(ARGV[2])
+        local ttl = tonumber(ARGV[3])
 
-      const count = results[0][1] as number;
-      return count <= this.burst;
+        -- 获取前一窗口和当前窗口的计数
+        local previous = redis.call('get', previousKey)
+        previous = previous and tonumber(previous) or 0
+        local current = redis.call('get', currentKey)
+        current = current and tonumber(current) or 0
+
+        -- 计算滑动窗口总数：前一窗口的剩余部分 + 当前窗口
+        local slidingCount = previous * (1 - windowProgress) + current + 1
+
+        if slidingCount <= burst then
+          -- 允许通过，增加当前窗口计数
+          redis.call('incr', currentKey)
+          redis.call('expire', currentKey, ttl)
+          return 1
+        else
+          return 0
+        end
+      `;
+
+      const result = await this.client.eval(luaScript, 2, currentKey, previousKey, windowProgress, this.burst, 2);
+      return result === 1;
     } catch (err) {
       writeLog('warn', 'Redis consume error', { error: err instanceof Error ? err.message : String(err) });
-      return true;
+      return true; // Redis 出错时放行
     }
   }
 
@@ -204,12 +240,21 @@ class RedisRateLimitStore {
     const key = this.getClientKey(c);
     const now = Date.now();
     const windowMs = 1000;
-    const windowKey = `${key}:${Math.floor(now / windowMs)}`;
+
+    const currentWindowIdx = Math.floor(now / windowMs);
+    const previousWindowIdx = currentWindowIdx - 1;
+    const windowProgress = (now % windowMs) / windowMs;
+
+    const currentKey = `${key}:${currentWindowIdx}`;
+    const previousKey = `${key}:${previousWindowIdx}`;
 
     try {
-      const count = await this.client.get(windowKey);
-      const current = count ? parseInt(count, 10) : 0;
-      return Math.max(0, this.burst - current);
+      const results = await this.client.mget(currentKey, previousKey);
+      const current = results[0] ? parseInt(results[0], 10) : 0;
+      const previous = results[1] ? parseInt(results[1], 10) : 0;
+
+      const slidingCount = previous * (1 - windowProgress) + current;
+      return Math.max(0, Math.floor(this.burst - slidingCount));
     } catch (err) {
       writeLog('warn', 'Redis getRemainingTokens error', { error: err instanceof Error ? err.message : String(err) });
       return this.burst;
@@ -222,15 +267,13 @@ class RedisRateLimitStore {
 }
 
 // 限流存储实例
-let rateLimitStore: RateLimitStore | null = null;
-let redisRateLimitStore: RedisRateLimitStore | null = null;
+let rateLimitStore: IRateLimitStore | null = null;
 
 /**
  * 重置限流存储（用于测试隔离）
  */
 export function resetRateLimitStore(): void {
   rateLimitStore = null;
-  redisRateLimitStore = null;
 }
 
 /**
@@ -243,26 +286,25 @@ function useRedisRateLimit(): boolean {
 /**
  * 获取限流存储实例
  */
-async function getRateLimitStore(): Promise<RateLimitStore | RedisRateLimitStore> {
-  if (useRedisRateLimit()) {
-    if (!redisRateLimitStore) {
-      const config = getConfig();
-      redisRateLimitStore = new RedisRateLimitStore(
+async function getRateLimitStore(): Promise<IRateLimitStore> {
+  if (!rateLimitStore) {
+    const config = getConfig();
+
+    if (useRedisRateLimit()) {
+      const redisStore = new RedisRateLimitStore(
         config.rate_limit.qps,
         config.rate_limit.burst
       );
-      await redisRateLimitStore.connect();
+      await redisStore.connect();
+      rateLimitStore = redisStore;
+    } else {
+      rateLimitStore = new MemoryRateLimitStore(
+        config.rate_limit.qps,
+        config.rate_limit.burst
+      );
     }
-    return redisRateLimitStore;
   }
 
-  if (!rateLimitStore) {
-    const config = getConfig();
-    rateLimitStore = new RateLimitStore(
-      config.rate_limit.qps,
-      config.rate_limit.burst
-    );
-  }
   return rateLimitStore;
 }
 
@@ -283,16 +325,8 @@ export async function rateLimitMiddleware(
 
   const store = await getRateLimitStore();
 
-  let allowed: boolean;
-  let remaining: number;
-
-  if (store instanceof RedisRateLimitStore) {
-    allowed = await store.consume(c);
-    remaining = await store.getRemainingTokens(c);
-  } else {
-    allowed = store.consume(c);
-    remaining = store.getRemainingTokens(c);
-  }
+  const allowed = await store.consume(c);
+  const remaining = await store.getRemainingTokens(c);
 
   if (allowed) {
     // 添加响应头
@@ -316,7 +350,6 @@ export async function rateLimitMiddleware(
  */
 export function cleanRateLimitStore(maxAge?: number): void {
   rateLimitStore?.clean(maxAge);
-  redisRateLimitStore?.clean(maxAge);
 }
 
 let _cleanInterval: ReturnType<typeof setInterval> | null = null;
