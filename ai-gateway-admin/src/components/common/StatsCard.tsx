@@ -7,9 +7,10 @@ interface StatsCardProps {
   trend?: number
   suffix?: string
   prefix?: React.ReactNode
+  description?: string
 }
 
-const StatsCard: React.FC<StatsCardProps> = ({ title, value, trend, suffix, prefix }) => {
+const StatsCard: React.FC<StatsCardProps> = ({ title, value, trend, suffix, prefix, description }) => {
   const isUp = trend && trend > 0
   const isDown = trend && trend < 0
   const trendText = trend ? (trend > 0 ? `+${trend.toFixed(2)}%` : `${trend.toFixed(2)}%`) : ''
@@ -28,6 +29,11 @@ const StatsCard: React.FC<StatsCardProps> = ({ title, value, trend, suffix, pref
           {isDown && <ArrowDownOutlined />}
           <span style={{ marginLeft: 4 }}>{trendText}</span>
           <span style={{ marginLeft: 4, color: '#8c8c8c' }}>较上周</span>
+        </div>
+      )}
+      {description && (
+        <div className="description" style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+          {description}
         </div>
       )}
     </div>

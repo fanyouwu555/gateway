@@ -8,8 +8,8 @@ const api = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    // 可以添加认证 token
-    const token = localStorage.getItem('api_token')
+    // 可以添加认证 token (开发环境默认使用 admin key)
+    const token = localStorage.getItem('api_token') || 'admin-dashboard-key-456'
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -140,6 +140,74 @@ export async function getPlugins() {
 // ============ Prometheus 指标 ============
 export async function getPrometheusMetrics() {
   return api.get('/metrics')
+}
+
+// ============ 增强型指标 API (Phase 1) ============
+
+/**
+ * 获取时间范围内的用量统计
+ */
+export async function getUsageByTimeRange(start?: number, end?: number) {
+  const params = new URLSearchParams()
+  if (start) params.append('start', start.toString())
+  if (end) params.append('end', end.toString())
+  return api.get(`/v1/usage/range?${params}`)
+}
+
+/**
+ * 获取时间序列聚合数据
+ * @param granularity - 'hour' | 'day' | 'week' | 'month'
+ */
+export async function getTimeSeriesMetrics(
+  granularity?: 'hour' | 'day' | 'week' | 'month',
+  start?: number,
+  end?: number
+) {
+  const params = new URLSearchParams()
+  if (granularity) params.append('granularity', granularity)
+  if (start) params.append('start', start.toString())
+  if (end) params.append('end', end.toString())
+  return api.get(`/v1/usage/timeseries?${params}`)
+}
+
+/**
+ * 获取 Dashboard 概览统计
+ */
+export async function getDashboardOverview(start?: number, end?: number) {
+  const params = new URLSearchParams()
+  if (start) params.append('start', start.toString())
+  if (end) params.append('end', end.toString())
+  return api.get(`/v1/usage/overview?${params}`)
+}
+
+/**
+ * 获取 Provider 维度统计
+ */
+export async function getProviderStats(start?: number, end?: number) {
+  const params = new URLSearchParams()
+  if (start) params.append('start', start.toString())
+  if (end) params.append('end', end.toString())
+  return api.get(`/v1/usage/providers?${params}`)
+}
+
+/**
+ * 获取所有租户统计
+ */
+export async function getAllTenantsStats(start?: number, end?: number) {
+  const params = new URLSearchParams()
+  if (start) params.append('start', start.toString())
+  if (end) params.append('end', end.toString())
+  return api.get(`/v1/usage/tenants?${params}`)
+}
+
+/**
+ * 获取状态码分布统计
+ */
+export async function getStatusCodeStats(start?: number, end?: number) {
+  const params = new URLSearchParams()
+  if (start) params.append('start', start.toString())
+  if (end) params.append('end', end.toString())
+  return api.get(`/v1/usage/status-codes?${params}`)
 }
 
 export default api

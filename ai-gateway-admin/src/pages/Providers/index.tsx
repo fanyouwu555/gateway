@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, message } from 'antd'
-import { EditOutlined, ReloadOutlined } from '@ant-design/icons'
-import { getHealth } from '@/services/api'
+import { Card, Table, Button, Tag, Space, message } from 'antd'
+import { ReloadOutlined } from '@ant-design/icons'
+import { getHealth, getProviderStats } from '@/services/api'
+import type { ProviderStats } from '@/types'
 
 interface ProviderData {
   name: string
   status: 'online' | 'offline'
-  base_url: string
-  timeout: number
-  request_count: number
-  avg_latency: number
+  base_url?: string
+  timeout?: number
+  total_requests: number
+  avg_duration_ms: number
+  success_rate: number
 }
 
 const providerIcons: Record<string, string> = {
@@ -19,29 +21,39 @@ const providerIcons: Record<string, string> = {
   mistral: '🔴',
   groq: '🟡',
   google: '🟠',
+  moonshot: '🌙',
 }
 
 const Providers: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [providers, setProviders] = useState<ProviderData[]>([])
-  const [editModalVisible, setEditModalVisible] = useState(false)
-  const [editingProvider, setEditingProvider] = useState<ProviderData | null>(null)
-  const [form] = Form.useForm()
 
   const fetchProviders = async () => {
     setLoading(true)
     try {
-      await getHealth()
-
-      // 模拟数据 - 实际应该从配置获取
-      setProviders([
-        { name: 'openai', status: 'online', base_url: 'https://api.openai.com/v1', timeout: 30000, request_count: 56234, avg_latency: 245 },
-        { name: 'deepseek', status: 'online', base_url: 'https://api.deepseek.com/v1', timeout: 30000, request_count: 37892, avg_latency: 180 },
-        { name: 'anthropic', status: 'online', base_url: 'https://api.anthropic.com', timeout: 30000, request_count: 31306, avg_latency: 450 },
-        { name: 'mistral', status: 'online', base_url: 'https://api.mistral.ai/v1', timeout: 30000, request_count: 15400, avg_latency: 320 },
-        { name: 'groq', status: 'online', base_url: 'https://api.groq.com/openai/v1', timeout: 30000, request_count: 8900, avg_latency: 120 },
-        { name: 'google', status: 'online', base_url: 'https://generativelanguage.googleapis.com/v1beta', timeout: 30000, request_count: 22000, avg_latency: 380 },
+      const [health, stats] = await Promise.all([
+        getHealth(),
+        getProviderStats(),
       ])
+
+      const healthData = health as any
+      const statsData = stats as unknown as ProviderStats[]
+
+      const providerMap = new Map<string, ProviderStats>()
+      statsData.forEach((s) => providerMap.set(s.provider, s))
+
+      const providerList: ProviderData[] = (healthData?.services?.providers || []).map((p: any) => {
+        const stat = providerMap.get(p.name)
+        return {
+          name: p.name,
+          status: p.status === 'healthy' ? 'online' : 'offline',
+          total_requests: stat?.total_requests || 0,
+          avg_duration_ms: stat?.avg_duration_ms || 0,
+          success_rate: stat?.success_rate || 0,
+        }
+      })
+
+      setProviders(providerList)
     } catch (error) {
       message.error('获取 Provider 失败')
     } finally {
@@ -77,58 +89,24 @@ const Providers: React.FC = () => {
       ),
     },
     {
-      title: 'Base URL',
-      dataIndex: 'base_url',
-      key: 'base_url',
-      ellipsis: true,
-    },
-    {
-      title: '超时 (ms)',
-      dataIndex: 'timeout',
-      key: 'timeout',
-      width: 100,
-    },
-    {
       title: '请求量',
-      dataIndex: 'request_count',
-      key: 'request_count',
+      dataIndex: 'total_requests',
+      key: 'total_requests',
       render: (v: number) => v.toLocaleString(),
     },
     {
       title: '平均延迟',
-      dataIndex: 'avg_latency',
-      key: 'avg_latency',
+      dataIndex: 'avg_duration_ms',
+      key: 'avg_duration_ms',
       render: (v: number) => `${v}ms`,
     },
     {
-      title: '操作',
-      key: 'action',
-      render: (_: any, record: ProviderData) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
-            编辑
-          </Button>
-        </Space>
-      ),
+      title: '成功率',
+      dataIndex: 'success_rate',
+      key: 'success_rate',
+      render: (v: number) => `${(v * 100).toFixed(2)}%`,
     },
   ]
-
-  const handleEdit = (record: ProviderData) => {
-    setEditingProvider(record)
-    form.setFieldsValue(record)
-    setEditModalVisible(true)
-  }
-
-  const handleSave = async () => {
-    try {
-      await form.validateFields()
-      message.success('保存成功')
-      setEditModalVisible(false)
-      fetchProviders()
-    } catch (error) {
-      console.error(error)
-    }
-  }
 
   return (
     <div className="page-container">
@@ -142,23 +120,6 @@ const Providers: React.FC = () => {
       <Card>
         <Table columns={columns} dataSource={providers} rowKey="name" loading={loading} />
       </Card>
-
-      <Modal
-        title={`编辑 ${editingProvider?.name}`}
-        open={editModalVisible}
-        onOk={handleSave}
-        onCancel={() => setEditModalVisible(false)}
-        width={600}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item label="Base URL" name="base_url" rules={[{ required: true }]}>
-            <Input placeholder="https://api.openai.com/v1" />
-          </Form.Item>
-          <Form.Item label="超时 (ms)" name="timeout" rules={[{ required: true }]}>
-            <InputNumber style={{ width: '100%' }} min={1000} max={60000} />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   )
 }

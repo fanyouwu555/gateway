@@ -1,72 +1,97 @@
 import { useEffect, useState } from 'react'
-import { Card, Row, Col, Segmented, Table, Button, Space, message } from 'antd'
+import { Card, Row, Col, Segmented, Table, Button, Space, message, Tabs } from 'antd'
 import { ReloadOutlined, DownloadOutlined } from '@ant-design/icons'
 import StatsCard from '@/components/common/StatsCard'
 import LineChart from '@/components/Charts/LineChart'
 import BarChart from '@/components/Charts/BarChart'
-import { getUsage } from '@/services/api'
+import {
+  getDashboardOverview,
+  getTimeSeriesMetrics,
+  getProviderStats,
+  getAllTenantsStats,
+} from '@/services/api'
+import type { DashboardOverview, TimeSeriesPoint, ProviderStats, TenantStatsDetail } from '@/types'
 
-interface ModelUsage {
-  model: string
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
-  cost: number
-  requests: number
-  percentage: number
-}
+const TIME_RANGES = [
+  { label: '最近 24 小时', value: 24, granularity: 'hour' as const },
+  { label: '最近 7 天', value: 24 * 7, granularity: 'day' as const },
+  { label: '最近 30 天', value: 24 * 30, granularity: 'day' as const },
+]
 
 const Metrics: React.FC = () => {
   const [loading, setLoading] = useState(false)
-  const [timeRange, setTimeRange] = useState<string>('day')
+  const [timeRange, setTimeRange] = useState(24)
+  const [activeTab, setActiveTab] = useState('provider')
+  const [overviewData, setOverviewData] = useState<DashboardOverview | null>(null)
+  const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesPoint[]>([])
+  const [providerStatsData, setProviderStatsData] = useState<ProviderStats[]>([])
+  const [tenantStatsData, setTenantStatsData] = useState<TenantStatsDetail[]>([])
 
-  const fetchUsage = async () => {
+  const fetchData = async () => {
     setLoading(true)
+    const now = Date.now()
+    const start = now - timeRange * 60 * 60 * 1000
+    const granularity = TIME_RANGES.find((t) => t.value === timeRange)?.granularity || 'hour'
+
     try {
-      await getUsage()
+      const [overview, timeSeries, providerStats, tenantStats] = await Promise.all([
+        getDashboardOverview(start, now),
+        getTimeSeriesMetrics(granularity, start, now),
+        getProviderStats(start, now),
+        getAllTenantsStats(start, now),
+      ])
+
+      setOverviewData(overview as unknown as DashboardOverview)
+      setTimeSeriesData(timeSeries as unknown as TimeSeriesPoint[])
+      setProviderStatsData(providerStats as unknown as ProviderStats[])
+      setTenantStatsData(tenantStats as unknown as TenantStatsDetail[])
     } catch (error) {
-      message.error('获取用量失败')
+      message.error('获取统计数据失败')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchUsage()
+    fetchData()
   }, [timeRange])
 
-  // 模拟数据
-  const tokenTrendData = [
-    { time: '01日', value: 45000 },
-    { time: '02日', value: 52000 },
-    { time: '03日', value: 48000 },
-    { time: '04日', value: 61000 },
-    { time: '05日', value: 55000 },
-    { time: '06日', value: 67000 },
-    { time: '07日', value: 72000 },
+  function formatTokens(tokens: number): string {
+    if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(2)}M`
+    if (tokens >= 1000) return `${(tokens / 1000).toFixed(2)}K`
+    return tokens.toLocaleString()
+  }
+
+  const tokenTrendData = timeSeriesData.map((item) => ({
+    time: item.time_label,
+    value: item.total_tokens,
+  }))
+
+  // Provider 表格列
+  const providerColumns = [
+    { title: 'Provider', dataIndex: 'provider', key: 'provider' },
+    { title: '请求数', dataIndex: 'total_requests', key: 'total_requests', render: (v: number) => v.toLocaleString() },
+    { title: 'Token', dataIndex: 'total_tokens', key: 'total_tokens', render: (v: number) => formatTokens(v) },
+    { title: '成本 ($)', dataIndex: 'total_cost', key: 'total_cost', render: (v: number) => `$${v.toFixed(4)}` },
+    { title: '平均延迟', dataIndex: 'avg_duration_ms', key: 'avg_duration_ms', render: (v: number) => `${v}ms` },
+    { title: '成功率', dataIndex: 'success_rate', key: 'success_rate', render: (v: number) => `${(v * 100).toFixed(2)}%` },
   ]
 
-  const modelUsage: ModelUsage[] = [
-    { model: 'gpt-4o', input_tokens: 450000, output_tokens: 230000, total_tokens: 680000, cost: 65.0, requests: 12500, percentage: 52 },
-    { model: 'deepseek-chat', input_tokens: 250000, output_tokens: 120000, total_tokens: 370000, cost: 35.0, requests: 8500, percentage: 28 },
-    { model: 'claude-3.5-sonnet', input_tokens: 123456, output_tokens: 62108, total_tokens: 185564, cost: 23.45, requests: 3200, percentage: 20 },
-  ]
-
-  const columns = [
-    { title: '模型', dataIndex: 'model', key: 'model' },
-    { title: '输入 Token', dataIndex: 'input_tokens', key: 'input_tokens', render: (v: number) => v.toLocaleString() },
-    { title: '输出 Token', dataIndex: 'output_tokens', key: 'output_tokens', render: (v: number) => v.toLocaleString() },
-    { title: '总 Token', dataIndex: 'total_tokens', key: 'total_tokens', render: (v: number) => v.toLocaleString() },
-    { title: '成本 ($)', dataIndex: 'cost', key: 'cost', render: (v: number) => `$${v.toFixed(2)}` },
-    { title: '请求数', dataIndex: 'requests', key: 'requests', render: (v: number) => v.toLocaleString() },
-    { title: '占比', dataIndex: 'percentage', key: 'percentage', render: (v: number) => `${v}%` },
+  // Tenant 表格列
+  const tenantColumns = [
+    { title: '租户 ID', dataIndex: 'tenant_id', key: 'tenant_id' },
+    { title: '请求数', dataIndex: 'total_requests', key: 'total_requests', render: (v: number) => v.toLocaleString() },
+    { title: 'Token', dataIndex: 'total_tokens', key: 'total_tokens', render: (v: number) => formatTokens(v) },
+    { title: '成本 ($)', dataIndex: 'total_cost', key: 'total_cost', render: (v: number) => `$${v.toFixed(4)}` },
+    { title: '平均延迟', dataIndex: 'avg_duration_ms', key: 'avg_duration_ms', render: (v: number) => `${v}ms` },
+    { title: '成功率', dataIndex: 'success_rate', key: 'success_rate', render: (v: number) => `${(v * 100).toFixed(2)}%` },
   ]
 
   const statsData = [
-    { title: '输入 Token', value: '823,456', suffix: '' },
-    { title: '输出 Token', value: '412,108', suffix: '' },
-    { title: '总成本', value: '123.45', prefix: '$' },
-    { title: '总请求', value: '24,200', suffix: '' },
+    { title: '总 Token', value: formatTokens(overviewData?.total_tokens || 0), suffix: '' },
+    { title: '总成本', value: (overviewData?.total_cost || 0).toFixed(2), prefix: '$' },
+    { title: '总请求', value: (overviewData?.total_requests || 0).toLocaleString(), suffix: '' },
+    { title: '平均延迟', value: overviewData?.avg_duration_ms?.toString() || '0', suffix: 'ms' },
   ]
 
   return (
@@ -75,16 +100,12 @@ const Metrics: React.FC = () => {
         <h2>用量统计</h2>
         <Space>
           <Segmented
-            options={[
-              { label: '日', value: 'day' },
-              { label: '周', value: 'week' },
-              { label: '月', value: 'month' },
-            ]}
+            options={TIME_RANGES.map((t) => ({ label: t.label, value: t.value }))}
             value={timeRange}
-            onChange={(v) => setTimeRange(v as string)}
+            onChange={(v) => setTimeRange(v as number)}
           />
           <Button icon={<DownloadOutlined />}>导出 CSV</Button>
-          <Button icon={<ReloadOutlined />} onClick={fetchUsage} loading={loading}>
+          <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
             刷新
           </Button>
         </Space>
@@ -107,9 +128,9 @@ const Metrics: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} lg={8}>
-          <Card title="模型使用分布">
+          <Card title="Provider 分布">
             <BarChart
-              data={modelUsage.map((m) => ({ name: m.model, value: m.total_tokens }))}
+              data={providerStatsData.map((p) => ({ name: p.provider, value: p.total_tokens }))}
               height={260}
               color="#52c41a"
             />
@@ -117,9 +138,32 @@ const Metrics: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 模型详情 */}
-      <Card title="模型使用详情" style={{ marginTop: 16 }}>
-        <Table columns={columns} dataSource={modelUsage} rowKey="model" pagination={false} loading={loading} />
+      {/* 详细数据 Tab */}
+      <Card style={{ marginTop: 16 }}>
+        <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+          { key: 'provider', label: 'Provider 统计' },
+          { key: 'tenant', label: '租户统计' },
+        ]} />
+
+        {activeTab === 'provider' && (
+          <Table
+            columns={providerColumns}
+            dataSource={providerStatsData}
+            rowKey="provider"
+            pagination={false}
+            loading={loading}
+          />
+        )}
+
+        {activeTab === 'tenant' && (
+          <Table
+            columns={tenantColumns}
+            dataSource={tenantStatsData}
+            rowKey="tenant_id"
+            pagination={false}
+            loading={loading}
+          />
+        )}
       </Card>
     </div>
   )

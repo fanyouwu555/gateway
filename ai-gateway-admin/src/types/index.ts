@@ -133,3 +133,61 @@ export interface PieChartDataItem {
   name: string
   value: number
 }
+
+// ============ 时间序列数据 ============
+export interface TimeSeriesPoint {
+  timestamp: number
+  time_label: string
+  total_requests: number
+  total_tokens: number
+  total_cost: number
+  avg_duration_ms: number
+  success_rate: number
+  error_rate: number
+}
+
+// ============ Provider 统计 ============
+export interface ProviderStats {
+  provider: string
+  total_requests: number
+  total_tokens: number
+  total_cost: number
+  avg_duration_ms: number
+  success_rate: number
+  by_model: Record<string, {
+    total_requests: number
+    total_tokens: number
+    total_cost: number
+    avg_duration_ms: number
+  }>
+}
+
+// ============ Tenant 统计 ============
+export interface TenantStatsDetail {
+  tenant_id: string
+  total_requests: number
+  total_tokens: number
+  total_cost: number
+  avg_duration_ms: number
+  success_rate: number
+  by_provider: Record<string, number>
+  by_model: Record<string, number>
+}
+
+// ============ Dashboard 概览 ============
+export interface DashboardOverview {
+  total_requests: number
+  total_tokens: number
+  total_cost: number
+  avg_duration_ms: number
+  success_rate: number
+  error_rate: number
+  total_providers: number
+  total_models: number
+  total_tenants: number
+}
+
+// ============ 状态码统计 ============
+export interface StatusCodeStats {
+  [code: string]: number
+}
