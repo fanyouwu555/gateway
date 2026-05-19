@@ -18,6 +18,8 @@ import { writeLog } from './utils/logger';
 import { getProviderNames } from './providers';
 import { getCacheStats } from './services/cache';
 import { getSessionStats } from './services/history';
+import { getConfig } from './config';
+import { failoverManager } from './services/failover';
 
 /**
  * 创建 Hono 应用实例
@@ -36,10 +38,19 @@ export function createApp(): Hono {
   app.use('*', metricsMiddleware);
 
   // ===== 公共路由（不受 auth / ratelimit 影响） =====
+  // WebSocket 升级认证端点 - 用于在升级前验证 API Key
+  app.get('/v1/ws', authMiddleware, (c) => {
+    // 认证通过，在 header 中返回 tenant_id 供 index.ts 使用
+    c.header('x-tenant-id', c.get('tenant_id') || 'default');
+    return c.json({ authenticated: true });
+  });
+
   app.get('/health', (c) => {
     const providers = getProviderNames();
     const cacheStats = getCacheStats();
     const sessionStats = getSessionStats();
+    const config = getConfig();
+    const providerHealth = failoverManager.getProviderHealthStatus();
 
     return c.json({
       status: 'ok',
@@ -47,7 +58,13 @@ export function createApp(): Hono {
       uptime: process.uptime(),
       version: '1.0.0',
       services: {
-        providers: providers.map((p) => ({ name: p, status: 'active' })),
+        providers: providers.map((p) => ({
+          name: p,
+          status: providerHealth[p]?.isHealthy !== false ? 'active' : 'degraded',
+          has_api_key: !!config.providers[p]?.api_key,
+          base_url: config.providers[p]?.base_url,
+          health: providerHealth[p] || { isHealthy: true, totalRequests: 0, errorRate: 0, avgLatencyMs: 0 },
+        })),
         cache: { size: cacheStats.size, hit_rate: cacheStats.hit_rate },
         sessions: { total: sessionStats.total_sessions },
       },

@@ -18,6 +18,12 @@ export interface FailoverConfig {
   healthCheckInterval: number; // 健康检测间隔 (ms)
   healthCheckTimeout: number; // 健康检测超时 (ms)
   healthCheckModel: string; // 健康检测使用的模型
+  /** Explicit failover chains: primary -> [fallback1, fallback2, ...] */
+  chains?: Record<string, string[]>;
+  /** Error-rate threshold (0-1) that triggers provider-level degradation. Default 0.5 */
+  errorRateThreshold?: number;
+  /** Average-latency threshold (ms) that triggers degradation. Default 30000 */
+  latencyThresholdMs?: number;
 }
 
 /**
@@ -29,6 +35,21 @@ interface TokenHealth {
   lastFailure: number;
   isHealthy: boolean;
   isChecking: boolean;
+}
+
+/**
+ * Provider-level health state
+ */
+interface ProviderHealth {
+  total_requests: number;
+  error_count: number;
+  total_latency_ms: number;
+  consecutive_failures: number;
+  consecutive_successes: number;
+  last_failure: number;
+  last_success: number;
+  is_healthy: boolean;
+  is_checking: boolean;
 }
 
 /**
@@ -48,6 +69,8 @@ class FailoverManager {
   private tokenHealth = new Map<string, TokenHealth>();
   private config: FailoverConfig;
   private healthCheckTimers = new Map<string, NodeJS.Timeout>();
+  private providerHealth = new Map<string, ProviderHealth>();
+  private providerCheckTimers = new Map<string, NodeJS.Timeout>();
   private store: IKVStore | null = null;
   private useStorage = false;
 
@@ -75,6 +98,7 @@ class FailoverManager {
       await this.store.connect();
       // 从存储加载健康状态
       await this.loadHealthState();
+      await this.loadProviderHealthState();
     }
   }
 
@@ -93,6 +117,39 @@ class FailoverManager {
       writeLog('info', 'Loaded health states from storage', { count: this.tokenHealth.size });
     } catch (err) {
       writeLog('warn', 'Failed to load health state from storage, using in-memory', { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  /**
+   * Save provider health state to storage
+   */
+  private async saveProviderHealthState(provider: string, health: ProviderHealth): Promise<void> {
+    if (!this.store) return;
+    try {
+      await this.store.hSet('provider_health', provider, JSON.stringify(health));
+    } catch (err) {
+      writeLog('warn', 'Failed to save provider health state', {
+        provider,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Load provider health states from storage
+   */
+  private async loadProviderHealthState(): Promise<void> {
+    if (!this.store) return;
+    try {
+      const stored = await this.store.hGetAll('provider_health');
+      for (const [key, value] of Object.entries(stored)) {
+        this.providerHealth.set(key, JSON.parse(value) as ProviderHealth);
+      }
+      writeLog('info', 'Loaded provider health states from storage', { count: this.providerHealth.size });
+    } catch (err) {
+      writeLog('warn', 'Failed to load provider health state from storage', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -188,6 +245,112 @@ class FailoverManager {
     this.tokenHealth.set(key, health);
     // 持久化状态
     this.saveHealthState(key, health);
+  }
+
+  /**
+   * Record a provider-level request result
+   */
+  recordProviderRequest(provider: string, success: boolean, latencyMs: number): void {
+    let health = this.providerHealth.get(provider);
+    if (!health) {
+      health = {
+        total_requests: 0,
+        error_count: 0,
+        total_latency_ms: 0,
+        consecutive_failures: 0,
+        consecutive_successes: 0,
+        last_failure: 0,
+        last_success: 0,
+        is_healthy: true,
+        is_checking: false,
+      };
+    }
+
+    health.total_requests++;
+    health.total_latency_ms += latencyMs;
+
+    if (success) {
+      health.consecutive_successes++;
+      health.consecutive_failures = 0;
+      health.last_success = Date.now();
+    } else {
+      health.consecutive_failures++;
+      health.consecutive_successes = 0;
+      health.error_count++;
+      health.last_failure = Date.now();
+    }
+
+    const errorRate = health.total_requests > 0 ? health.error_count / health.total_requests : 0;
+    const avgLatency = health.total_requests > 0 ? health.total_latency_ms / health.total_requests : 0;
+
+    if (health.is_healthy) {
+      if (
+        health.consecutive_failures >= this.config.failureThreshold ||
+        errorRate >= (this.config.errorRateThreshold ?? 0.5) ||
+        avgLatency > (this.config.latencyThresholdMs ?? 30000)
+      ) {
+        health.is_healthy = false;
+        health.consecutive_successes = 0;
+        this.startProviderHealthCheck(provider);
+        writeLog('warn', 'Provider marked unhealthy', {
+          provider,
+          errorRate: Math.round(errorRate * 10000) / 10000,
+          avgLatencyMs: Math.round(avgLatency),
+          consecutiveFailures: health.consecutive_failures,
+        });
+      }
+    } else {
+      if (health.consecutive_successes >= this.config.successThreshold) {
+        health.is_healthy = true;
+        health.consecutive_failures = 0;
+        this.stopProviderHealthCheck(provider);
+        writeLog('info', 'Provider recovered', { provider });
+      }
+    }
+
+    this.providerHealth.set(provider, health);
+    this.saveProviderHealthState(provider, health);
+  }
+
+  /**
+   * Check if a provider is healthy at the provider level
+   */
+  isProviderHealthy(provider: string): boolean {
+    if (!this.config.enabled) return true;
+    const health = this.providerHealth.get(provider);
+    if (!health) return true;
+    return health.is_healthy;
+  }
+
+  /**
+   * Get provider-level health status summary
+   */
+  getProviderHealthStatus(): Record<string, { isHealthy: boolean; totalRequests: number; errorRate: number; avgLatencyMs: number }> {
+    const status: Record<string, { isHealthy: boolean; totalRequests: number; errorRate: number; avgLatencyMs: number }> = {};
+    this.providerHealth.forEach((health, key) => {
+      const errorRate = health.total_requests > 0 ? health.error_count / health.total_requests : 0;
+      const avgLatency = health.total_requests > 0 ? health.total_latency_ms / health.total_requests : 0;
+      status[key] = {
+        isHealthy: health.is_healthy,
+        totalRequests: health.total_requests,
+        errorRate: Math.round(errorRate * 10000) / 10000,
+        avgLatencyMs: Math.round(avgLatency),
+      };
+    });
+    return status;
+  }
+
+  /**
+   * Get the explicit failover chain for a provider
+   */
+  getFailoverChain(provider: string): string[] {
+    const chains = this.config.chains;
+    if (chains && chains[provider]) {
+      return chains[provider];
+    }
+    // Fallback: return all other configured providers
+    const appConfig = getConfig();
+    return Object.keys(appConfig.providers).filter((p) => p !== provider);
   }
 
   /**
@@ -287,6 +450,92 @@ class FailoverManager {
   }
 
   /**
+   * Start periodic health check for an unhealthy provider
+   */
+  private startProviderHealthCheck(provider: string): void {
+    if (this.providerCheckTimers.has(provider)) return;
+
+    writeLog('info', 'Starting provider health check', { provider });
+
+    const timer = setInterval(async () => {
+      await this.performProviderHealthCheck(provider);
+    }, this.config.healthCheckInterval);
+
+    this.providerCheckTimers.set(provider, timer);
+    this.performProviderHealthCheck(provider);
+  }
+
+  /**
+   * Execute a provider-level health check
+   */
+  private async performProviderHealthCheck(provider: string): Promise<void> {
+    const health = this.providerHealth.get(provider);
+    if (!health || health.is_healthy || health.is_checking) return;
+
+    health.is_checking = true;
+
+    try {
+      const config = getProviderConfig(provider);
+      if (!config) {
+        this.markProviderUnhealthy(provider);
+        return;
+      }
+
+      const response = await fetch(`${config.base_url}/models`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${config.api_key}`,
+        },
+        signal: AbortSignal.timeout(this.config.healthCheckTimeout),
+      });
+
+      if (response.ok) {
+        const updated = this.providerHealth.get(provider);
+        if (updated) {
+          updated.is_checking = false;
+          updated.consecutive_successes++;
+          if (updated.consecutive_successes >= this.config.successThreshold) {
+            updated.is_healthy = true;
+            updated.consecutive_failures = 0;
+            this.stopProviderHealthCheck(provider);
+            writeLog('info', 'Provider recovered via health check', { provider });
+          }
+          this.providerHealth.set(provider, updated);
+          this.saveProviderHealthState(provider, updated);
+        }
+      } else {
+        this.markProviderUnhealthy(provider);
+      }
+    } catch {
+      this.markProviderUnhealthy(provider);
+    }
+  }
+
+  /**
+   * Mark a provider as still unhealthy during a check
+   */
+  private markProviderUnhealthy(provider: string): void {
+    const health = this.providerHealth.get(provider);
+    if (health) {
+      health.is_checking = false;
+      health.consecutive_failures++;
+      this.providerHealth.set(provider, health);
+      this.saveProviderHealthState(provider, health);
+    }
+  }
+
+  /**
+   * Stop provider health check timer
+   */
+  private stopProviderHealthCheck(provider: string): void {
+    const timer = this.providerCheckTimers.get(provider);
+    if (timer) {
+      clearInterval(timer);
+      this.providerCheckTimers.delete(provider);
+    }
+  }
+
+  /**
    * 获取健康状态
    */
   getHealthStatus(): Record<string, { isHealthy: boolean; failureCount: number }> {
@@ -309,6 +558,9 @@ class FailoverManager {
     this.tokenHealth.clear();
     this.healthCheckTimers.forEach((timer) => clearInterval(timer));
     this.healthCheckTimers.clear();
+    this.providerHealth.clear();
+    this.providerCheckTimers.forEach((timer) => clearInterval(timer));
+    this.providerCheckTimers.clear();
   }
 }
 

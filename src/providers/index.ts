@@ -83,20 +83,31 @@ export function hasProvider(name: string): boolean {
 }
 
 /**
- * 获取备选 Provider（用于 Failover）
- * 从所有已注册的 Provider 中，找到能处理同一模型的备用 Provider
+ * Get fallback providers for a given primary provider
+ * 1. Use explicit failover chain from config if available
+ * 2. Fall back to routing strategy rules
  */
 function getFallbackProviders(excludeProvider: string, _requestModel: string): string[] {
+  // 1. Use explicit failover chain
+  const chain = activeFailover.getFailoverChain(excludeProvider);
+  if (chain.length > 0) {
+    return chain.filter((p) => p !== excludeProvider);
+  }
+
+  // 2. Fallback: derive from routing strategy
+  const result: string[] = [];
   const strategy = getRoutingStrategy();
-  if (!strategy || !strategy.rules) return [];
-
-  // 找到所有其他可以提供同一模型（或通配）的 Provider
-  const fallbacks = strategy.rules
-    .filter((r) => r.provider !== excludeProvider)
-    .map((r) => r.provider);
-
-  // 去重并保持顺序
-  return [...new Set(fallbacks)];
+  if (strategy?.rules) {
+    for (const rule of strategy.rules) {
+      if (rule.provider !== excludeProvider) {
+        result.push(rule.provider);
+      }
+    }
+  }
+  if (strategy?.fallback && strategy.fallback !== excludeProvider) {
+    result.push(strategy.fallback);
+  }
+  return [...new Set(result)];
 }
 
 /**
@@ -182,19 +193,33 @@ export async function chatComplete(
       continue;
     }
 
-    // 检查 failover 健康状态（跳过不健康的 Provider）
-    if (failoverConfig?.enabled && currentProvider !== providerName) {
-      const token = activeFailover.getAvailableToken(currentProvider);
-      if (!token) {
+    // 检查 Provider 级健康状态（所有 provider 都检查）
+    if (failoverConfig?.enabled) {
+      if (!activeFailover.isProviderHealthy(currentProvider)) {
         errors.push({ provider: currentProvider, error: 'Provider unhealthy' });
         continue;
       }
     }
 
+    // Token 级健康检查（fallback provider 必须有一个健康的 key）
+    if (failoverConfig?.enabled && currentProvider !== providerName) {
+      const token = activeFailover.getAvailableToken(currentProvider);
+      if (!token) {
+        errors.push({ provider: currentProvider, error: 'No healthy API key' });
+        continue;
+      }
+    }
+
+    let startTime = 0;
     try {
+      startTime = Date.now();
       const result = await callProviderWithRetry(provider, config, request, false);
+      const latency = Date.now() - startTime;
+      activeFailover.recordProviderRequest(currentProvider, true, latency);
       return result as ChatCompletionResponse;
     } catch (error) {
+      const latency = Date.now() - startTime;
+      activeFailover.recordProviderRequest(currentProvider, false, latency);
       const errMsg = error instanceof Error ? error.message : String(error);
       errors.push({ provider: currentProvider, error: errMsg });
       // 继续尝试下一个 Provider

@@ -20,6 +20,10 @@ const DEFAULT_CONFIG: IGatewayConfig = {
       rules: [
         { model: 'gpt-4o', provider: 'openai' },
         { model: 'gpt-4o-mini', provider: 'openai' },
+        { model: 'kimi-for-coding', provider: 'moonshot' },
+        { model: 'moonshot-v1-8k', provider: 'moonshot' },
+        { model: 'moonshot-v1-32k', provider: 'moonshot' },
+        { model: 'moonshot-v1-128k', provider: 'moonshot' },
         { model: 'deepseek-chat', provider: 'deepseek' },
         { model: 'mistral', provider: 'mistral' },
         { model: 'mistral-large', provider: 'mistral' },
@@ -45,6 +49,9 @@ const DEFAULT_CONFIG: IGatewayConfig = {
     healthCheckInterval: 60000,
     healthCheckTimeout: 5000,
     healthCheckModel: 'gpt-4o-mini',
+    chains: {},
+    errorRateThreshold: 0.5,
+    latencyThresholdMs: 30000,
   },
   loadBalance: {
     strategy: 'roundRobin',
@@ -193,6 +200,27 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
       healthCheckTimeout: parseInt(getEnv('FAILOVER_HEALTH_CHECK_TIMEOUT', '5000') || '5000', 10),
       healthCheckModel: getEnv('FAILOVER_HEALTH_CHECK_MODEL', 'gpt-4o-mini') || 'gpt-4o-mini',
     };
+  }
+
+  if (!config.failover) {
+    config.failover = DEFAULT_CONFIG.failover!;
+  }
+
+  const failoverChainsEnv = getEnv('FAILOVER_CHAINS');
+  if (failoverChainsEnv) {
+    try {
+      config.failover.chains = JSON.parse(failoverChainsEnv);
+    } catch {
+      writeLog('warn', 'Invalid FAILOVER_CHAINS JSON, ignoring');
+    }
+  }
+  const errorRateThreshold = getEnv('FAILOVER_ERROR_RATE_THRESHOLD');
+  if (errorRateThreshold !== undefined) {
+    config.failover.errorRateThreshold = parseFloat(errorRateThreshold || '0.5');
+  }
+  const latencyThreshold = getEnv('FAILOVER_LATENCY_THRESHOLD_MS');
+  if (latencyThreshold !== undefined) {
+    config.failover.latencyThresholdMs = parseInt(latencyThreshold || '30000', 10);
   }
 
   return config;

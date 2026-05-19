@@ -250,6 +250,12 @@ export interface IGatewayConfig {
     healthCheckInterval: number;
     healthCheckTimeout: number;
     healthCheckModel: string;
+    /** Explicit failover chains: primary -> [fallback1, fallback2, ...] */
+    chains?: Record<string, string[]>;
+    /** Error-rate threshold (0-1) that triggers provider-level degradation. Default 0.5 */
+    errorRateThreshold?: number;
+    /** Average-latency threshold (ms) that triggers degradation. Default 30000 */
+    latencyThresholdMs?: number;
   };
   loadBalance?: {
     strategy: 'roundRobin' | 'random' | 'weighted' | 'leastRequest';

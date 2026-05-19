@@ -13,27 +13,25 @@ jest.mock('../../src/config', () => ({
       healthCheckInterval: 1000,
       healthCheckTimeout: 500,
       healthCheckModel: 'gpt-4o-mini',
+      chains: { openai: ['deepseek'], deepseek: ['openai'] },
+      errorRateThreshold: 0.5,
+      latencyThresholdMs: 30000,
+    },
+    providers: {
+      openai: {
+        provider: 'openai',
+        base_url: 'https://api.openai.com/v1',
+        api_key: 'sk-test-key-12345678',
+      },
+      deepseek: {
+        provider: 'deepseek',
+        base_url: 'https://api.deepseek.com/v1',
+        api_key: 'sk-test-deepseek-123',
+      },
     },
   }),
-  providers: {
-    openai: {
-      provider: 'openai',
-      base_url: 'https://api.openai.com/v1',
-      api_key: 'sk-test-key-12345678',
-    },
-    deepseek: {
-      provider: 'deepseek',
-      base_url: 'https://api.deepseek.com/v1',
-      api_key: 'sk-test-deepseek-123',
-    },
-  },
-}));
-
-import type { IProviderConfig } from '../../src/types';
-
-jest.mock('../../src/config', () => ({
   getProviderConfig: (name: string) => {
-    const config: Record<string, IProviderConfig> = {
+    const configs: Record<string, IProviderConfig> = {
       openai: {
         provider: 'openai',
         base_url: 'https://api.openai.com/v1',
@@ -45,19 +43,11 @@ jest.mock('../../src/config', () => ({
         api_key: 'sk-test-deepseek-123',
       },
     };
-    return config[name];
+    return configs[name];
   },
-  getConfig: () => ({
-    failover: {
-      enabled: true,
-      failureThreshold: 2,
-      successThreshold: 1,
-      healthCheckInterval: 1000,
-      healthCheckTimeout: 500,
-      healthCheckModel: 'gpt-4o-mini',
-    },
-  }),
 }));
+
+import type { IProviderConfig } from '../../src/types';
 
 describe('FailoverManager', () => {
   beforeEach(() => {
@@ -181,5 +171,62 @@ describe('getFailoverConfig', () => {
     expect(config).toBeDefined();
     expect(config.enabled).toBe(true);
     expect(config.failureThreshold).toBe(2);
+  });
+});
+
+describe('Provider-level health', () => {
+  beforeEach(() => {
+    failoverManager.reset();
+  });
+
+  it('should mark provider unhealthy after consecutive failures', () => {
+    failoverManager.recordProviderRequest('openai', false, 100);
+    failoverManager.recordProviderRequest('openai', false, 100);
+    expect(failoverManager.isProviderHealthy('openai')).toBe(false);
+  });
+
+  it('should keep provider healthy with enough successes', () => {
+    failoverManager.recordProviderRequest('openai', true, 100);
+    failoverManager.recordProviderRequest('openai', true, 100);
+    expect(failoverManager.isProviderHealthy('openai')).toBe(true);
+  });
+
+  it('should recover provider after consecutive successes', () => {
+    failoverManager.recordProviderRequest('openai', false, 100);
+    failoverManager.recordProviderRequest('openai', false, 100);
+    expect(failoverManager.isProviderHealthy('openai')).toBe(false);
+
+    failoverManager.recordProviderRequest('openai', true, 100);
+    expect(failoverManager.isProviderHealthy('openai')).toBe(true);
+  });
+
+  it('should return healthy for unknown provider', () => {
+    expect(failoverManager.isProviderHealthy('unknown')).toBe(true);
+  });
+
+  it('should return provider health status summary', () => {
+    failoverManager.recordProviderRequest('openai', true, 150);
+    const status = failoverManager.getProviderHealthStatus();
+    expect(status.openai).toBeDefined();
+    expect(status.openai.totalRequests).toBe(1);
+    expect(status.openai.isHealthy).toBe(true);
+    expect(status.openai.avgLatencyMs).toBe(150);
+  });
+
+  it('should mark unhealthy when error rate exceeds threshold', () => {
+    // errorRateThreshold is 0.5, so 1 error out of 1 request = 1.0 > 0.5
+    failoverManager.recordProviderRequest('openai', false, 100);
+    expect(failoverManager.isProviderHealthy('openai')).toBe(false);
+  });
+
+  it('should return configured failover chain', () => {
+    const chain = failoverManager.getFailoverChain('openai');
+    expect(chain).toContain('deepseek');
+  });
+
+  it('should return other providers when no chain is configured', () => {
+    const chain = failoverManager.getFailoverChain('anthropic');
+    expect(chain).toContain('openai');
+    expect(chain).toContain('deepseek');
   });
 });

@@ -35,7 +35,8 @@
     },
     "moonshot": {
       "provider": "moonshot",
-      "base_url": "https://api.moonshot.cn/v1",
+      "base_url": "https://api.kimi.com/coding/v1",
+      "api_key": "sk-kimi-o79cdWQI7MUeoO7EKkPBdzimZkH3AbUCuyTcouUBxNC9DdnoDH7pJD96QWl8xkfx",
       "timeout": 30000
     }
   },
@@ -59,6 +60,7 @@
         { "model": "gemini-2.0-flash", "provider": "google", "max_tokens": 8000 },
         { "model": "gemini-2.0-pro", "provider": "google", "max_tokens": 8000 },
         { "model": "gemini-1.5-pro", "provider": "google", "max_tokens": 8000 },
+        { "model": "kimi-for-coding", "provider": "moonshot", "max_tokens": 128000 },
         { "model": "moonshot-v1-8k", "provider": "moonshot", "max_tokens": 8192 },
         { "model": "moonshot-v1-32k", "provider": "moonshot", "max_tokens": 32768 },
         { "model": "moonshot-v1-128k", "provider": "moonshot", "max_tokens": 131072 }
@@ -68,7 +70,21 @@
   ],
   "auth": {
     "enabled": true,
-    "api_keys": []
+    "api_keys": [
+      {
+        "key": "gateway-test-key-123",
+        "tenant_id": "default",
+        "name": "test-key",
+        "created_at": 1735689600000
+      },
+      {
+        "key": "admin-dashboard-key-456",
+        "tenant_id": "admin",
+        "name": "admin-dashboard",
+        "created_at": 1735689600000,
+        "is_admin": true
+      }
+    ]
   },
   "rate_limit": {
     "enabled": true,
@@ -80,12 +96,19 @@
     "warn_threshold": 0.8
   },
   "failover": {
-    "enabled": false,
+    "enabled": true,
     "failureThreshold": 3,
     "successThreshold": 2,
     "healthCheckInterval": 60000,
     "healthCheckTimeout": 5000,
-    "healthCheckModel": "gpt-4o-mini"
+    "healthCheckModel": "gpt-4o-mini",
+    "chains": {
+      "openai": ["deepseek", "anthropic"],
+      "deepseek": ["openai", "anthropic"],
+      "anthropic": ["openai", "deepseek"]
+    },
+    "errorRateThreshold": 0.5,
+    "latencyThresholdMs": 30000
   },
   "loadBalance": {
     "strategy": "roundRobin",
