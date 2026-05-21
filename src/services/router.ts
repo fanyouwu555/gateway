@@ -82,12 +82,15 @@ class SmartRouter {
     const strategyConfig = getRoutingStrategy();
     // 从配置读取成本排序，无配置则使用默认排序
     const costOrder: string[] = (strategyConfig as IRoutingStrategy)?.cost_order ?? [
-      'deepseek', 'moonshot', 'groq', 'openai', 'mistral', 'anthropic', 'google',
+      'deepseek', 'moonshot', 'groq', 'volcano', 'openai', 'mistral', 'anthropic', 'google', 'kimi-code',
     ];
     const sorted = [...rules].sort((a, b) => {
       const aIndex = costOrder.indexOf(a.provider);
       const bIndex = costOrder.indexOf(b.provider);
-      return aIndex - bIndex;
+      // Providers not in costOrder are treated as highest cost (placed at the end)
+      const aRank = aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex;
+      const bRank = bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex;
+      return aRank - bRank;
     });
 
     const selected = sorted[0];

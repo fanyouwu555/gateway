@@ -10,6 +10,8 @@ import { mistralProvider } from './mistral';
 import { groqProvider } from './groq';
 import { googleProvider } from './google';
 import { moonshotProvider } from './moonshot';
+import { volcanoProvider } from './volcano';
+import { kimiCodeProvider } from './kimi-code';
 import { DynamicProvider } from './dynamic';
 import { getConfig } from '../config';
 import { writeLog } from '../utils/logger';
@@ -26,6 +28,8 @@ export function initProviders(): void {
   registerProvider('groq', groqProvider);
   registerProvider('google', googleProvider);
   registerProvider('moonshot', moonshotProvider);
+  registerProvider('volcano', volcanoProvider);
+  registerProvider('kimi-code', kimiCodeProvider);
 
   // 注册动态Provider (从配置)
   const config = getConfig();
@@ -38,9 +42,9 @@ export function initProviders(): void {
   }
 
   writeLog('info', 'Provider initialization complete', {
-    providers: ['openai', 'deepseek', 'anthropic', 'mistral', 'groq', 'google', 'moonshot'],
+    providers: ['openai', 'deepseek', 'anthropic', 'mistral', 'groq', 'google', 'moonshot', 'volcano', 'kimi-code'],
     dynamicCount: config.dynamicProviders?.length || 0,
   });
 }
 
-export { openaiProvider, deepseekProvider, anthropicProvider, mistralProvider, groqProvider, googleProvider, moonshotProvider };
+export { openaiProvider, deepseekProvider, anthropicProvider, mistralProvider, groqProvider, googleProvider, moonshotProvider, volcanoProvider, kimiCodeProvider };

@@ -20,7 +20,6 @@ const DEFAULT_CONFIG: IGatewayConfig = {
       rules: [
         { model: 'gpt-4o', provider: 'openai' },
         { model: 'gpt-4o-mini', provider: 'openai' },
-        { model: 'kimi-for-coding', provider: 'moonshot' },
         { model: 'moonshot-v1-8k', provider: 'moonshot' },
         { model: 'moonshot-v1-32k', provider: 'moonshot' },
         { model: 'moonshot-v1-128k', provider: 'moonshot' },
@@ -30,6 +29,8 @@ const DEFAULT_CONFIG: IGatewayConfig = {
         { model: 'llama', provider: 'groq' },
         { model: 'mixtral', provider: 'groq' },
         { model: 'gemini', provider: 'google' },
+        { model: 'ark-code-latest', provider: 'volcano' },
+        { model: 'kimi-for-coding', provider: 'kimi-code' },
       ],
     },
   ],
@@ -185,6 +186,26 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
       provider: 'google',
       base_url: getEnv('GOOGLE_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
       api_key: googleKey,
+    };
+  }
+
+  // Volcano Engine (Coding Plan)
+  const volcanoKey = getEnv('VOLCANO_API_KEY');
+  if (volcanoKey) {
+    config.providers.volcano = {
+      provider: 'volcano',
+      base_url: getEnv('VOLCANO_BASE_URL', 'https://ark.cn-beijing.volces.com/api/coding/v3'),
+      api_key: volcanoKey,
+    };
+  }
+
+  // Kimi Code
+  const kimiCodeKey = getEnv('KIMI_CODE_API_KEY');
+  if (kimiCodeKey) {
+    config.providers['kimi-code'] = {
+      provider: 'kimi-code',
+      base_url: getEnv('KIMI_CODE_BASE_URL', 'https://api.kimi.com/coding/v1'),
+      api_key: kimiCodeKey,
     };
   }
 

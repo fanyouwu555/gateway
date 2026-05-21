@@ -16,6 +16,8 @@ describe('Provider Registry', () => {
       expect(names).toContain('deepseek');
       expect(names).toContain('anthropic');
       expect(names).toContain('moonshot');
+      expect(names).toContain('volcano');
+      expect(names).toContain('kimi-code');
     });
   });
 

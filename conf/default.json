@@ -35,6 +35,18 @@
     },
     "moonshot": {
       "provider": "moonshot",
+      "base_url": "https://api.moonshot.cn/v1",
+      "api_key": "sk-kimi-o79cdWQI7MUeoO7EKkPBdzimZkH3AbUCuyTcouUBxNC9DdnoDH7pJD96QWl8xkfx",
+      "timeout": 30000
+    },
+    "volcano": {
+      "provider": "volcano",
+      "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "api_key": "ark-82a7a1bd-7187-4d4f-9d68-4e324e90d270-849bc",
+      "timeout": 30000
+    },
+    "kimi-code": {
+      "provider": "kimi-code",
       "base_url": "https://api.kimi.com/coding/v1",
       "api_key": "sk-kimi-o79cdWQI7MUeoO7EKkPBdzimZkH3AbUCuyTcouUBxNC9DdnoDH7pJD96QWl8xkfx",
       "timeout": 30000
@@ -60,10 +72,11 @@
         { "model": "gemini-2.0-flash", "provider": "google", "max_tokens": 8000 },
         { "model": "gemini-2.0-pro", "provider": "google", "max_tokens": 8000 },
         { "model": "gemini-1.5-pro", "provider": "google", "max_tokens": 8000 },
-        { "model": "kimi-for-coding", "provider": "moonshot", "max_tokens": 128000 },
         { "model": "moonshot-v1-8k", "provider": "moonshot", "max_tokens": 8192 },
         { "model": "moonshot-v1-32k", "provider": "moonshot", "max_tokens": 32768 },
-        { "model": "moonshot-v1-128k", "provider": "moonshot", "max_tokens": 131072 }
+        { "model": "moonshot-v1-128k", "provider": "moonshot", "max_tokens": 131072 },
+        { "model": "ark-code-latest", "provider": "volcano", "max_tokens": 128000 },
+        { "model": "kimi-for-coding", "provider": "kimi-code", "max_tokens": 128000 }
       ],
       "fallback": "openai"
     }
@@ -105,7 +118,8 @@
     "chains": {
       "openai": ["deepseek", "anthropic"],
       "deepseek": ["openai", "anthropic"],
-      "anthropic": ["openai", "deepseek"]
+      "anthropic": ["openai", "deepseek"],
+      "volcano": ["moonshot", "openai"]
     },
     "errorRateThreshold": 0.5,
     "latencyThresholdMs": 30000
@@ -133,6 +147,7 @@
     "deepseek-chat": { "input": 0.27, "output": 1.1 },
     "deepseek-coder": { "input": 0.27, "output": 1.1 },
     "claude-3-5-sonnet": { "input": 3.0, "output": 15.0 },
-    "claude-3-opus": { "input": 15.0, "output": 75.0 }
+    "claude-3-opus": { "input": 15.0, "output": 75.0 },
+    "ark-code-latest": { "input": 0.5, "output": 2.0 }
   }
 }
