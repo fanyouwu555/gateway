@@ -9,6 +9,10 @@ beforeEach(() => {
   localStorage.setItem('api_token', 'test-key')
 })
 
+afterEach(() => {
+  localStorage.clear()
+})
+
 describe('MainLayout', () => {
   it('renders sidebar menu items', () => {
     render(
@@ -24,7 +28,7 @@ describe('MainLayout', () => {
 
   it('calls logout when clicking 退出登录', async () => {
     const user = userEvent.setup()
-    const { baseElement } = render(
+    render(
       <MemoryRouter initialEntries={['/dashboard']}>
         <AuthProvider>
           <MainLayout />
@@ -34,10 +38,8 @@ describe('MainLayout', () => {
     // Click avatar area to open dropdown
     await user.click(screen.getByText('管理员'))
     // Wait for dropdown to render in portal and click 退出登录
-    await waitFor(() => {
-      expect(baseElement.querySelector('[data-menu-id*="logout"]')).toBeInTheDocument()
-    })
-    await user.click(baseElement.querySelector('[data-menu-id*="logout"]')!)
+    const logoutItem = await screen.findByText('退出登录')
+    await user.click(logoutItem)
     expect(localStorage.getItem('api_token')).toBeNull()
   })
 })
