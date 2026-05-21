@@ -47,7 +47,7 @@ describe('LoginPage', () => {
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith('/api/v1/ws', {
-        headers: { 'x-api-key': 'valid-key' }
+        headers: { Authorization: 'Bearer valid-key' }
       })
     })
     expect(localStorage.getItem('api_token')).toBe('valid-key')
@@ -94,8 +94,13 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByText('登 录'))
 
     await waitFor(() => {
-      const button = screen.getByRole('button')
-      expect(button.classList.contains('ant-btn-loading')).toBe(true)
+      expect(screen.getByLabelText('loading')).toBeInTheDocument()
     })
+  })
+
+  it('disables button when input is empty', () => {
+    renderLogin()
+    const button = screen.getByRole('button')
+    expect(button).toBeDisabled()
   })
 })

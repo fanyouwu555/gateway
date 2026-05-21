@@ -15,7 +15,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const res = await fetch('/api/v1/ws', {
-        headers: { 'x-api-key': apiKey.trim() },
+        headers: { Authorization: `Bearer ${apiKey.trim()}` },
       })
       if (res.ok) {
         login(apiKey.trim())
