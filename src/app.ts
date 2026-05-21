@@ -97,6 +97,7 @@ export function createApp(): Hono {
   protectedApi.use('/v1/usage/*', requireAdmin);
   protectedApi.use('/v1/quota/*', requireAdmin);
   protectedApi.use('/v1/cache/*', requireAdmin);
+  protectedApi.use('/v1/sessions/*', requireAdmin);
   protectedApi.use('/v1/ws/*', requireAdmin);
 
   // 注册路由处理器
