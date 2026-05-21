@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Layout as AntLayout, Menu, Avatar, Dropdown, theme } from 'antd'
+import { useAuth } from '@/components/Auth/AuthContext'
 import {
   DashboardOutlined,
   CloudServerOutlined,
@@ -27,11 +28,12 @@ export default function MainLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const { token } = theme.useToken()
+  const { logout } = useAuth()
 
   const userMenuItems = [
     { key: 'profile', label: '个人中心' },
     { type: 'divider' as const },
-    { key: 'logout', label: '退出登录' },
+    { key: 'logout', label: '退出登录', onClick: () => { logout(); navigate('/login') } },
   ]
 
   return (
