@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { useAuth, AuthProvider } from './AuthContext'
 
 beforeEach(() => {
   localStorage.clear()
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 function TestComponent() {
@@ -35,7 +36,7 @@ describe('AuthContext', () => {
 
   it('login() stores key and sets authenticated', async () => {
     render(<AuthProvider><TestComponent /></AuthProvider>)
-    screen.getByTestId('login-btn').click()
+    fireEvent.click(screen.getByTestId('login-btn'))
     await waitFor(() => {
       expect(screen.getByTestId('auth').textContent).toBe('authenticated')
     })
@@ -49,11 +50,35 @@ describe('AuthContext', () => {
     await waitFor(() => {
       expect(screen.getByTestId('auth').textContent).toBe('authenticated')
     })
-    screen.getByTestId('logout-btn').click()
+    fireEvent.click(screen.getByTestId('logout-btn'))
     await waitFor(() => {
       expect(screen.getByTestId('auth').textContent).toBe('unauthenticated')
     })
     expect(screen.getByTestId('key').textContent).toBe('none')
     expect(localStorage.getItem('api_token')).toBeNull()
+  })
+
+  it('initializes with VITE_API_KEY when localStorage is empty', () => {
+    vi.stubEnv('VITE_API_KEY', 'env-key')
+    render(<AuthProvider><TestComponent /></AuthProvider>)
+    expect(screen.getByTestId('auth').textContent).toBe('authenticated')
+    expect(screen.getByTestId('key').textContent).toBe('env-key')
+  })
+
+  it('login() overwrites existing key', async () => {
+    localStorage.setItem('api_token', 'old-key')
+    render(<AuthProvider><TestComponent /></AuthProvider>)
+    await waitFor(() => {
+      expect(screen.getByTestId('auth').textContent).toBe('authenticated')
+    })
+    fireEvent.click(screen.getByTestId('login-btn'))
+    await waitFor(() => {
+      expect(screen.getByTestId('key').textContent).toBe('test-key')
+    })
+    expect(localStorage.getItem('api_token')).toBe('test-key')
+  })
+
+  it('throws when useAuth is called outside AuthProvider', () => {
+    expect(() => render(<TestComponent />)).toThrow('useAuth must be used within AuthProvider')
   })
 })

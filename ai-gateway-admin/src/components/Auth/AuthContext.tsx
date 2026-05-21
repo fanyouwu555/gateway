@@ -11,9 +11,9 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [apiKey, setApiKey] = useState<string | null>(() => {
-    const envKey = import.meta.env.VITE_API_KEY
-    if (envKey) return envKey
-    return localStorage.getItem('api_token')
+    const stored = localStorage.getItem('api_token')
+    if (stored) return stored
+    return import.meta.env.VITE_API_KEY || null
   })
 
   const login = useCallback((key: string) => {
