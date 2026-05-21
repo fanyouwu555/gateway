@@ -227,12 +227,12 @@ const Dashboard: React.FC = () => {
 
       {/* 图表区域 - 第一行 */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={16}>
+        <Col xs={24} md={24} lg={16}>
           <Card title="请求量趋势">
             <LineChart data={requestTrendData} yAxisLabel="请求数" />
           </Card>
         </Col>
-        <Col xs={24} lg={8}>
+        <Col xs={24} md={24} lg={8}>
           <Card title="Provider 分布">
             <PieChart data={providerDistribution} height={260} />
           </Card>
@@ -241,12 +241,12 @@ const Dashboard: React.FC = () => {
 
       {/* 图表区域 - 第二行 */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={12}>
+        <Col xs={24} md={12} lg={12}>
           <Card title="Token 消耗趋势">
             <LineChart data={tokenTrendData} yAxisLabel="Token 数" />
           </Card>
         </Col>
-        <Col xs={24} lg={12}>
+        <Col xs={24} md={12} lg={12}>
           <Card title="状态码分布">
             <BarChart data={statusCodeChartData} />
           </Card>

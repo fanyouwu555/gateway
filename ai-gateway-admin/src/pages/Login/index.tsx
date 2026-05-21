@@ -40,7 +40,9 @@ export default function LoginPage() {
       background: '#f0f2f5',
     }}>
       <div style={{
-        width: 400,
+        maxWidth: 400,
+        width: '100%',
+        margin: '0 16px',
         borderRadius: 12,
         overflow: 'hidden',
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',

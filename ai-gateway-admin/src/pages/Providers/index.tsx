@@ -118,7 +118,7 @@ const Providers: React.FC = () => {
       </div>
 
       <Card>
-        <Table columns={columns} dataSource={providers} rowKey="name" loading={loading} />
+        <Table columns={columns} dataSource={providers} rowKey="name" loading={loading} scroll={{ x: 'max-content' }} />
       </Card>
     </div>
   )

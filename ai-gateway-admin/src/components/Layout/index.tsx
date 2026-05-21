@@ -47,6 +47,11 @@ export default function MainLayout() {
         trigger={null}
         collapsible
         collapsed={collapsed}
+        breakpoint="lg"
+        collapsedWidth={80}
+        onBreakpoint={(broken) => {
+          if (broken) setCollapsed(true)
+        }}
         style={{ background: '#001529' }}
         width={220}
       >
@@ -97,7 +102,7 @@ export default function MainLayout() {
             </div>
           </Dropdown>
         </Header>
-        <Content style={{ margin: 16, minHeight: 280 }}>
+        <Content style={{ margin: 'clamp(8px, 2vw, 24px)', minHeight: 280 }}>
           <Outlet />
         </Content>
       </AntLayout>

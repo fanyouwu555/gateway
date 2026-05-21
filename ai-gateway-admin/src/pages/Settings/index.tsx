@@ -116,12 +116,12 @@ const Settings: React.FC = () => {
         {/* 基本设置 */}
         <Card title="基本设置" style={{ marginBottom: 16 }}>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="端口" name="port" rules={[{ required: true }]}>
                 <InputNumber style={{ width: '100%' }} min={1} max={65535} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="主机" name="host" rules={[{ required: true }]}>
                 <Input placeholder="0.0.0.0" />
               </Form.Item>
@@ -143,12 +143,12 @@ const Settings: React.FC = () => {
             <Switch />
           </Form.Item>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="QPS (每秒请求数)" name={['rate_limit', 'qps']}>
                 <InputNumber style={{ width: '100%' }} min={1} max={10000} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="突发容量" name={['rate_limit', 'burst']}>
                 <InputNumber style={{ width: '100%' }} min={1} max={10000} />
               </Form.Item>
@@ -172,12 +172,12 @@ const Settings: React.FC = () => {
             <Switch />
           </Form.Item>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="失败阈值 (次)" name={['failover', 'failureThreshold']}>
                 <InputNumber style={{ width: '100%' }} min={1} max={10} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item label="成功阈值 (次)" name={['failover', 'successThreshold']}>
                 <InputNumber style={{ width: '100%' }} min={1} max={10} />
               </Form.Item>

@@ -122,12 +122,12 @@ const Metrics: React.FC = () => {
 
       {/* 图表 */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={16}>
+        <Col xs={24} md={24} lg={16}>
           <Card title="Token 趋势">
             <LineChart data={tokenTrendData} yAxisLabel="Token" />
           </Card>
         </Col>
-        <Col xs={24} lg={8}>
+        <Col xs={24} md={24} lg={8}>
           <Card title="Provider 分布">
             <BarChart
               data={providerStatsData.map((p) => ({ name: p.provider, value: p.total_tokens }))}

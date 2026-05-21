@@ -144,7 +144,7 @@ const Tenants: React.FC = () => {
       </div>
 
       <Card>
-        <Table columns={columns} dataSource={tenants} rowKey="tenant_id" loading={loading} />
+        <Table columns={columns} dataSource={tenants} rowKey="tenant_id" loading={loading} scroll={{ x: 'max-content' }} />
       </Card>
 
       {/* 创建租户弹窗 */}
