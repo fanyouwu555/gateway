@@ -5,7 +5,7 @@ import WebSocket from 'ws';
 
 const WS_URL = 'ws://localhost:3000/v1/ws/admin';
 const API_URL = 'http://localhost:3000/v1/chat/completions';
-const TEST_API_KEY = 'test-admin-key';
+const TEST_API_KEY = 'admin-dashboard-key-456';
 
 let receivedEvents = 0;
 let testRequestsSent = 0;

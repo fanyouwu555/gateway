@@ -22,7 +22,7 @@ import {
 
 describe('API Service', () => {
   beforeEach(() => {
-    localStorage.setItem('api_token', 'test-admin-key')
+    localStorage.setItem('api_token', 'admin-dashboard-key-456')
   })
 
   describe('Health', () => {
@@ -36,7 +36,7 @@ describe('API Service', () => {
       )
 
       const result = await getHealth()
-      expect(authHeader).toBe('Bearer test-admin-key')
+      expect(authHeader).toBe('Bearer admin-dashboard-key-456')
       expect(result).toEqual({ status: 'ok', timestamp: expect.any(Number) })
     })
   })

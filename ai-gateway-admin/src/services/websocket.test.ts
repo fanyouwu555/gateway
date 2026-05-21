@@ -13,7 +13,7 @@ describe('WebSocketService', () => {
       value: MockWebSocket,
       writable: true,
     })
-    Storage.prototype.getItem = vi.fn(() => 'test-admin-key')
+    Storage.prototype.getItem = vi.fn(() => 'admin-dashboard-key-456')
     wsService.disconnect()
     // @ts-expect-error accessing private field for test cleanup
     wsService.reconnectAttempts = 0
@@ -28,7 +28,7 @@ describe('WebSocketService', () => {
     wsService.connect('tenant-1')
     expect(MockWebSocket.instances.length).toBe(1)
     const ws = MockWebSocket.instances[0]
-    expect(ws.url).toBe('ws://localhost:3000/v1/ws/tenant-1?api_key=test-admin-key')
+    expect(ws.url).toBe('ws://localhost:3000/v1/ws/tenant-1?api_key=admin-dashboard-key-456')
   })
 
   it('calls onOpen when connection opens', () => {
