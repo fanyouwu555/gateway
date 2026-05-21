@@ -20,7 +20,11 @@ class WebSocketService {
   connect(tenantId: string = 'admin', options?: WebSocketServiceOptions) {
     this.options = options || {}
     const baseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:3000'
-    const apiKey = localStorage.getItem('api_token') || 'admin-dashboard-key-456'
+    const apiKey = localStorage.getItem('api_token') || ''
+    if (!apiKey) {
+      console.warn('[WebSocket] No API key available')
+      return
+    }
     this.url = `${baseUrl}/v1/ws/${tenantId}?api_key=${encodeURIComponent(apiKey)}`
 
     try {
