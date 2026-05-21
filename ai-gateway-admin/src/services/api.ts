@@ -5,26 +5,26 @@ const api = axios.create({
   timeout: 10000,
 })
 
-// 请求拦截器
+// Request interceptor — read from localStorage, no fallback
 api.interceptors.request.use(
   (config) => {
-    // 可以添加认证 token (开发环境默认使用 admin key)
-    const token = localStorage.getItem('api_token') || 'admin-dashboard-key-456'
+    const token = localStorage.getItem('api_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
-// 响应拦截器
+// Response interceptor — handle 401
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    console.error('API Error:', error)
+    if (error.response?.status === 401) {
+      localStorage.removeItem('api_token')
+      window.location.href = '/login'
+    }
     return Promise.reject(error)
   }
 )

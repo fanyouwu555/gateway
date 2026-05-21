@@ -22,8 +22,7 @@ import {
 
 describe('API Service', () => {
   beforeEach(() => {
-    // Mock localStorage token
-    Storage.prototype.getItem = vi.fn(() => 'admin-dashboard-key-456')
+    localStorage.setItem('api_token', 'test-admin-key')
   })
 
   describe('Health', () => {
@@ -37,7 +36,7 @@ describe('API Service', () => {
       )
 
       const result = await getHealth()
-      expect(authHeader).toBe('Bearer admin-dashboard-key-456')
+      expect(authHeader).toBe('Bearer test-admin-key')
       expect(result).toEqual({ status: 'ok', timestamp: expect.any(Number) })
     })
   })
@@ -241,6 +240,34 @@ describe('API Service', () => {
       )
 
       await expect(getHealth()).rejects.toThrow()
+    })
+  })
+
+  describe('401 interceptor', () => {
+    it('clears token and redirects on 401', async () => {
+      const originalLocation = window.location
+      const mockLocation = { href: 'http://localhost/dashboard' }
+      Object.defineProperty(window, 'location', {
+        value: mockLocation,
+        writable: true,
+        configurable: true,
+      })
+
+      server.use(
+        http.get('/api/health', () =>
+          HttpResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        )
+      )
+
+      await expect(getHealth()).rejects.toThrow()
+      expect(localStorage.getItem('api_token')).toBeNull()
+      expect(window.location.href).toBe('/login')
+
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      })
     })
   })
 })
