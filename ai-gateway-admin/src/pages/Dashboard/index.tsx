@@ -74,7 +74,20 @@ const Dashboard: React.FC = () => {
   }
 
   const handleWebSocketMessage = useCallback((data: any) => {
-    if (data.type === 'chat.completion.chunk' || data.event === 'request_complete') {
+    if (data.type === 'metrics_update' || data.event === 'metrics_update') {
+      setOverviewData((prev) => ({
+        ...prev,
+        total_requests: data.total_requests ?? prev?.total_requests ?? 0,
+        total_tokens: data.total_tokens ?? prev?.total_tokens ?? 0,
+        total_cost: data.total_cost ?? prev?.total_cost ?? 0,
+        avg_duration_ms: data.avg_duration_ms ?? prev?.avg_duration_ms ?? 0,
+        success_rate: data.success_rate ?? prev?.success_rate ?? 0,
+        error_rate: data.error_rate ?? prev?.error_rate ?? 0,
+        total_providers: data.total_providers ?? prev?.total_providers ?? 0,
+        total_models: data.total_models ?? prev?.total_models ?? 0,
+        total_tenants: data.total_tenants ?? prev?.total_tenants ?? 0,
+      }))
+    } else if (data.type === 'chat.completion.chunk' || data.event === 'request_complete') {
       const log: RecentLog = {
         id: data.request_id || Math.random().toString(36).substr(2, 9),
         time: new Date().toLocaleTimeString(),

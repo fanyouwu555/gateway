@@ -55,7 +55,9 @@ export interface WSConnection {
 class WebSocketManager {
   private connections = new Map<string, WSConnection>();
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private metricsInterval: NodeJS.Timeout | null = null;
   private readonly HEARTBEAT_INTERVAL = 30000; // 30s ping
+  private readonly METRICS_INTERVAL = 5000; // 5s metrics broadcast
   private readonly MAX_IDLE_TIME = 300000; // 5分钟超时
 
   /**
@@ -98,6 +100,56 @@ class WebSocketManager {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+    }
+  }
+
+  /**
+   * 启动实时指标广播
+   */
+  startMetricsBroadcast(): void {
+    if (this.metricsInterval) return;
+
+    this.metricsInterval = setInterval(() => {
+      // 动态导入避免循环依赖
+      import('../services/metrics.js')
+        .then(({ getDashboardOverview }) => {
+          const now = Date.now();
+          const start = now - 60 * 60 * 1000; // 最近 1 小时
+          const overview = getDashboardOverview(start, now);
+
+          const message = {
+            type: 'metrics_update',
+            event: 'metrics_update',
+            ...overview,
+          };
+
+          // 广播给所有 admin 连接
+          for (const conn of this.connections.values()) {
+            if (conn.tenant_id === 'admin' && conn.ws.readyState === 1) {
+              try {
+                conn.ws.send(JSON.stringify(message));
+              } catch {
+                // 忽略发送错误
+              }
+            }
+          }
+        })
+        .catch(() => {
+          // 静默失败，不影响主流程
+        });
+    }, this.METRICS_INTERVAL);
+
+    this.metricsInterval.unref();
+    writeLog('info', '[WebSocket] Metrics broadcast started');
+  }
+
+  /**
+   * 停止实时指标广播
+   */
+  stopMetricsBroadcast(): void {
+    if (this.metricsInterval) {
+      clearInterval(this.metricsInterval);
+      this.metricsInterval = null;
     }
   }
 
@@ -242,6 +294,7 @@ class WebSocketManager {
       this.closeConnection(id, 1001, 'Server restart');
     }
     this.connections.clear();
+    this.stopMetricsBroadcast();
   }
 
   /**
@@ -380,6 +433,7 @@ const wsManager = new WebSocketManager();
  */
 export function initWebSocket(): void {
   wsManager.startHeartbeat();
+  wsManager.startMetricsBroadcast();
   writeLog('info', '[WebSocket] Manager initialized');
 }
 
