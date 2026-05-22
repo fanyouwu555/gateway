@@ -6,9 +6,9 @@ import type { ProviderStats } from '@/types'
 
 interface ProviderData {
   name: string
-  status: 'online' | 'offline'
+  status: 'active' | 'inactive' | 'degraded'
+  has_api_key?: boolean
   base_url?: string
-  timeout?: number
   total_requests: number
   avg_duration_ms: number
   success_rate: number
@@ -36,17 +36,20 @@ const Providers: React.FC = () => {
         getProviderStats(),
       ])
 
-      const healthData = health as any
+      const healthData = health as unknown as { services?: { providers?: Array<{ name: string; status: string; has_api_key?: boolean; base_url?: string }> } }
       const statsData = stats as unknown as ProviderStats[]
 
       const providerMap = new Map<string, ProviderStats>()
       statsData.forEach((s) => providerMap.set(s.provider, s))
 
-      const providerList: ProviderData[] = (healthData?.services?.providers || []).map((p: any) => {
+      const providerList: ProviderData[] = (healthData?.services?.providers || []).map((p) => {
         const stat = providerMap.get(p.name)
+        const s = p.status || 'inactive'
         return {
           name: p.name,
-          status: p.status === 'active' ? 'online' : 'offline',
+          status: s as 'active' | 'inactive' | 'degraded',
+          has_api_key: p.has_api_key,
+          base_url: p.base_url,
           total_requests: stat?.total_requests || 0,
           avg_duration_ms: stat?.avg_duration_ms || 0,
           success_rate: stat?.success_rate || 0,
@@ -81,12 +84,22 @@ const Providers: React.FC = () => {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'online' ? 'green' : 'red'}>
-          <span className="status-dot" style={{ background: status === 'online' ? '#52c41a' : '#ff4d4f', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 4 }} />
-          {status === 'online' ? '在线' : '离线'}
-        </Tag>
-      ),
+      render: (status: string, record: ProviderData) => {
+        const isConfigured = record.has_api_key && status !== 'inactive'
+        if (!isConfigured) {
+          return <Tag><span className="status-dot" style={{ background: '#d9d9d9', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 4 }} />未配置</Tag>
+        }
+        if (status === 'degraded') {
+          return <Tag color="red"><span className="status-dot" style={{ background: '#ff4d4f', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 4 }} />离线</Tag>
+        }
+        return <Tag color="green"><span className="status-dot" style={{ background: '#52c41a', display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 4 }} />在线</Tag>
+      },
+    },
+    {
+      title: 'Base URL',
+      dataIndex: 'base_url',
+      key: 'base_url',
+      render: (v: string) => v || '-',
     },
     {
       title: '请求量',

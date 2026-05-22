@@ -20,4 +20,7 @@ export const kimiCodeProvider = new OpenAICompatibleProvider({
     user: true,
     tools: true,
   },
+  extraHeaders: {
+    'User-Agent': 'claude-code/1.0.0',
+  },
 });

@@ -83,7 +83,7 @@ export interface GatewayConfig {
   port: number
   host: string
   log_level: string
-  providers: Record<string, any>
+  providers: Record<string, unknown>
   routing: RoutingRule[]
   auth: AuthConfig
   rate_limit: RateLimitConfig
@@ -119,7 +119,7 @@ export interface FailoverConfig {
 
 export interface LoadBalanceConfig {
   strategy: string
-  providers: Record<string, any>
+  providers: Record<string, unknown>
 }
 
 // ============ 缓存 ============

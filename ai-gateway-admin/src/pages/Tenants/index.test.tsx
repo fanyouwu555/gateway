@@ -27,7 +27,7 @@ describe('Tenants Page', () => {
   })
 
   it('renders header and fetches tenants on mount', async () => {
-    ;(getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({
       tenants: [
         {
           tenant_id: 't1',
@@ -50,7 +50,7 @@ describe('Tenants Page', () => {
   })
 
   it('shows tenant plan and status tags', async () => {
-    ;(getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({
       tenants: [
         {
           tenant_id: 't1',
@@ -95,7 +95,7 @@ describe('Tenants Page', () => {
   })
 
   it('opens detail drawer on view button click', async () => {
-    ;(getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({
       tenants: [
         {
           tenant_id: 't1',
@@ -123,7 +123,7 @@ describe('Tenants Page', () => {
   })
 
   it('triggers delete on confirm', async () => {
-    ;(getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({
       tenants: [
         {
           tenant_id: 't1',

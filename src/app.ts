@@ -64,13 +64,26 @@ export function createApp(): Hono {
       uptime: process.uptime(),
       version: '1.0.0',
       services: {
-        providers: providers.map((p) => ({
-          name: p,
-          status: providerHealth[p]?.isHealthy !== false ? 'active' : 'degraded',
-          has_api_key: !!config.providers[p]?.api_key,
-          base_url: config.providers[p]?.base_url,
-          health: providerHealth[p] || { isHealthy: true, totalRequests: 0, errorRate: 0, avgLatencyMs: 0 },
-        })),
+        providers: providers.map((p) => {
+          const providerConfig = config.providers[p];
+          const hasApiKey = !!providerConfig && (!!providerConfig.api_key || (!!providerConfig.api_keys && providerConfig.api_keys.length > 0));
+          const isHealthy = providerHealth[p]?.isHealthy !== false;
+          let status: string;
+          if (!hasApiKey) {
+            status = 'inactive';
+          } else if (isHealthy) {
+            status = 'active';
+          } else {
+            status = 'degraded';
+          }
+          return {
+            name: p,
+            status,
+            has_api_key: hasApiKey,
+            base_url: providerConfig?.base_url,
+            health: providerHealth[p] || { isHealthy: true, totalRequests: 0, errorRate: 0, avgLatencyMs: 0 },
+          };
+        }),
         cache: { size: cacheStats.size, hit_rate: cacheStats.hit_rate },
         sessions: { total: sessionStats.total_sessions },
       },

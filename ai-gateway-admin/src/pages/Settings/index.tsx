@@ -49,7 +49,8 @@ const Settings: React.FC = () => {
   const fetchConfig = async () => {
     setLoading(true)
     try {
-      const data: any = await fetchGatewayConfig()
+      const raw = await fetchGatewayConfig()
+      const data = raw as unknown as ConfigData
       if (data && data.port) {
         form.setFieldsValue({
           port: data.port,
@@ -88,8 +89,9 @@ const Settings: React.FC = () => {
       const values = await form.validateFields()
       await saveGatewayConfig(values)
       message.success('配置保存成功')
-    } catch (error: any) {
-      message.error(error?.response?.data?.error?.message || '保存配置失败')
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+      message.error(errMsg || '保存配置失败')
       console.error(error)
     }
   }

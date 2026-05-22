@@ -36,7 +36,6 @@
     "moonshot": {
       "provider": "moonshot",
       "base_url": "https://api.moonshot.cn/v1",
-      "api_key": "sk-kimi-o79cdWQI7MUeoO7EKkPBdzimZkH3AbUCuyTcouUBxNC9DdnoDH7pJD96QWl8xkfx",
       "timeout": 30000
     },
     "volcano": {

@@ -1,4 +1,4 @@
-type MessageHandler = (data: any) => void
+type MessageHandler = (data: unknown) => void
 
 interface WebSocketServiceOptions {
   onOpen?: () => void
@@ -75,17 +75,18 @@ class WebSocketService {
     }, this.reconnectDelay)
   }
 
-  private handleMessage(data: any) {
-    this.options.onMessage?.(data)
+  private handleMessage(raw: unknown) {
+    this.options.onMessage?.(raw)
 
     // 按类型分发
-    const type = data.type || data.event
+    const data = raw as Record<string, unknown>
+    const type = ((data.type as string | undefined) || (data.event as string | undefined))
     if (type && this.messageHandlers.has(type)) {
-      this.messageHandlers.get(type)!.forEach((handler) => handler(data))
+      this.messageHandlers.get(type)!.forEach((handler) => handler(raw))
     }
 
     // 全局处理器
-    this.globalHandlers.forEach((handler) => handler(data))
+    this.globalHandlers.forEach((handler) => handler(raw))
   }
 
   on(type: string, handler: MessageHandler) {
@@ -109,7 +110,7 @@ class WebSocketService {
     this.globalHandlers.delete(handler)
   }
 
-  send(message: any) {
+  send(message: unknown) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message))
     } else {

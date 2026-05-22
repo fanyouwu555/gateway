@@ -38,7 +38,7 @@ const Tenants: React.FC = () => {
   const fetchTenants = async () => {
     setLoading(true)
     try {
-      const data: any = await getTenants()
+      const data = await getTenants() as unknown as { tenants?: Tenant[] }
       setTenants(data.tenants || [])
     } catch (error) {
       message.error('获取租户失败，请检查网络连接')
@@ -54,10 +54,10 @@ const Tenants: React.FC = () => {
   const handleViewDetail = async (tenant: Tenant) => {
     setCurrentTenant(tenant)
     try {
-      const statsAny: any = await getTenantStats(tenant.tenant_id)
-      const keysDataAny: any = await getTenantKeys(tenant.tenant_id)
-      setTenantStats(statsAny)
-      setApiKeys(keysDataAny.keys || [])
+      const statsData = await getTenantStats(tenant.tenant_id) as unknown as TenantStats
+      const keysData = await getTenantKeys(tenant.tenant_id) as unknown as { keys?: ApiKey[] }
+      setTenantStats(statsData)
+      setApiKeys(keysData.keys || [])
     } catch (error) {
       message.error('获取租户详情失败')
       console.error(error)
@@ -77,8 +77,9 @@ const Tenants: React.FC = () => {
       setCreateModalVisible(false)
       form.resetFields()
       fetchTenants()
-    } catch (error: any) {
-      message.error(error?.response?.data?.error?.message || '创建租户失败')
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+      message.error(errMsg || '创建租户失败')
     }
   }
 
@@ -101,7 +102,7 @@ const Tenants: React.FC = () => {
     if (!currentTenant) return
     try {
       const values = await createKeyForm.validateFields()
-      const payload: any = { name: values.name }
+      const payload: Record<string, unknown> = { name: values.name }
       if (values.expires_at) payload.expires_at = values.expires_at
       if (values.allowed_models) payload.allowed_models = values.allowed_models.split(',').map((s: string) => s.trim()).filter(Boolean)
       if (values.rate_limit_qps) payload.rate_limit_qps = values.rate_limit_qps
@@ -111,16 +112,17 @@ const Tenants: React.FC = () => {
       if (values.metadata_key) {
         payload.metadata = { [values.metadata_key]: values.metadata_value || '' }
       }
-      const result: any = await createTenantKey(currentTenant.tenant_id, payload)
+      const result = await createTenantKey(currentTenant.tenant_id, payload as Parameters<typeof createTenantKey>[1]) as unknown as { key?: string }
       message.success('Key 创建成功')
       message.info(`Key: ${result.key} — 请立即保存，关闭后将无法再次获取`)
       setCreateKeyModalVisible(false)
       createKeyForm.resetFields()
       // Refresh keys
-      const keysDataAny: any = await getTenantKeys(currentTenant.tenant_id)
-      setApiKeys(keysDataAny.keys || [])
-    } catch (error: any) {
-      message.error(error?.response?.data?.error?.message || '创建 Key 失败')
+      const keysData = await getTenantKeys(currentTenant.tenant_id) as unknown as { keys?: ApiKey[] }
+      setApiKeys(keysData.keys || [])
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+      message.error(errMsg || '创建 Key 失败')
     }
   }
 
@@ -144,7 +146,7 @@ const Tenants: React.FC = () => {
     if (!currentTenant || !editingKey) return
     try {
       const values = await editPolicyForm.validateFields()
-      const payload: any = {}
+      const payload: Record<string, unknown> = {}
       if (values.name) payload.name = values.name
       if (values.allowed_models) {
         payload.allowed_models = values.allowed_models.split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -156,16 +158,17 @@ const Tenants: React.FC = () => {
       if (values.metadata_key) {
         payload.metadata = { [values.metadata_key]: values.metadata_value || '' }
       }
-      await updateKeyPolicy(currentTenant.tenant_id, editingKey.key, payload)
+      await updateKeyPolicy(currentTenant.tenant_id, editingKey.key, payload as Parameters<typeof updateKeyPolicy>[2])
       message.success('策略更新成功')
       setEditPolicyModalVisible(false)
       setEditingKey(null)
       editPolicyForm.resetFields()
       // Refresh keys
-      const keysDataAny: any = await getTenantKeys(currentTenant.tenant_id)
-      setApiKeys(keysDataAny.keys || [])
-    } catch (error: any) {
-      message.error(error?.response?.data?.error?.message || '更新策略失败')
+      const keysData = await getTenantKeys(currentTenant.tenant_id) as unknown as { keys?: ApiKey[] }
+      setApiKeys(keysData.keys || [])
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+      message.error(errMsg || '更新策略失败')
     }
   }
 
@@ -175,8 +178,8 @@ const Tenants: React.FC = () => {
       await deleteApiKey(key.key)
       message.success('Key 已删除')
       if (currentTenant) {
-        const keysDataAny: any = await getTenantKeys(currentTenant.tenant_id)
-        setApiKeys(keysDataAny.keys || [])
+        const keysData = await getTenantKeys(currentTenant.tenant_id) as unknown as { keys?: ApiKey[] }
+        setApiKeys(keysData.keys || [])
       }
     } catch (error) {
       message.error('删除 Key 失败')
@@ -204,7 +207,7 @@ const Tenants: React.FC = () => {
       title: '可用模型',
       dataIndex: 'settings',
       key: 'models',
-      render: (settings: any) => (
+      render: (settings?: { allowed_providers?: string[] }) => (
         <Space>
           {settings?.allowed_providers?.map((p: string) => (
             <Tag key={p}>{p}</Tag>
@@ -215,7 +218,7 @@ const Tenants: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      render: (_: any, record: Tenant) => (
+      render: (_value: unknown, record: Tenant) => (
         <Space>
           <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record)}>
             详情
@@ -237,7 +240,7 @@ const Tenants: React.FC = () => {
       title: '模型限制',
       key: 'allowed_models',
       width: 150,
-      render: (_: any, record: ApiKey) =>
+      render: (_value: unknown, record: ApiKey) =>
         record.allowed_models?.length
           ? record.allowed_models.map((m) => <Tag key={m} color="blue">{m}</Tag>)
           : <Tag>不限</Tag>,
@@ -246,21 +249,21 @@ const Tenants: React.FC = () => {
       title: 'QPS/突发',
       key: 'rate_limit',
       width: 100,
-      render: (_: any, record: ApiKey) =>
+      render: (_value: unknown, record: ApiKey) =>
         record.rate_limit_qps ? `${record.rate_limit_qps}/${record.rate_limit_burst || '-'}` : '-',
     },
     {
       title: '月预算',
       key: 'monthly_budget',
       width: 90,
-      render: (_: any, record: ApiKey) =>
+      render: (_value: unknown, record: ApiKey) =>
         record.monthly_budget ? <span>${record.monthly_budget}</span> : '-',
     },
     {
       title: '单次 Max Tokens',
       key: 'max_tokens',
       width: 100,
-      render: (_: any, record: ApiKey) => record.max_tokens_per_request || '-',
+      render: (_value: unknown, record: ApiKey) => record.max_tokens_per_request || '-',
     },
     {
       title: '创建时间',
@@ -273,7 +276,7 @@ const Tenants: React.FC = () => {
       title: '操作',
       key: 'action',
       width: 120,
-      render: (_: any, record: ApiKey) => (
+      render: (_value: unknown, record: ApiKey) => (
         <Space size="small">
           <Button size="small" icon={<EditOutlined />} onClick={() => handleEditPolicy(record)}>
             策略

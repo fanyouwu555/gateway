@@ -87,7 +87,7 @@ export async function createTenant(data: {
   return api.post('/v1/tenants', data)
 }
 
-export async function updateTenant(id: string, data: any) {
+export async function updateTenant(id: string, data: unknown) {
   return api.put(`/v1/tenants/${id}`, data)
 }
 
@@ -141,7 +141,7 @@ export async function getConfig() {
   return api.get('/v1/config')
 }
 
-export async function updateConfig(data: any) {
+export async function updateConfig(data: unknown) {
   return api.put('/v1/config', data)
 }
 
