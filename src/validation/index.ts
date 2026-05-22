@@ -133,6 +133,23 @@ export const configUpdateSchema = z.object({
   port: z.number().int().positive().optional(),
   host: z.string().optional(),
   log_level: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+  providers: z.record(z.object({
+    provider: z.string(),
+    base_url: z.string(),
+    api_key: z.string().optional(),
+    timeout: z.number().positive().optional(),
+    headers: z.record(z.string()).optional(),
+    max_retries: z.number().positive().optional(),
+  })).optional(),
+  routing: z.array(z.object({
+    name: z.string(),
+    rules: z.array(z.object({
+      model: z.string(),
+      provider: z.string(),
+      max_tokens: z.number().positive().optional(),
+    })),
+    fallback: z.string().optional(),
+  })).optional(),
   auth: z.object({
     enabled: z.boolean(),
     api_keys: z.array(z.object({
@@ -154,5 +171,18 @@ export const configUpdateSchema = z.object({
     healthCheckInterval: z.number().positive(),
     healthCheckTimeout: z.number().positive().optional(),
     healthCheckModel: z.string().optional(),
+    chains: z.record(z.array(z.string())).optional(),
+    errorRateThreshold: z.number().optional(),
+    latencyThresholdMs: z.number().positive().optional(),
   }).optional(),
+  cache: z.object({
+    enabled: z.boolean(),
+    ttl: z.number().positive(),
+    max_size: z.number().positive(),
+  }).optional(),
+  pricing: z.record(z.object({
+    input: z.number(),
+    output: z.number(),
+  })).optional(),
+  model_aliases: z.record(z.string()).optional(),
 });

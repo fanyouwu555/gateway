@@ -214,8 +214,12 @@ async function handleChatCompletion(c: Context): Promise<Response> {
 
     // 5.5. 将 token 使用量写入上下文（供 logger middleware 读取）
     if (response.usage) {
-      c.set('prompt_tokens', response.usage.prompt_tokens || 0);
-      c.set('completion_tokens', response.usage.completion_tokens || 0);
+      const promptTokens = response.usage.prompt_tokens || 0;
+      const completionTokens = response.usage.completion_tokens || 0;
+      const totalTokens = response.usage.total_tokens || promptTokens + completionTokens;
+      c.set('prompt_tokens', promptTokens);
+      c.set('completion_tokens', completionTokens);
+      c.set('total_tokens', totalTokens);
     }
 
     // 5.6. 记录使用量（非流式请求）

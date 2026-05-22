@@ -63,6 +63,8 @@ export async function loggerMiddleware(c: Context, next: Next): Promise<void> {
     // 从响应上下文获取 token 使用量
     const promptTokens = c.get('prompt_tokens') || 0;
     const completionTokens = c.get('completion_tokens') || 0;
+    const explicitTotalTokens = c.get('total_tokens');
+    const totalTokens = explicitTotalTokens !== undefined ? explicitTotalTokens : promptTokens + completionTokens;
 
     try {
       recordMetric(
@@ -75,7 +77,7 @@ export async function loggerMiddleware(c: Context, next: Next): Promise<void> {
         {
           prompt_tokens: promptTokens,
           completion_tokens: completionTokens,
-          total_tokens: promptTokens + completionTokens,
+          total_tokens: totalTokens,
         },
         c.get('key_hash'),
         c.get('key_metadata')
