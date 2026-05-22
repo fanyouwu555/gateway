@@ -127,6 +127,13 @@ const HASH_CONFIG = {
   keyLength: 64,
   saltLength: 16,
   prefix: '$scrypt$',
+  /** scrypt 参数 — 显式指定以保证跨 Node.js 版本一致性 */
+  scryptOptions: {
+    N: 32768, // 2^15 — 平衡安全性与验证性能
+    r: 8,
+    p: 1,
+    maxmem: 128 * 1024 * 1024, // 128MB
+  },
 } as const;
 
 /**
@@ -134,7 +141,7 @@ const HASH_CONFIG = {
  */
 export function hashApiKey(apiKey: string): string {
   const salt = randomBytes(HASH_CONFIG.saltLength).toString('hex');
-  const derivedKey = scryptSync(apiKey, salt, HASH_CONFIG.keyLength);
+  const derivedKey = scryptSync(apiKey, salt, HASH_CONFIG.keyLength, HASH_CONFIG.scryptOptions);
   return `${HASH_CONFIG.prefix}${salt}:${derivedKey.toString('hex')}`;
 }
 
@@ -151,7 +158,7 @@ export function verifyApiKey(apiKey: string, hashed: string): boolean {
   const [salt, keyHex] = stripped.split(':');
   if (!salt || !keyHex) return false;
 
-  const derivedKey = scryptSync(apiKey, salt, HASH_CONFIG.keyLength);
+  const derivedKey = scryptSync(apiKey, salt, HASH_CONFIG.keyLength, HASH_CONFIG.scryptOptions);
   const keyBuf = Buffer.from(keyHex, 'hex');
 
   // 常量时间比较，防止时序攻击

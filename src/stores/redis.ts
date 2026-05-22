@@ -65,17 +65,28 @@ export class RedisKVStore implements IKVStore {
     }
 
     this.client.on('error', (err) => {
-      writeLog('error', 'Redis connection error', { error: err.message });
+      writeLog('error', 'Redis connection error', { error: err.message, prefix: this.prefix });
       this.connected = false;
     });
 
     this.client.on('connect', () => {
-      writeLog('info', 'Redis connected');
+      writeLog('info', 'Redis connected', { prefix: this.prefix });
       this.connected = true;
     });
 
-    await this.client.connect();
-    this.connected = true;
+    try {
+      await this.client.connect();
+      this.connected = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      writeLog('error', 'Redis initial connection failed — falling back to in-memory', {
+        error: msg,
+        prefix: this.prefix,
+        host: this.config.host || 'localhost',
+        port: this.config.port || 6379,
+      });
+      throw err;
+    }
   }
 
   async disconnect(): Promise<void> {

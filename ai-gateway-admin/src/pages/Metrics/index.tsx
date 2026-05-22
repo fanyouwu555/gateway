@@ -62,6 +62,37 @@ const Metrics: React.FC = () => {
     return tokens.toLocaleString()
   }
 
+  const handleExportCSV = () => {
+    const lines: string[] = []
+    lines.push('AI Gateway Metrics Export')
+    lines.push(`Generated at: ${new Date().toLocaleString()}`)
+    lines.push('')
+
+    lines.push('Provider Statistics')
+    lines.push('Provider,Requests,Tokens,Cost,Avg Latency,Success Rate')
+    for (const p of providerStatsData) {
+      lines.push(`${p.provider},${p.total_requests},${p.total_tokens},${p.total_cost?.toFixed(4) || 0},${p.avg_duration_ms}ms,${(p.success_rate * 100).toFixed(2)}%`)
+    }
+    lines.push('')
+
+    lines.push('Tenant Statistics')
+    lines.push('Tenant ID,Requests,Tokens,Cost,Avg Latency,Success Rate')
+    for (const t of tenantStatsData) {
+      lines.push(`${t.tenant_id},${t.total_requests},${t.total_tokens},${t.total_cost?.toFixed(4) || 0},${t.avg_duration_ms}ms,${(t.success_rate * 100).toFixed(2)}%`)
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `metrics-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    message.success('CSV 导出成功')
+  }
+
   const tokenTrendData = timeSeriesData.map((item) => ({
     time: item.time_label,
     value: item.total_tokens,
@@ -104,7 +135,7 @@ const Metrics: React.FC = () => {
             value={timeRange}
             onChange={(v) => setTimeRange(v as number)}
           />
-          <Button icon={<DownloadOutlined />}>导出 CSV</Button>
+          <Button icon={<DownloadOutlined />} onClick={handleExportCSV}>导出 CSV</Button>
           <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
             刷新
           </Button>

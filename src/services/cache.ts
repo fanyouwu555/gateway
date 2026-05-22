@@ -73,8 +73,9 @@ class CacheStore<T> {
   /**
    * 生成缓存键
    */
-  generateKey(request: ChatCompletionRequest): string {
+  generateKey(request: ChatCompletionRequest, tenantId?: string): string {
     const parts = [
+      tenantId || 'default',
       request.model,
       JSON.stringify(request.messages),
       String(request.temperature || ''),
@@ -147,11 +148,11 @@ class CacheStore<T> {
       if (keyParts.length < 2) continue;
 
       // 必须匹配相同的 model
-      const cachedModel = keyParts[0];
+      const cachedModel = keyParts[1];
       if (cachedModel !== request.model) continue;
 
       try {
-        const messages = JSON.parse(keyParts[1]);
+        const messages = JSON.parse(keyParts[2]);
         const cachedText = messages.map((m: { content: string }) => m.content).join(' ');
         const cachedTokens = this.tokenize(cachedText);
         const similarity = this.jaccardSimilarity(requestTokens, cachedTokens);
@@ -343,15 +344,15 @@ export function resetCache(): void {
 /**
  * 简化版缓存键生成（用于精确匹配）
  */
-export function generateCacheKey(request: ChatCompletionRequest): string {
-  return cacheStore.generateKey(request);
+export function generateCacheKey(request: ChatCompletionRequest, tenantId?: string): string {
+  return cacheStore.generateKey(request, tenantId);
 }
 
 /**
  * 获取缓存（异步，支持 Redis 和语义查找）
  */
-export async function getCache(request: ChatCompletionRequest, useSemantic = true): Promise<string | null> {
-  const key = generateCacheKey(request);
+export async function getCache(request: ChatCompletionRequest, tenantId?: string, useSemantic = true): Promise<string | null> {
+  const key = generateCacheKey(request, tenantId);
 
   // 1. 先精确查找
   const exactMatch = await cacheStore.get(key);
@@ -376,18 +377,19 @@ export async function getCache(request: ChatCompletionRequest, useSemantic = tru
  */
 export async function setCache(
   request: ChatCompletionRequest,
-  response: string,
+  response?: string,
+  tenantId?: string,
   ttl?: number
 ): Promise<void> {
-  const key = generateCacheKey(request);
-  await cacheStore.setAsync(key, response, ttl);
+  const key = generateCacheKey(request, tenantId);
+  await cacheStore.setAsync(key, response || '', ttl);
 }
 
 /**
  * 删除缓存
  */
-export function deleteCache(request: ChatCompletionRequest): void {
-  const key = generateCacheKey(request);
+export function deleteCache(request: ChatCompletionRequest, tenantId?: string): void {
+  const key = generateCacheKey(request, tenantId);
   cacheStore.delete(key);
 }
 

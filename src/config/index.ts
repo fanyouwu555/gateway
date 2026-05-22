@@ -318,11 +318,32 @@ export function getProviderForModel(model: string): string | undefined {
 }
 
 /**
- * 解析模型别名
+ * 解析模型别名（支持递归解析，带循环检测）
  */
 export function resolveModelAlias(alias: string): string {
   const config = getConfig();
-  return config.model_aliases?.[alias] || alias;
+  if (!config.model_aliases) return alias;
+
+  const visited = new Set<string>();
+  let current = alias;
+  const maxDepth = 5;
+
+  for (let i = 0; i < maxDepth; i++) {
+    if (visited.has(current)) {
+      writeLog('warn', 'Circular model alias detected', { alias, resolved: current });
+      return alias; // 发现循环，返回原始别名
+    }
+    visited.add(current);
+
+    const next = config.model_aliases[current];
+    if (!next || next === current) {
+      return current;
+    }
+    current = next;
+  }
+
+  writeLog('warn', 'Model alias resolution exceeded max depth', { alias, resolved: current });
+  return current;
 }
 
 /**

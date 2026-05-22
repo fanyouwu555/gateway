@@ -268,12 +268,14 @@ class RedisRateLimitStore implements IRateLimitStore {
 
 // 限流存储实例
 let rateLimitStore: IRateLimitStore | null = null;
+let adminRateLimitStore: IRateLimitStore | null = null;
 
 /**
  * 重置限流存储（用于测试隔离）
  */
 export function resetRateLimitStore(): void {
   rateLimitStore = null;
+  adminRateLimitStore = null;
 }
 
 /**
@@ -286,7 +288,25 @@ function useRedisRateLimit(): boolean {
 /**
  * 获取限流存储实例
  */
-async function getRateLimitStore(): Promise<IRateLimitStore> {
+async function getRateLimitStore(isAdmin = false): Promise<IRateLimitStore> {
+  if (isAdmin) {
+    if (!adminRateLimitStore) {
+      const config = getConfig();
+      // Admin 路由使用更宽松的限流（burst 翻倍）
+      const adminQps = config.rate_limit.qps * 2;
+      const adminBurst = config.rate_limit.burst * 2;
+
+      if (useRedisRateLimit()) {
+        const redisStore = new RedisRateLimitStore(adminQps, adminBurst);
+        await redisStore.connect();
+        adminRateLimitStore = redisStore;
+      } else {
+        adminRateLimitStore = new MemoryRateLimitStore(adminQps, adminBurst);
+      }
+    }
+    return adminRateLimitStore;
+  }
+
   if (!rateLimitStore) {
     const config = getConfig();
 
@@ -323,7 +343,20 @@ export async function rateLimitMiddleware(
     return;
   }
 
-  const store = await getRateLimitStore();
+  const isAdminPath = c.req.path.startsWith('/v1/tenants') ||
+    c.req.path.startsWith('/v1/config') ||
+    c.req.path.startsWith('/v1/plugins') ||
+    c.req.path.startsWith('/v1/usage') ||
+    c.req.path.startsWith('/v1/quota') ||
+    c.req.path.startsWith('/v1/cache') ||
+    c.req.path.startsWith('/v1/prompts') ||
+    c.req.path.startsWith('/v1/alerts') ||
+    c.req.path.startsWith('/v1/router') ||
+    c.req.path.startsWith('/v1/sessions') ||
+    c.req.path.startsWith('/v1/auth/verify');
+
+  const store = await getRateLimitStore(isAdminPath);
+  const limit = isAdminPath ? config.rate_limit.burst * 2 : config.rate_limit.burst;
 
   const allowed = await store.consume(c);
   const remaining = await store.getRemainingTokens(c);
@@ -331,7 +364,7 @@ export async function rateLimitMiddleware(
   if (allowed) {
     // 添加响应头
     c.res.headers.set('X-RateLimit-Remaining', String(remaining));
-    c.res.headers.set('X-RateLimit-Limit', String(config.rate_limit.burst));
+    c.res.headers.set('X-RateLimit-Limit', String(limit));
 
     await next();
   } else {

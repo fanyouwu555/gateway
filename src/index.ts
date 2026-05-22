@@ -18,6 +18,7 @@ import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
 import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection } from './middleware/websocket';
+import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { startAlertEngine } from './services/alert';
 
 // 创建 Hono 应用实例
@@ -54,6 +55,16 @@ async function startServer() {
   // 启动告警引擎
   startAlertEngine();
   writeLog('info', 'Alert engine started');
+
+  // 初始化配额存储（从 Redis 加载历史数据）
+  await initQuotaStore();
+
+  // 定期 flush 配额数据到 Redis（每 60 秒）
+  setInterval(() => {
+    flushQuotaStore().catch(() => {
+      // 忽略 flush 失败
+    });
+  }, 60000).unref();
 
   const server = createServer();
 

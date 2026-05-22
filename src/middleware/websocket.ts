@@ -7,9 +7,10 @@ import type { Context, Next } from 'hono';
 import type { WebSocket } from 'ws';
 import type { ChatCompletionRequest } from '../types';
 import { generateRequestId } from '../utils';
-import { getProviderForModel, getConfig } from '../config';
+import { getProviderForModel, getConfig, resolveModelAlias } from '../config';
 import { chatCompleteStream } from '../providers';
 import { writeLog } from '../utils/logger';
+import { checkQuota, recordUsage } from '../services/quota';
 
 /**
  * WebSocket 消息类型
@@ -553,7 +554,9 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
   if (!conn) return;
 
   try {
-    const model = request.model || conn.model;
+    // 解析模型别名
+    request.model = resolveModelAlias(request.model || conn.model);
+    const model = request.model;
     const providerName = getProviderForModel(model);
 
     if (!providerName) {
@@ -563,6 +566,20 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
           message: `No provider configured for model: ${model}`,
           type: 'invalid_request_error',
           code: 'no_provider_for_model',
+        },
+      });
+      return;
+    }
+
+    // 配额检查
+    const quotaCheck = checkQuota(conn.tenant_id);
+    if (!quotaCheck.allowed) {
+      wsManager.send(connectionId, {
+        type: 'error',
+        error: {
+          message: quotaCheck.reason || 'Quota exceeded',
+          type: 'rate_limit_error',
+          code: 'quota_exceeded',
         },
       });
       return;
@@ -578,6 +595,9 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     // 调用 Provider 流式 API
     // TODO: 将 abortController.signal 传递给 provider 实现流式取消
     const stream = await chatCompleteStream(providerName, request);
+
+    // 记录请求使用量（流式请求 token 数未知，记为 0）
+    recordUsage(conn.tenant_id, 0, 0);
 
     // 流式转发到 WebSocket
     const reader = stream.getReader();

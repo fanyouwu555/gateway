@@ -1,11 +1,13 @@
 /**
  * 配额管理服务
  * 监控和限制租户的资源使用
+ * 支持内存存储（默认）和 Redis 持久化（可选）
  */
 import type { TenantId } from '../types';
 import { getTenantUsage } from './metrics';
 import { getConfig } from '../config';
 import { writeLog } from '../utils/logger';
+import { createKVStore } from '../stores/factory';
 
 /**
  * 配额检查结果
@@ -19,7 +21,8 @@ export interface QuotaCheckResult {
 }
 
 /**
- * 配额存储（生产环境应使用数据库）
+ * 配额存储
+ * 支持内存存储 + 可选 Redis 持久化
  */
 class QuotaStore {
   private quotas = new Map<
@@ -37,6 +40,12 @@ class QuotaStore {
     TenantId,
     { daily_requests?: number; daily_tokens?: number; monthly_cost?: number }
   >();
+
+  private useRedis = false;
+
+  constructor() {
+    this.useRedis = process.env.QUOTA_STORAGE === 'redis';
+  }
 
   /**
    * 获取配额
@@ -74,6 +83,81 @@ class QuotaStore {
     quota.daily_requests += 1;
     quota.daily_tokens += tokens;
     quota.monthly_cost += cost;
+
+    // 异步持久化到 Redis（fire-and-forget）
+    if (this.useRedis) {
+      this.persist(tenantId).catch(() => {
+        // 忽略持久化失败
+      });
+    }
+  }
+
+  /**
+   * 将租户配额持久化到 Redis
+   */
+  private async persist(tenantId: TenantId): Promise<void> {
+    try {
+      const store = createKVStore('quota');
+      await store.connect();
+      const quota = this.quotas.get(tenantId);
+      if (quota) {
+        await store.set(`quota:${tenantId}`, JSON.stringify(quota));
+      }
+    } catch {
+      // 持久化失败不影响主流程
+    }
+  }
+
+  /**
+   * 从 Redis 加载租户配额
+   */
+  async loadFromStorage(): Promise<void> {
+    if (!this.useRedis) return;
+    try {
+      const store = createKVStore('quota');
+      await store.connect();
+      const keys = await store.keys('quota:*');
+      for (const key of keys) {
+        const tenantId = key.replace('quota:', '');
+        const data = await store.get(key);
+        if (data) {
+          try {
+            const quota = JSON.parse(data) as {
+              daily_requests: number;
+              daily_tokens: number;
+              monthly_cost: number;
+              last_reset: number;
+            };
+            this.quotas.set(tenantId, quota);
+          } catch {
+            // 忽略解析失败的条目
+          }
+        }
+      }
+      writeLog('info', 'Quota loaded from Redis', { count: keys.length });
+    } catch (err) {
+      writeLog('warn', 'Failed to load quota from Redis', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * 将所有配额 flush 到 Redis
+   */
+  async flushToStorage(): Promise<void> {
+    if (!this.useRedis) return;
+    try {
+      const store = createKVStore('quota');
+      await store.connect();
+      for (const [tenantId, quota] of this.quotas.entries()) {
+        await store.set(`quota:${tenantId}`, JSON.stringify(quota));
+      }
+    } catch (err) {
+      writeLog('warn', 'Failed to flush quota to Redis', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -123,10 +207,24 @@ class QuotaStore {
 let quotaStore = new QuotaStore();
 
 /**
+ * 初始化配额存储（可选从 Redis 加载）
+ */
+export async function initQuotaStore(): Promise<void> {
+  await quotaStore.loadFromStorage();
+}
+
+/**
  * 重置配额存储（用于测试隔离）
  */
 export function resetQuotaStore(): void {
   quotaStore = new QuotaStore();
+}
+
+/**
+ * 将配额数据 flush 到存储
+ */
+export async function flushQuotaStore(): Promise<void> {
+  await quotaStore.flushToStorage();
 }
 
 /**

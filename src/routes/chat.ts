@@ -70,10 +70,13 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     // 模板渲染后 messages 必定存在
     const req = request as unknown as import('../types').ChatCompletionRequest;
 
+    // 提前获取 tenantId，供缓存、配额等模块使用
+    const tenantId = c.get('tenant_id');
+
     // 0. 缓存检查（非流式请求）
     const config = getConfig();
     if (config.cache?.enabled && !req.stream) {
-      const cached = await getCache(req);
+      const cached = await getCache(req, tenantId);
       if (cached) {
         writeLog('debug', 'Cache hit', { model: req.model });
         c.set('cache_hit', true);
@@ -97,7 +100,6 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     }
 
     // 1.5. 配额检查
-    const tenantId = c.get('tenant_id');
     if (tenantId) {
       const quotaCheck = checkQuota(tenantId);
       if (!quotaCheck.allowed) {
@@ -194,7 +196,7 @@ async function handleChatCompletion(c: Context): Promise<Response> {
 
     // 6. 缓存响应（非流式请求）
     if (config.cache?.enabled && !processedReq.stream) {
-      setCache(processedReq, JSON.stringify(response)).catch((err) => {
+      setCache(processedReq, JSON.stringify(response), tenantId).catch((err) => {
         writeLog('warn', 'Failed to cache response', { error: err instanceof Error ? err.message : String(err) });
       });
     }
