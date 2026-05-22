@@ -11,6 +11,8 @@ import { getProviderForModel, getConfig, resolveModelAlias } from '../config';
 import { chatCompleteStream } from '../providers';
 import { writeLog } from '../utils/logger';
 import { checkQuota, recordUsage } from '../services/quota';
+import { runGuardrailPlugins, runRequestPlugins } from '../plugins';
+import { smartRoute, type RouterStrategy } from '../services/router';
 
 /**
  * WebSocket 消息类型
@@ -556,8 +558,60 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
   try {
     // 解析模型别名
     request.model = resolveModelAlias(request.model || conn.model);
-    const model = request.model;
-    const providerName = getProviderForModel(model);
+
+    // 创建轻量 mock Context 供插件使用
+    const mockCtx = {
+      get: (key: string) => {
+        if (key === 'tenant_id') return conn.tenant_id;
+        if (key === 'request_id') return connectionId;
+        return undefined;
+      },
+      set: () => {},
+      req: { header: () => undefined },
+    } as unknown as Context;
+
+    // 1. 运行 Guardrail 插件
+    const guardrailResult = await runGuardrailPlugins(mockCtx, request);
+    if (!guardrailResult.allowed) {
+      wsManager.send(connectionId, {
+        type: 'error',
+        error: {
+          message: guardrailResult.reasons?.join('; ') || 'Request blocked by guardrail',
+          type: 'invalid_request_error',
+          code: 'guardrail_blocked',
+        },
+      });
+      return;
+    }
+
+    // 2. 运行请求插件（转换/增强请求）
+    let processedReq: ChatCompletionRequest;
+    try {
+      processedReq = await runRequestPlugins(mockCtx, request);
+    } catch (pluginErr) {
+      writeLog('warn', '[WebSocket] Request plugin failed, using original request', {
+        error: pluginErr instanceof Error ? pluginErr.message : String(pluginErr),
+      });
+      processedReq = request;
+    }
+
+    const model = processedReq.model;
+
+    // 3. 智能路由决策（WebSocket 暂不支持策略选择，使用默认路由）
+    let providerName: string | undefined;
+    const strategy = (processedReq as unknown as Record<string, unknown>).routing_strategy as RouterStrategy | undefined;
+    if (strategy && ['cost', 'latency', 'quality', 'balance'].includes(strategy)) {
+      const decision = smartRoute(processedReq, strategy);
+      providerName = decision.provider;
+      writeLog('info', '[WebSocket] SmartRouter selected provider', {
+        model,
+        provider: providerName,
+        strategy,
+        reason: decision.reason,
+      });
+    } else {
+      providerName = getProviderForModel(model);
+    }
 
     if (!providerName) {
       wsManager.send(connectionId, {
@@ -571,7 +625,7 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
       return;
     }
 
-    // 配额检查
+    // 4. 配额检查
     const quotaCheck = checkQuota(conn.tenant_id);
     if (!quotaCheck.allowed) {
       wsManager.send(connectionId, {
@@ -596,13 +650,11 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     // TODO: 将 abortController.signal 传递给 provider 实现流式取消
     const stream = await chatCompleteStream(providerName, request);
 
-    // 记录请求使用量（流式请求 token 数未知，记为 0）
-    recordUsage(conn.tenant_id, 0, 0);
-
     // 流式转发到 WebSocket
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
 
     try {
       // eslint-disable-next-line no-constant-condition
@@ -631,6 +683,10 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
             const jsonStr = trimmed.slice(6);
             try {
               const chunk = JSON.parse(jsonStr);
+              // 捕获 usage 信息（部分 provider 在最后一个 chunk 前发送）
+              if (chunk.usage) {
+                usage = chunk.usage;
+              }
               wsManager.send(connectionId, {
                 type: 'chat.completion.chunk',
                 id: connectionId,
@@ -646,6 +702,23 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     } finally {
       reader.releaseLock();
       wsManager.setAbortController(connectionId, null);
+
+      // 记录真实使用量（如果 provider 返回了 usage）
+      if (usage) {
+        const totalTokens = usage.total_tokens || 0;
+        const config = getConfig();
+        const pricing = config.pricing?.[model];
+        let cost = 0;
+        if (pricing) {
+          const inputTokens = usage.prompt_tokens || 0;
+          const outputTokens = usage.completion_tokens || 0;
+          cost = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
+        }
+        recordUsage(conn.tenant_id, totalTokens, cost);
+      } else {
+        // Provider 未返回 usage，记录 0 tokens（保持兼容性）
+        recordUsage(conn.tenant_id, 0, 0);
+      }
     }
 
   } catch (e) {

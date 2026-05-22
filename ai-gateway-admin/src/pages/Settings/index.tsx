@@ -70,7 +70,6 @@ const Settings: React.FC = () => {
             healthCheckInterval: data.failover?.healthCheckInterval ?? 60000,
           },
         })
-        message.success('配置已加载')
       }
     } catch (error) {
       message.error('加载配置失败')

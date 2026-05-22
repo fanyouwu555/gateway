@@ -47,6 +47,8 @@ export interface TenantLimits {
 class TenantStore {
   private tenants = new Map<TenantId, TenantConfig>();
   private apiKeys = new Map<string, { key: string; tenant_id: TenantId; meta: IApiKeyMeta }>();
+  // 前缀索引：plaintext key 前 10 字符 → hashed key 列表，加速 verifyApiKey
+  private keyPrefixIndex = new Map<string, string[]>();
 
   constructor() {
     // 创建默认租户
@@ -161,15 +163,38 @@ class TenantStore {
     };
 
     this.apiKeys.set(hashedKey, { key: hashedKey, tenant_id: tenantId, meta });
+    // 更新前缀索引
+    const prefix = this.getKeyPrefix(plaintextKey);
+    const list = this.keyPrefixIndex.get(prefix) || [];
+    list.push(hashedKey);
+    this.keyPrefixIndex.set(prefix, list);
     // 返回明文 key（调用方需在创建时保存，之后无法再次获取）
     return { ...meta, key: plaintextKey };
   }
 
   /**
-   * 通过哈希值查找 API Key 记录（线性扫描）
-   * 因为 scrypt 哈希非确定性，无法直接 get
+   * 提取 plaintext key 的前缀用于索引
+   */
+  private getKeyPrefix(plaintextKey: string): string {
+    return plaintextKey.slice(0, 10);
+  }
+
+  /**
+   * 通过哈希值查找 API Key 记录
+   * 优先使用前缀索引，减少 scrypt 验证次数
    */
   private findApiKeyByPlaintext(plaintextKey: string): { key: string; tenant_id: TenantId; meta: IApiKeyMeta } | undefined {
+    const prefix = this.getKeyPrefix(plaintextKey);
+    const candidates = this.keyPrefixIndex.get(prefix);
+    if (candidates) {
+      for (const hashedKey of candidates) {
+        const record = this.apiKeys.get(hashedKey);
+        if (record && verifyApiKey(plaintextKey, record.key)) {
+          return record;
+        }
+      }
+    }
+    // 防御性回退：索引未命中时全量扫描（应对数据不一致）
     for (const record of this.apiKeys.values()) {
       if (verifyApiKey(plaintextKey, record.key)) {
         return record;
@@ -206,14 +231,34 @@ class TenantStore {
   }
 
   /**
+   * 从前缀索引中移除 hashed key
+   */
+  private removeFromPrefixIndex(hashedKey: string): void {
+    for (const [prefix, keys] of this.keyPrefixIndex.entries()) {
+      const idx = keys.indexOf(hashedKey);
+      if (idx >= 0) {
+        keys.splice(idx, 1);
+        if (keys.length === 0) {
+          this.keyPrefixIndex.delete(prefix);
+        }
+        break;
+      }
+    }
+  }
+
+  /**
    * 删除API Key（支持明文输入）
    */
   deleteApiKey(key: string): boolean {
     // 先尝试直接删除（如果 key 已经是哈希值）
-    if (this.apiKeys.delete(key)) return true;
+    if (this.apiKeys.delete(key)) {
+      this.removeFromPrefixIndex(key);
+      return true;
+    }
     // 否则通过 verifyApiKey 查找并删除
     const record = this.findApiKeyByPlaintext(key);
     if (record) {
+      this.removeFromPrefixIndex(record.key);
       return this.apiKeys.delete(record.key);
     }
     return false;

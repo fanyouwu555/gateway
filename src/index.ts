@@ -17,7 +17,7 @@ import { initSessionStore } from './services/history';
 import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
 import { writeLog } from './utils/logger';
-import { initWebSocket, handleWSConnection } from './middleware/websocket';
+import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { startAlertEngine } from './services/alert';
 
@@ -226,6 +226,8 @@ async function startServer() {
   // 优雅关闭
   const handleShutdown = (signal: string) => {
     writeLog('info', 'Server shutting down', { signal });
+    // 清理所有 WebSocket 连接
+    resetWebSocketConnections();
     server.close(() => {
       writeLog('info', 'HTTP server closed');
       process.exit(0);
