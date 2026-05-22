@@ -60,6 +60,13 @@ export interface ApiKey {
   name: string
   created_at: number
   expires_at?: number
+  is_admin?: boolean
+  allowed_models?: string[]
+  rate_limit_qps?: number
+  rate_limit_burst?: number
+  monthly_budget?: number
+  max_tokens_per_request?: number
+  metadata?: Record<string, string>
 }
 
 // ============ Provider ============

@@ -24,6 +24,8 @@ interface RequestMetrics {
   status_code: number;
   tokens: TokenUsage;
   cost?: number;
+  key_hash?: string;
+  key_metadata?: Record<string, string>;
 }
 
 /**
@@ -197,7 +199,9 @@ export function recordMetric(
   model: string,
   duration_ms: number,
   status_code: number,
-  tokens: TokenUsage
+  tokens: TokenUsage,
+  key_hash?: string,
+  key_metadata?: Record<string, string>
 ): RequestMetrics {
   const metric: RequestMetrics = {
     request_id: requestId,
@@ -208,6 +212,8 @@ export function recordMetric(
     duration_ms,
     status_code,
     tokens,
+    key_hash,
+    key_metadata,
   };
 
   // 计算费用
@@ -280,6 +286,34 @@ export function getTenantUsage(tenantId: TenantId): {
     total_tokens: totalTokens,
     total_cost: totalCost,
     avg_duration_ms: Math.round(avgDuration),
+  };
+}
+
+/**
+ * 获取特定 API Key 的使用统计
+ */
+export function getKeyUsage(keyHash: string): {
+  total_requests: number;
+  total_tokens: number;
+  total_cost: number;
+  last_used: number | null;
+} {
+  const metrics = metricsStore.getAll().filter((m) => m.key_hash === keyHash);
+
+  if (metrics.length === 0) {
+    return { total_requests: 0, total_tokens: 0, total_cost: 0, last_used: null };
+  }
+
+  const totalRequests = metrics.length;
+  const totalTokens = metrics.reduce((sum, m) => sum + m.tokens.total_tokens, 0);
+  const totalCost = metrics.reduce((sum, m) => sum + (m.cost || 0), 0);
+  const lastUsed = metrics.reduce((max, m) => Math.max(max, m.timestamp), 0);
+
+  return {
+    total_requests: totalRequests,
+    total_tokens: totalTokens,
+    total_cost: Math.round(totalCost * 1000) / 1000,
+    last_used: lastUsed,
   };
 }
 

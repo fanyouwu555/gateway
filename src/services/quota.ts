@@ -35,6 +35,9 @@ class QuotaStore {
     }
   >();
 
+  // 按 Key 维度的月度花费追踪
+  private keyMonthlyCosts = new Map<string, { cost: number; last_reset: number }>();
+
   // 单独存储自定义限制
   private limits = new Map<
     TenantId,
@@ -77,12 +80,23 @@ class QuotaStore {
   increment(
     tenantId: TenantId,
     tokens: number,
-    cost: number
+    cost: number,
+    keyHash?: string
   ): void {
     const quota = this.get(tenantId);
     quota.daily_requests += 1;
     quota.daily_tokens += tokens;
     quota.monthly_cost += cost;
+
+    // 按 Key 维度追踪月度花费
+    if (keyHash) {
+      let keyCost = this.keyMonthlyCosts.get(keyHash);
+      if (!keyCost) {
+        keyCost = { cost: 0, last_reset: Date.now() };
+        this.keyMonthlyCosts.set(keyHash, keyCost);
+      }
+      keyCost.cost += cost;
+    }
 
     // 异步持久化到 Redis（fire-and-forget）
     if (this.useRedis) {
@@ -201,6 +215,27 @@ class QuotaStore {
   } | null {
     return this.limits.get(tenantId) || null;
   }
+
+  /**
+   * 检查 Key 级月度预算
+   */
+  checkKeyBudget(keyHash: string, monthlyBudget: number): { allowed: boolean; current_cost: number; reason?: string } {
+    const keyCost = this.keyMonthlyCosts.get(keyHash);
+    const currentCost = keyCost?.cost || 0;
+
+    if (currentCost >= monthlyBudget) {
+      return { allowed: false, current_cost: currentCost, reason: 'Key monthly budget exceeded' };
+    }
+
+    return { allowed: true, current_cost: currentCost };
+  }
+
+  /**
+   * 获取 Key 的月度花费
+   */
+  getKeyCost(keyHash: string): number {
+    return this.keyMonthlyCosts.get(keyHash)?.cost || 0;
+  }
 }
 
 // 单例
@@ -306,9 +341,24 @@ export function checkQuota(tenantId: TenantId): QuotaCheckResult {
 export function recordUsage(
   tenantId: TenantId,
   tokens: number,
-  cost: number
+  cost: number,
+  keyHash?: string
 ): void {
-  quotaStore.increment(tenantId, tokens, cost);
+  quotaStore.increment(tenantId, tokens, cost, keyHash);
+}
+
+/**
+ * 检查 Key 级月度预算
+ */
+export function checkKeyQuota(keyHash: string, monthlyBudget: number): { allowed: boolean; current_cost: number; reason?: string } {
+  return quotaStore.checkKeyBudget(keyHash, monthlyBudget);
+}
+
+/**
+ * 获取 Key 的月度花费
+ */
+export function getKeyCost(keyHash: string): number {
+  return quotaStore.getKeyCost(keyHash);
 }
 
 /**

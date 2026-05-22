@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { loggerMiddleware } from './middleware/logger';
 import { authMiddleware } from './middleware/auth';
+import { virtualKeyMiddleware } from './middleware/virtual-key';
 import { rateLimitMiddleware } from './middleware/ratelimit';
 import { metricsMiddleware, metricsHandler } from './middleware/metrics';
 import chatRouter from './routes/chat';
@@ -93,6 +94,7 @@ export function createApp(): Hono {
 
   // ===== 受保护路由（需要 auth + ratelimit） =====
   protectedApi.use('*', authMiddleware);
+  protectedApi.use('*', virtualKeyMiddleware);
   protectedApi.use('*', rateLimitMiddleware);
 
   // 注册路由处理器

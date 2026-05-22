@@ -16,7 +16,7 @@ import { runGuardrailPlugins, runRequestPlugins, runResponsePlugins } from '../p
 import { getCache, setCache } from '../services/cache';
 import { getConfig } from '../config';
 import { templateToMessages } from '../services/prompt';
-import { checkQuota, recordUsage } from '../services/quota';
+import { checkQuota, recordUsage, checkKeyQuota } from '../services/quota';
 
 const chatRouter = new Hono();
 
@@ -72,6 +72,42 @@ async function handleChatCompletion(c: Context): Promise<Response> {
 
     // 提前获取 tenantId，供缓存、配额等模块使用
     const tenantId = c.get('tenant_id');
+
+    // 虚拟 Key 策略检查：允许的模型列表
+    const keyAllowedModels = c.get('key_allowed_models') as string[] | undefined;
+    if (keyAllowedModels && keyAllowedModels.length > 0 && !keyAllowedModels.includes(req.model)) {
+      return c.json({
+        error: {
+          message: `Model '${req.model}' is not allowed by this API key. Allowed: ${keyAllowedModels.join(', ')}`,
+          type: 'invalid_request_error',
+          code: 'model_not_allowed',
+        },
+      }, 403);
+    }
+
+    // 虚拟 Key 策略检查：月度预算
+    const keyMonthlyBudget = c.get('key_monthly_budget') as number | undefined;
+    if (keyMonthlyBudget !== undefined) {
+      const keyHash = c.get('key_hash') as string | undefined;
+      if (keyHash) {
+        const budgetCheck = checkKeyQuota(keyHash, keyMonthlyBudget);
+        if (!budgetCheck.allowed) {
+          return c.json({
+            error: {
+              message: budgetCheck.reason || 'API key monthly budget exceeded',
+              type: 'rate_limit_error',
+              code: 'budget_exceeded',
+            },
+          }, 429);
+        }
+      }
+    }
+
+    // 虚拟 Key 策略：clamp max_tokens
+    const keyMaxTokens = c.get('key_max_tokens_per_request') as number | undefined;
+    if (keyMaxTokens !== undefined && (req.max_tokens === undefined || req.max_tokens > keyMaxTokens)) {
+      req.max_tokens = keyMaxTokens;
+    }
 
     // 0. 缓存检查（非流式请求）
     const config = getConfig();
@@ -191,7 +227,8 @@ async function handleChatCompletion(c: Context): Promise<Response> {
         const outputTokens = response.usage.completion_tokens || 0;
         cost = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
       }
-      recordUsage(tenantId, response.usage.total_tokens || 0, cost);
+      const keyHash = c.get('key_hash') as string | undefined;
+      recordUsage(tenantId, response.usage.total_tokens || 0, cost, keyHash);
     }
 
     // 6. 缓存响应（非流式请求）

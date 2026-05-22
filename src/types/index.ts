@@ -192,6 +192,14 @@ export interface IApiKeyMeta {
     daily_requests?: number;
     daily_tokens?: number;
   };
+
+  // 虚拟 Key 策略（可选 — 现有 Key 不受影响）
+  allowed_models?: string[];             // 允许的模型列表，空/不设 = 不限制
+  rate_limit_qps?: number;               // 该 Key 独立的 QPS
+  rate_limit_burst?: number;             // 该 Key 独立的突发容量
+  monthly_budget?: number;               // 月度预算上限（USD）
+  max_tokens_per_request?: number;       // 单次请求最大 token 数
+  metadata?: Record<string, string>;     // 自定义标签
 }
 
 /** 鉴权结果 */

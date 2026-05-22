@@ -38,6 +38,8 @@ import {
   getTenantApiKeys,
   createTenantApiKey,
   deleteTenantApiKey,
+  findTenantApiKeyByHash,
+  updateTenantApiKeyPolicy,
 } from '../services/tenant';
 import { getWebSocketStats, cleanWebSocketConnections } from '../middleware/websocket';
 import {
@@ -54,8 +56,9 @@ import {
   setPluginEnabled,
 } from '../plugins';
 import { loadPluginInSandbox } from '../plugins/loader';
-import { configUpdateSchema, tenantConfigSchema, tenantUpdateSchema, createApiKeySchema } from '../validation';
+import { configUpdateSchema, tenantConfigSchema, tenantUpdateSchema, createApiKeySchema, updateKeyPolicySchema } from '../validation';
 import { requireAdmin } from '../middleware/auth';
+import { getKeyUsage } from '../services/metrics';
 
 const adminRouter = new Hono();
 adminRouter.use('*', requireAdmin);
@@ -332,7 +335,15 @@ adminRouter.post('/v1/tenants/:id/keys', async (c: Context) => {
       },
     }, 400);
   }
-  const key = createTenantApiKey(tenantId, parsed.data.name, parsed.data.expires_at);
+  const { name, expires_at, allowed_models, rate_limit_qps, rate_limit_burst, monthly_budget, max_tokens_per_request, metadata } = parsed.data;
+  const key = createTenantApiKey(tenantId, name, expires_at, {
+    allowed_models,
+    rate_limit_qps,
+    rate_limit_burst,
+    monthly_budget,
+    max_tokens_per_request,
+    metadata,
+  });
   if (!key) {
     return c.json({ error: { message: 'Failed to create API key', type: 'invalid_request_error' } }, 400);
   }
@@ -346,6 +357,37 @@ adminRouter.delete('/v1/keys/:key', (c: Context) => {
     return c.json({ error: { message: 'API key not found', type: 'invalid_request_error' } }, 404);
   }
   return c.json({ deleted: true });
+});
+
+// 更新 API Key 策略（通过哈希值定位）
+adminRouter.put('/v1/tenants/:id/keys/:keyHash', async (c: Context) => {
+  const keyHash = c.req.param('keyHash')!;
+  const parsed = updateKeyPolicySchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({
+      error: {
+        message: parsed.error.errors[0]?.message || 'Invalid key policy',
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+      },
+    }, 400);
+  }
+  const updated = updateTenantApiKeyPolicy(keyHash, parsed.data);
+  if (!updated) {
+    return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+  return c.json(updated);
+});
+
+// 获取 API Key 的使用统计
+adminRouter.get('/v1/tenants/:id/keys/:keyHash/usage', (c: Context) => {
+  const keyHash = c.req.param('keyHash')!;
+  const keyMeta = findTenantApiKeyByHash(keyHash);
+  if (!keyMeta) {
+    return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+  const usage = getKeyUsage(keyHash);
+  return c.json({ key: keyMeta, usage });
 });
 
 adminRouter.put('/v1/tenants/:id', async (c: Context) => {

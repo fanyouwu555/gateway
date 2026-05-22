@@ -140,8 +140,14 @@ class TenantStore {
   /**
    * 为租户创建API Key
    * Key 以哈希形式存储，与认证中间件的 verifyApiKey() 兼容
+   * 支持传入虚拟 Key 策略字段（allowed_models / rate_limit 等）
    */
-  createApiKey(tenantId: TenantId, name: string, expiresAt?: number): IApiKeyMeta | null {
+  createApiKey(
+    tenantId: TenantId,
+    name: string,
+    expiresAt?: number,
+    policy?: Pick<IApiKeyMeta, 'allowed_models' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
+  ): IApiKeyMeta | null {
     const tenant = this.tenants.get(tenantId);
     if (!tenant) return null;
 
@@ -151,7 +157,7 @@ class TenantStore {
       return null;
     }
 
-    const plaintextKey = `sk-${tenantId.slice(0, 8)}-${Date.now()}-${generateSecureRandomString(12)}`;
+    const plaintextKey = `sk-v1-${tenantId.slice(0, 8)}-${Date.now()}-${generateSecureRandomString(12)}`;
     // 存储哈希值，与 auth middleware 的 verifyApiKey() 兼容
     const hashedKey = hashApiKey(plaintextKey);
     const meta: IApiKeyMeta = {
@@ -160,6 +166,7 @@ class TenantStore {
       name,
       created_at: Date.now(),
       expires_at: expiresAt,
+      ...policy,
     };
 
     this.apiKeys.set(hashedKey, { key: hashedKey, tenant_id: tenantId, meta });
@@ -244,6 +251,36 @@ class TenantStore {
         break;
       }
     }
+  }
+
+  /**
+   * 通过哈希值查找 Key 记录（供管理 API 使用）
+   */
+  findApiKeyByHash(hash: string): { key: string; tenant_id: TenantId; meta: IApiKeyMeta } | undefined {
+    return this.apiKeys.get(hash);
+  }
+
+  /**
+   * 更新 API Key 策略（通过哈希值定位，也支持明文输入）
+   */
+  updateApiKeyPolicy(
+    key: string,
+    updates: Partial<Pick<IApiKeyMeta, 'name' | 'expires_at' | 'allowed_models' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>>
+  ): IApiKeyMeta | null {
+    // 先尝试直接按哈希值查找
+    let record = this.apiKeys.get(key);
+    if (!record) {
+      // 再尝试通过明文查找
+      record = this.findApiKeyByPlaintext(key);
+    }
+    if (!record) return null;
+
+    const newMeta: IApiKeyMeta = {
+      ...record.meta,
+      ...updates,
+    };
+    this.apiKeys.set(record.key, { ...record, meta: newMeta });
+    return newMeta;
   }
 
   /**
@@ -371,10 +408,32 @@ export function listTenants(): TenantConfig[] {
 }
 
 /**
- * 创建租户API Key
+ * 创建租户API Key（支持虚拟 Key 策略字段）
  */
-export function createTenantApiKey(tenantId: TenantId, name: string, expiresAt?: number): IApiKeyMeta | null {
-  return tenantStore.createApiKey(tenantId, name, expiresAt);
+export function createTenantApiKey(
+  tenantId: TenantId,
+  name: string,
+  expiresAt?: number,
+  policy?: Pick<IApiKeyMeta, 'allowed_models' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
+): IApiKeyMeta | null {
+  return tenantStore.createApiKey(tenantId, name, expiresAt, policy);
+}
+
+/**
+ * 通过哈希值查找 API Key 元数据
+ */
+export function findTenantApiKeyByHash(hash: string): IApiKeyMeta | undefined {
+  return tenantStore.findApiKeyByHash(hash)?.meta;
+}
+
+/**
+ * 更新 API Key 策略（通过哈希值定位）
+ */
+export function updateTenantApiKeyPolicy(
+  hash: string,
+  updates: Parameters<typeof tenantStore.updateApiKeyPolicy>[1]
+): IApiKeyMeta | null {
+  return tenantStore.updateApiKeyPolicy(hash, updates);
 }
 
 /**

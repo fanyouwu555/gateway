@@ -58,34 +58,27 @@ class MemoryRateLimitStore implements IRateLimitStore {
   }
 
   /**
-   * 补充令牌
-   */
-  private refill(bucket: TokenBucket): void {
-    const now = Date.now();
-    const timePassed = (now - bucket.lastRefill) / 1000;
-    const tokensToAdd = timePassed * this.qps;
-
-    bucket.tokens = Math.min(this.burst, bucket.tokens + tokensToAdd);
-    bucket.lastRefill = now;
-  }
-
-  /**
    * 尝试消费令牌
    */
   async consume(c: Context, tokens = 1): Promise<boolean> {
     const key = this.getClientKey(c);
-    let bucket = this.buckets.get(key);
+
+    // Key 级限流覆盖：当 context 中有 key 级别的 QPS/burst 时，使用独立 bucket
+    const keyQps = c.get('key_rate_limit_qps') as number | undefined;
+    const keyBurst = c.get('key_rate_limit_burst') as number | undefined;
+    const actualKey = keyQps ? `key-v:${key}` : key;
+    let bucket = this.buckets.get(actualKey || key);
 
     if (!bucket) {
       bucket = {
-        tokens: this.burst,
+        tokens: keyBurst ?? this.burst,
         lastRefill: Date.now(),
       };
-      this.buckets.set(key, bucket);
+      this.buckets.set(actualKey || key, bucket);
     }
 
-    // 补充令牌
-    this.refill(bucket);
+    // 补充令牌（使用 Key 级 QPS 或全局 QPS）
+    this.refillWith(bucket, keyQps ?? this.qps, keyBurst ?? this.burst);
 
     // 检查令牌是否足够
     if (bucket.tokens >= tokens) {
@@ -97,18 +90,33 @@ class MemoryRateLimitStore implements IRateLimitStore {
   }
 
   /**
+   * 补充令牌（带 QPS/Burst 参数）
+   */
+  private refillWith(bucket: TokenBucket, qps: number, burst: number): void {
+    const now = Date.now();
+    const timePassed = (now - bucket.lastRefill) / 1000;
+    const tokensToAdd = timePassed * qps;
+
+    bucket.tokens = Math.min(burst, bucket.tokens + tokensToAdd);
+    bucket.lastRefill = now;
+  }
+
+  /**
    * 获取剩余令牌数（用于调试）
    */
   async getRemainingTokens(c: Context): Promise<number> {
     const key = this.getClientKey(c);
-    const bucket = this.buckets.get(key);
+    const keyQps = c.get('key_rate_limit_qps') as number | undefined;
+    const keyBurst = c.get('key_rate_limit_burst') as number | undefined;
+    const actualKey = keyBurst ? `key-v:${key}` : key;
+    const bucket = this.buckets.get(actualKey);
 
     if (!bucket) {
-      return this.burst;
+      return keyBurst ?? this.burst;
     }
 
     const bucketCopy = { ...bucket };
-    this.refill(bucketCopy);
+    this.refillWith(bucketCopy, keyQps ?? this.qps, keyBurst ?? this.burst);
     return Math.floor(bucketCopy.tokens);
   }
 

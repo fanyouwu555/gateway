@@ -76,7 +76,9 @@ export async function loggerMiddleware(c: Context, next: Next): Promise<void> {
           prompt_tokens: promptTokens,
           completion_tokens: completionTokens,
           total_tokens: promptTokens + completionTokens,
-        }
+        },
+        c.get('key_hash'),
+        c.get('key_metadata')
       );
     } catch (err) {
       writeLog('warn', 'Failed to record metric', {

@@ -108,6 +108,23 @@ export const tenantUpdateSchema = z.object({
 export const createApiKeySchema = z.object({
   name: z.string().min(1, 'API key name is required'),
   expires_at: z.number().int().positive().optional(),
+  allowed_models: z.array(z.string()).optional(),
+  rate_limit_qps: z.number().positive().optional(),
+  rate_limit_burst: z.number().positive().optional(),
+  monthly_budget: z.number().positive().optional(),
+  max_tokens_per_request: z.number().int().positive().optional(),
+  metadata: z.record(z.string()).optional(),
+});
+
+export const updateKeyPolicySchema = z.object({
+  name: z.string().min(1).optional(),
+  expires_at: z.number().int().positive().optional(),
+  allowed_models: z.array(z.string()).optional(),
+  rate_limit_qps: z.number().positive().optional(),
+  rate_limit_burst: z.number().positive().optional(),
+  monthly_budget: z.number().positive().optional(),
+  max_tokens_per_request: z.number().int().positive().optional(),
+  metadata: z.record(z.string()).optional(),
 });
 
 // ===== Gateway Config Update =====

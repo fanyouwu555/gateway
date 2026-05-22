@@ -100,8 +100,30 @@ export async function getTenantKeys(tenantId: string) {
   return api.get(`/v1/tenants/${tenantId}/keys`)
 }
 
-export async function createTenantKey(tenantId: string, data: { name: string; expires_at?: number }) {
+export async function createTenantKey(tenantId: string, data: {
+  name: string
+  expires_at?: number
+  allowed_models?: string[]
+  rate_limit_qps?: number
+  rate_limit_burst?: number
+  monthly_budget?: number
+  max_tokens_per_request?: number
+  metadata?: Record<string, string>
+}) {
   return api.post(`/v1/tenants/${tenantId}/keys`, data)
+}
+
+export async function updateKeyPolicy(tenantId: string, keyHash: string, data: {
+  name?: string
+  expires_at?: number
+  allowed_models?: string[]
+  rate_limit_qps?: number
+  rate_limit_burst?: number
+  monthly_budget?: number
+  max_tokens_per_request?: number
+  metadata?: Record<string, string>
+}) {
+  return api.put(`/v1/tenants/${tenantId}/keys/${encodeURIComponent(keyHash)}`, data)
 }
 
 export async function deleteApiKey(key: string) {
