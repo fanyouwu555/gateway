@@ -35,6 +35,7 @@ jest.mock('../../src/config', () => ({
     };
     return config[name];
   },
+  resolveModelAlias: jest.fn((alias: string) => alias),
 }));
 
 describe('LoadBalanceManager', () => {

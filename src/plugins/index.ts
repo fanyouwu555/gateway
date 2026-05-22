@@ -9,7 +9,7 @@ import { writeLog } from '../utils/logger';
 /**
  * 插件类型
  */
-type PluginType = 'request' | 'response' | 'transform' | 'guardrail' | 'custom';
+export type PluginType = 'request' | 'response' | 'transform' | 'guardrail' | 'custom';
 
 /**
  * 插件生命周期
@@ -18,7 +18,7 @@ type PluginType = 'request' | 'response' | 'transform' | 'guardrail' | 'custom';
 /**
  * 插件配置
  */
-interface PluginConfig {
+export interface PluginConfig {
   id: string;
   name: string;
   type: PluginType;
@@ -30,35 +30,35 @@ interface PluginConfig {
 /**
  * 通用插件接口
  */
-interface IPlugin {
+export interface IPlugin {
   config: PluginConfig;
 }
 
 /**
  * 请求拦截器插件
  */
-interface RequestPlugin extends IPlugin {
+export interface RequestPlugin extends IPlugin {
   onRequest: (c: Context, request: ChatCompletionRequest) => Promise<ChatCompletionRequest | null>;
 }
 
 /**
  * 响应拦截器插件
  */
-interface ResponsePlugin extends IPlugin {
+export interface ResponsePlugin extends IPlugin {
   onResponse: (c: Context, response: ChatCompletionResponse) => Promise<ChatCompletionResponse | null>;
 }
 
 /**
  * 转换插件
  */
-interface TransformPlugin extends IPlugin {
+export interface TransformPlugin extends IPlugin {
   transform: (c: Context, data: unknown) => Promise<unknown>;
 }
 
 /**
  * Guardrail 插件
  */
-interface GuardrailPlugin extends IPlugin {
+export interface GuardrailPlugin extends IPlugin {
   check: (c: Context, data: unknown) => Promise<{ allowed: boolean; reason?: string }>;
 }
 

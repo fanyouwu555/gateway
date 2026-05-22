@@ -15,6 +15,10 @@
 - 📦 **会话管理** - 自动上下文管理，支持多轮对话
 - 📈 **用量统计** - 按租户、按 Provider、按模型的细粒度统计
 - 🔌 **WebSocket 支持** - 实时流式通信
+- 📝 **提示词模板** - 支持 `{{var}}` 变量替换，预设常用模板
+- 🚨 **告警引擎** - 基于阈值的自动告警，支持 Webhook 通知
+- 🔗 **模型别名** - 自定义模型名映射，简化调用
+- ⚡ **连接池优化** - HTTP Keep-Alive + 连接池，提升吞吐量
 
 ## 🏗️ 架构概览
 
@@ -199,6 +203,15 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 | `cache.enabled` | `true` | 是否启用缓存 |
 | `cache.ttl` | 3600000 | 缓存 TTL (毫秒) |
 | `failover.enabled` | `false` | 是否启用故障转移 |
+| `model_aliases` | `{}` | 模型别名映射 |
+
+### 环境变量
+
+| 变量 | 默认值 | 描述 |
+|---|---|---|
+| `HTTP_POOL_SIZE` | `100` | 每个目标地址最大连接数 |
+| `HTTP_KEEP_ALIVE` | `true` | 是否启用 HTTP Keep-Alive |
+| `HTTP_KEEP_ALIVE_TIMEOUT` | `60000` | Keep-Alive 超时 (毫秒) |
 
 ## 📊 监控指标
 

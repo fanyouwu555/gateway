@@ -11,6 +11,7 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../types';
+import { fetchWithAgent } from '../utils/http-client';
 
 export abstract class BaseProvider implements IProvider {
   abstract name: string;
@@ -44,7 +45,7 @@ export abstract class BaseProvider implements IProvider {
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await fetchWithAgent(endpoint, {
         ...options,
         signal: controller.signal,
       });

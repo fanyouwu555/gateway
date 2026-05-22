@@ -23,6 +23,7 @@ jest.mock('../../src/config', () => {
         ],
       },
     }),
+    resolveModelAlias: jest.fn((alias: string) => alias),
   };
 });
 

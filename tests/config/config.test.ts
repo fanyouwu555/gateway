@@ -1,7 +1,7 @@
 /**
  * 配置管理测试
  */
-import { getConfig, getProviderConfig, getRoutingStrategy, getProviderForModel, reloadConfig } from '../../src/../src/config/index';
+import { getConfig, getProviderConfig, getRoutingStrategy, getProviderForModel, reloadConfig, resolveModelAlias, setConfig } from '../../src/../src/config/index';
 
 // 测试环境变量
 const originalEnv = process.env;
@@ -76,6 +76,19 @@ describe('Config', () => {
     it('should reload configuration', () => {
       const config = reloadConfig();
       expect(config).toBeDefined();
+    });
+  });
+
+  describe('resolveModelAlias', () => {
+    it('should return original name when no alias exists', () => {
+      const resolved = resolveModelAlias('gpt-4o');
+      expect(resolved).toBe('gpt-4o');
+    });
+
+    it('should resolve alias to actual model name', () => {
+      setConfig({ model_aliases: { fast: 'gpt-4o-mini', smart: 'gpt-4o' } });
+      expect(resolveModelAlias('fast')).toBe('gpt-4o-mini');
+      expect(resolveModelAlias('smart')).toBe('gpt-4o');
     });
   });
 });

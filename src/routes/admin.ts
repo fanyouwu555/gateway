@@ -18,7 +18,15 @@ import {
 import { getQuotaStatus } from '../services/quota';
 import { getCacheStats, cleanCache } from '../services/cache';
 import { getSessionStats, cleanSessions } from '../services/history';
-import { listTemplates } from '../services/prompt';
+import {
+  listTemplates,
+  getTemplate,
+  createTemplate,
+  updateTemplate,
+  deleteTemplate,
+  renderTemplate,
+  parseTemplate,
+} from '../services/prompt';
 import { getRouterStatus } from '../services/router';
 import {
   listTenants,
@@ -32,7 +40,20 @@ import {
   deleteTenantApiKey,
 } from '../services/tenant';
 import { getWebSocketStats, cleanWebSocketConnections } from '../middleware/websocket';
-import { listPlugins } from '../plugins';
+import {
+  listAlertRules,
+  addAlertRule,
+  removeAlertRule,
+  setAlertEnabled,
+  evaluateAlerts,
+} from '../services/alert';
+import {
+  listPlugins,
+  registerPlugin,
+  unregisterPlugin,
+  setPluginEnabled,
+} from '../plugins';
+import { loadPluginInSandbox } from '../plugins/loader';
 import { configUpdateSchema, tenantConfigSchema, tenantUpdateSchema, createApiKeySchema } from '../validation';
 
 const adminRouter = new Hono();
@@ -155,6 +176,91 @@ adminRouter.get('/v1/router/status', (c: Context) => {
 adminRouter.get('/v1/prompts', (c: Context) => {
   const templates = listTemplates();
   return c.json({ templates });
+});
+
+adminRouter.get('/v1/prompts/:id', (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({ error: { message: 'Template id is required', type: 'invalid_request_error', code: 'invalid_request' } }, 400);
+  }
+  const template = getTemplate(id);
+  if (!template) {
+    return c.json({ error: { message: `Template not found: ${id}`, type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+  return c.json(template);
+});
+
+adminRouter.post('/v1/prompts', async (c: Context) => {
+  const body = await c.req.json();
+  if (!body.id || !body.name || !body.template) {
+    return c.json({
+      error: { message: 'Missing required fields: id, name, template', type: 'invalid_request_error', code: 'invalid_request' },
+    }, 400);
+  }
+
+  const variables = body.variables || parseTemplate(body.template);
+  const template = createTemplate({
+    id: body.id,
+    name: body.name,
+    description: body.description || '',
+    template: body.template,
+    variables,
+    default_values: body.default_values || {},
+  });
+
+  return c.json(template, 201);
+});
+
+adminRouter.put('/v1/prompts/:id', async (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({ error: { message: 'Template id is required', type: 'invalid_request_error', code: 'invalid_request' } }, 400);
+  }
+
+  const body = await c.req.json();
+  const updates: Parameters<typeof updateTemplate>[1] = {};
+  if (body.name !== undefined) updates.name = body.name;
+  if (body.description !== undefined) updates.description = body.description;
+  if (body.template !== undefined) {
+    updates.template = body.template;
+    if (body.variables === undefined) {
+      updates.variables = parseTemplate(body.template);
+    }
+  }
+  if (body.variables !== undefined) updates.variables = body.variables;
+  if (body.default_values !== undefined) updates.default_values = body.default_values;
+
+  const updated = updateTemplate(id, updates);
+  if (!updated) {
+    return c.json({ error: { message: `Template not found: ${id}`, type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+  return c.json(updated);
+});
+
+adminRouter.delete('/v1/prompts/:id', (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({ error: { message: 'Template id is required', type: 'invalid_request_error', code: 'invalid_request' } }, 400);
+  }
+  const removed = deleteTemplate(id);
+  if (!removed) {
+    return c.json({ error: { message: `Template not found: ${id}`, type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+  return c.json({ deleted: true, id });
+});
+
+adminRouter.post('/v1/prompts/:id/render', async (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({ error: { message: 'Template id is required', type: 'invalid_request_error', code: 'invalid_request' } }, 400);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const rendered = renderTemplate(id, body.variables || {});
+  if (rendered === null) {
+    return c.json({ error: { message: `Template not found: ${id}`, type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+  return c.json({ rendered });
 });
 
 // === 租户管理 ===
@@ -295,6 +401,23 @@ adminRouter.put('/v1/config', async (c: Context) => {
   return c.json({ updated: true });
 });
 
+// 模型别名管理
+adminRouter.get('/v1/config/aliases', (c: Context) => {
+  const config = getConfig();
+  return c.json({ aliases: config.model_aliases || {} });
+});
+
+adminRouter.put('/v1/config/aliases', async (c: Context) => {
+  const body = await c.req.json();
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return c.json({
+      error: { message: 'Invalid aliases format', type: 'invalid_request_error', code: 'invalid_request' },
+    }, 400);
+  }
+  setConfig({ model_aliases: body as Record<string, string> });
+  return c.json({ updated: true });
+});
+
 // === WebSocket 统计 ===
 adminRouter.get('/v1/ws', (c: Context) => {
   return c.json(getWebSocketStats());
@@ -308,6 +431,193 @@ adminRouter.post('/v1/ws/clean', (c: Context) => {
 // === 插件列表 ===
 adminRouter.get('/v1/plugins', (c: Context) => {
   return c.json({ plugins: listPlugins() });
+});
+
+// 注册插件（从代码字符串加载）
+adminRouter.post('/v1/plugins/register', async (c: Context) => {
+  const body = await c.req.json();
+  if (typeof body.code !== 'string' || !body.code) {
+    return c.json({
+      error: {
+        message: 'Plugin code is required',
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+      },
+    }, 400);
+  }
+
+  const result = loadPluginInSandbox(body.code);
+  if (!result.success || !result.plugin) {
+    return c.json({
+      error: {
+        message: result.error || 'Failed to load plugin',
+        type: 'invalid_request_error',
+        code: 'plugin_load_failed',
+      },
+    }, 400);
+  }
+
+  registerPlugin(result.plugin);
+  return c.json({ registered: true, plugin: result.plugin.config }, 201);
+});
+
+// 卸载插件
+adminRouter.delete('/v1/plugins/:id', (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({
+      error: {
+        message: 'Plugin id is required',
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+      },
+    }, 400);
+  }
+  const removed = unregisterPlugin(id);
+  if (!removed) {
+    return c.json({
+      error: {
+        message: `Plugin not found: ${id}`,
+        type: 'invalid_request_error',
+        code: 'plugin_not_found',
+      },
+    }, 404);
+  }
+  return c.json({ unregistered: true, id });
+});
+
+// 启用插件
+adminRouter.post('/v1/plugins/:id/enable', (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({
+      error: {
+        message: 'Plugin id is required',
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+      },
+    }, 400);
+  }
+  const ok = setPluginEnabled(id, true);
+  if (!ok) {
+    return c.json({
+      error: {
+        message: `Plugin not found: ${id}`,
+        type: 'invalid_request_error',
+        code: 'plugin_not_found',
+      },
+    }, 404);
+  }
+  return c.json({ enabled: true, id });
+});
+
+// 禁用插件
+adminRouter.post('/v1/plugins/:id/disable', (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({
+      error: {
+        message: 'Plugin id is required',
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+      },
+    }, 400);
+  }
+  const ok = setPluginEnabled(id, false);
+  if (!ok) {
+    return c.json({
+      error: {
+        message: `Plugin not found: ${id}`,
+        type: 'invalid_request_error',
+        code: 'plugin_not_found',
+      },
+    }, 404);
+  }
+  return c.json({ disabled: true, id });
+});
+
+// === 告警规则 ===
+adminRouter.get('/v1/alerts', (c: Context) => {
+  return c.json({ rules: listAlertRules() });
+});
+
+adminRouter.post('/v1/alerts', async (c: Context) => {
+  const body = await c.req.json();
+  if (!body.id || !body.name || !body.metric || body.threshold === undefined || !body.webhook_url) {
+    return c.json({
+      error: {
+        message: 'Missing required fields: id, name, metric, threshold, webhook_url',
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+      },
+    }, 400);
+  }
+
+  addAlertRule({
+    id: body.id,
+    name: body.name,
+    metric: body.metric,
+    threshold: body.threshold,
+    condition: body.condition || 'gt',
+    webhook_url: body.webhook_url,
+    enabled: body.enabled !== false,
+    cooldown_seconds: body.cooldown_seconds || 300,
+  });
+
+  return c.json({ created: true }, 201);
+});
+
+adminRouter.delete('/v1/alerts/:id', (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({
+      error: { message: 'Alert id is required', type: 'invalid_request_error', code: 'invalid_request' },
+    }, 400);
+  }
+  const removed = removeAlertRule(id);
+  if (!removed) {
+    return c.json({
+      error: { message: `Alert rule not found: ${id}`, type: 'invalid_request_error', code: 'not_found' },
+    }, 404);
+  }
+  return c.json({ removed: true, id });
+});
+
+adminRouter.post('/v1/alerts/:id/enable', (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({
+      error: { message: 'Alert id is required', type: 'invalid_request_error', code: 'invalid_request' },
+    }, 400);
+  }
+  const ok = setAlertEnabled(id, true);
+  if (!ok) {
+    return c.json({
+      error: { message: `Alert rule not found: ${id}`, type: 'invalid_request_error', code: 'not_found' },
+    }, 404);
+  }
+  return c.json({ enabled: true, id });
+});
+
+adminRouter.post('/v1/alerts/:id/disable', (c: Context) => {
+  const id = c.req.param('id') || '';
+  if (!id) {
+    return c.json({
+      error: { message: 'Alert id is required', type: 'invalid_request_error', code: 'invalid_request' },
+    }, 400);
+  }
+  const ok = setAlertEnabled(id, false);
+  if (!ok) {
+    return c.json({
+      error: { message: `Alert rule not found: ${id}`, type: 'invalid_request_error', code: 'not_found' },
+    }, 404);
+  }
+  return c.json({ disabled: true, id });
+});
+
+adminRouter.post('/v1/alerts/evaluate', (c: Context) => {
+  evaluateAlerts();
+  return c.json({ evaluated: true });
 });
 
 export default adminRouter;

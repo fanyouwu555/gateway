@@ -71,6 +71,7 @@ const DEFAULT_CONFIG: IGatewayConfig = {
   default_model: getEnv('DEFAULT_MODEL', 'gpt-4o-mini'),
   rate_limit_clean_interval: 60000,
   pricing: {},
+  model_aliases: {},
 };
 
 /**
@@ -312,6 +313,14 @@ export function getProviderForModel(model: string): string | undefined {
 
   // 默认返回第一个规则的provider
   return strategy.rules[0]?.provider;
+}
+
+/**
+ * 解析模型别名
+ */
+export function resolveModelAlias(alias: string): string {
+  const config = getConfig();
+  return config.model_aliases?.[alias] || alias;
 }
 
 /**

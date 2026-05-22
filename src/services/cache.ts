@@ -165,39 +165,9 @@ class CacheStore<T> {
   }
 
   /**
-   * 获取
+   * 获取缓存条目（异步，支持 Redis 回源）
    */
-  get(key: string): T | null {
-    // 内存存储优先
-    const entry = this.cache.get(key);
-    if (entry) {
-      // 检查过期
-      if (Date.now() > entry.expires_at) {
-        this.cache.delete(key);
-        return null;
-      }
-      // 增加命中次数
-      entry.hit_count++;
-      return entry.value;
-    }
-
-    // 如果使用存储，尝试从存储获取
-    if (this.useStorage && this.store) {
-      try {
-        // 同步方式获取 (内存缓存会先命中)
-        return null; // Storage is async, keep memory-first for now
-      } catch {
-        // 存储获取失败
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * 异步获取 - 优先从存储获取，用于启动时加载缓存
-   */
-  async getAsync(key: string): Promise<T | null> {
+  async get(key: string): Promise<T | null> {
     // 先检查内存
     const memEntry = this.cache.get(key);
     if (memEntry) {
@@ -375,7 +345,7 @@ export async function getCache(request: ChatCompletionRequest, useSemantic = tru
   const key = generateCacheKey(request);
 
   // 1. 先精确查找
-  const exactMatch = await cacheStore.getAsync(key);
+  const exactMatch = await cacheStore.get(key);
   if (exactMatch) {
     writeLog('debug', 'Exact cache hit');
     return exactMatch;

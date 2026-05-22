@@ -2,9 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# 安装依赖
+# 安装依赖（跳过 prepare 脚本，避免 husky 在容器内执行失败）
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --only=production --ignore-scripts
 
 # 复制源码
 COPY dist/ ./dist/

@@ -7,7 +7,7 @@
  */
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { getProviderForModel } from '../config';
+import { getProviderForModel, resolveModelAlias } from '../config';
 import { chatComplete, chatCompleteStream } from '../providers';
 import { chatCompletionRequestSchema } from '../validation';
 import { writeLog } from '../utils/logger';
@@ -15,6 +15,7 @@ import { smartRoute, type RouterStrategy } from '../services/router';
 import { runGuardrailPlugins, runRequestPlugins, runResponsePlugins } from '../plugins';
 import { getCache, setCache } from '../services/cache';
 import { getConfig } from '../config';
+import { templateToMessages } from '../services/prompt';
 
 const chatRouter = new Hono();
 
@@ -41,19 +42,46 @@ async function handleChatCompletion(c: Context): Promise<Response> {
 
     let request = parsed.data;
 
+    // 模板渲染：如果提供了 template_id，将模板转换为 messages
+    if (request.template_id) {
+      const templateMessages = templateToMessages(
+        request.template_id,
+        request.template_variables || {}
+      );
+      if (!templateMessages) {
+        return c.json(
+          {
+            error: {
+              message: `Template not found: ${request.template_id}`,
+              type: 'invalid_request_error',
+              code: 'unknown_template',
+            },
+          },
+          400
+        );
+      }
+      request = { ...request, messages: templateMessages };
+    }
+
+    // 解析模型别名
+    request = { ...request, model: resolveModelAlias(request.model) };
+
+    // 模板渲染后 messages 必定存在
+    const req = request as unknown as import('../types').ChatCompletionRequest;
+
     // 0. 缓存检查（非流式请求）
     const config = getConfig();
-    if (config.cache?.enabled && !request.stream) {
-      const cached = await getCache(request);
+    if (config.cache?.enabled && !req.stream) {
+      const cached = await getCache(req);
       if (cached) {
-        writeLog('debug', 'Cache hit', { model: request.model });
+        writeLog('debug', 'Cache hit', { model: req.model });
         c.set('cache_hit', true);
         return c.json(JSON.parse(cached), 200);
       }
     }
 
     // 1. 运行 Guardrail 插件（拦截不合规请求）
-    const guardrailResult = await runGuardrailPlugins(c, request);
+    const guardrailResult = await runGuardrailPlugins(c, req);
     if (!guardrailResult.allowed) {
       return c.json(
         {
@@ -68,9 +96,9 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     }
 
     // 2. 运行请求插件（转换/增强请求）
-    request = await runRequestPlugins(c, request);
+    const processedReq = await runRequestPlugins(c, req);
 
-    const model = request.model;
+    const model = processedReq.model;
 
     // 3. 智能路由决策：确定使用哪个 Provider
     //    优先级：x-routing-strategy 请求头 > 默认路由
@@ -79,7 +107,7 @@ async function handleChatCompletion(c: Context): Promise<Response> {
 
     if (strategyHeader && ['cost', 'latency', 'quality', 'balance'].includes(strategyHeader)) {
       // 使用 SmartRouter 决策
-      const decision = smartRoute(request, strategyHeader);
+      const decision = smartRoute(processedReq, strategyHeader);
       providerName = decision.provider;
       writeLog('info', 'SmartRouter selected provider', {
         model,
@@ -110,8 +138,8 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     c.set('model', model);
 
     // 4. 调用 Provider (支持 Failover)
-    if (request.stream) {
-      const streamResponse = await chatCompleteStream(providerName, request);
+    if (processedReq.stream) {
+      const streamResponse = await chatCompleteStream(providerName, processedReq);
 
       return new Response(streamResponse, {
         headers: {
@@ -122,14 +150,14 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       });
     }
 
-    let response = await chatComplete(providerName, request);
+    let response = await chatComplete(providerName, processedReq);
 
     // 5. 运行响应插件（转换/增强响应）
     response = await runResponsePlugins(c, response);
 
     // 6. 缓存响应（非流式请求）
-    if (config.cache?.enabled && !request.stream) {
-      setCache(request, JSON.stringify(response)).catch((err) => {
+    if (config.cache?.enabled && !processedReq.stream) {
+      setCache(processedReq, JSON.stringify(response)).catch((err) => {
         writeLog('warn', 'Failed to cache response', { error: err instanceof Error ? err.message : String(err) });
       });
     }

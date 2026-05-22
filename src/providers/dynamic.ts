@@ -12,6 +12,7 @@ import type {
   EmbeddingResponse,
   DynamicProviderConfig,
 } from '../types';
+import { fetchWithAgent } from '../utils/http-client';
 
 export class DynamicProvider extends BaseProvider {
   name: string;
@@ -78,7 +79,7 @@ export class DynamicProvider extends BaseProvider {
       user: request.user,
     };
 
-    const response = await fetch(url, {
+    const response = await fetchWithAgent(url, {
       method: 'POST',
       headers: this.buildDynamicHeaders(config),
       body: JSON.stringify(body),

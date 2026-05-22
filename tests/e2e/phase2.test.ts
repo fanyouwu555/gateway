@@ -86,6 +86,7 @@ jest.mock('../../src/config', () => ({
     const map: Record<string, string> = { 'gpt-4o': 'openai', 'deepseek-chat': 'deepseek' };
     return map[model];
   },
+  resolveModelAlias: jest.fn((alias: string) => alias),
 }));
 
 const mockOpenAI = {

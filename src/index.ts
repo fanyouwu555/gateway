@@ -18,6 +18,7 @@ import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
 import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection } from './middleware/websocket';
+import { startAlertEngine } from './services/alert';
 
 // 创建 Hono 应用实例
 const app = createApp();
@@ -49,6 +50,10 @@ async function startServer() {
 
   // 初始化限流清理间隔
   initRateLimitCleanInterval(config.rate_limit_clean_interval);
+
+  // 启动告警引擎
+  startAlertEngine();
+  writeLog('info', 'Alert engine started');
 
   const server = createServer();
 

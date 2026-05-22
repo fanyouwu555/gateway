@@ -52,6 +52,7 @@ jest.mock('../src/config', () => ({
       { model: 'deepseek-chat', provider: 'deepseek' },
     ],
   })),
+  resolveModelAlias: jest.fn((alias: string) => alias),
 }));
 
 // Mock providers

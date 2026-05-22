@@ -105,12 +105,14 @@ Prometheus 格式的指标数据。
 **请求体：**
 
 | 字段 | 类型 | 必填 | 描述 |
-|---|---|---|---|
-| `model` | string | ✅ | 模型 ID，如 `gpt-4o`, `claude-3-5-sonnet-20241022` |
-| `messages` | array | ✅ | 消息数组 |
+| --- | --- | --- | --- |
+| `model` | string | ✅ | 模型 ID 或别名，如 `gpt-4o`, `fast` |
+| `messages` | array | 条件 | 消息数组（与 `template_id` 二选一） |
 | `messages[].role` | string | ✅ | `system`, `user`, `assistant` |
 | `messages[].content` | string | ✅ | 消息内容 |
 | `messages[].name` | string | - | 名称标识 |
+| `template_id` | string | 条件 | 提示词模板 ID（与 `messages` 二选一） |
+| `template_variables` | object | - | 模板变量键值对 |
 | `temperature` | number | - | 采样温度 0-2，默认 1 |
 | `top_p` | number | - | 核采样 0-1，默认 1 |
 | `max_tokens` | number | - | 最大生成 token 数 |
@@ -122,7 +124,7 @@ Prometheus 格式的指标数据。
 | `tools` | array | - | Function Calling 工具定义 |
 | `tool_choice` | object | - | 工具选择策略 |
 
-**请求示例：**
+**请求示例（标准消息）：**
 
 ```json
 {
@@ -139,6 +141,19 @@ Prometheus 格式的指标数据。
   ],
   "temperature": 0.7,
   "max_tokens": 500
+}
+```
+
+**请求示例（使用模板）：**
+
+```json
+{
+  "model": "gpt-4o",
+  "template_id": "translate",
+  "template_variables": {
+    "target_language": "日文",
+    "content": "Hello world"
+  }
 }
 ```
 
@@ -191,7 +206,7 @@ data: [DONE]
 **请求体：**
 
 | 字段 | 类型 | 必填 | 描述 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `model` | string | ✅ | 嵌入模型 ID |
 | `input` | string \| string[] | ✅ | 输入文本或文本数组 |
 | `encoding_format` | string | - | `float` 或 `base64` |
@@ -394,6 +409,142 @@ data: [DONE]
       "description": "专业翻译模板"
     }
   ]
+}
+```
+
+#### GET /v1/prompts/:id
+
+获取指定模板详情。
+
+#### POST /v1/prompts
+
+创建新模板。
+
+**请求体：**
+
+```json
+{
+  "id": "translation",
+  "name": "翻译助手",
+  "description": "将文本翻译成指定语言",
+  "template": "请将以下内容翻译成{{target_language}}：\n\n{{content}}",
+  "variables": ["target_language", "content"],
+  "default_values": {
+    "target_language": "中文"
+  }
+}
+```
+
+#### PUT /v1/prompts/:id
+
+更新模板。
+
+#### DELETE /v1/prompts/:id
+
+删除模板。
+
+#### POST /v1/prompts/:id/render
+
+渲染模板，返回替换变量后的文本。
+
+**请求体：**
+
+```json
+{
+  "variables": {
+    "target_language": "日文",
+    "content": "Hello world"
+  }
+}
+```
+
+**响应示例：**
+
+```json
+{
+  "rendered": "请将以下内容翻译成日文：\n\nHello world"
+}
+```
+
+### 告警规则
+
+#### GET /v1/alerts
+
+获取告警规则列表。
+
+#### POST /v1/alerts
+
+创建告警规则。
+
+**请求体：**
+
+```json
+{
+  "id": "error-rate-alert",
+  "name": "Error Rate Alert",
+  "metric": "error_rate",
+  "threshold": 0.1,
+  "condition": "gt",
+  "webhook_url": "https://example.com/webhook",
+  "enabled": true,
+  "cooldown_seconds": 300
+}
+```
+
+| 字段 | 类型 | 必填 | 描述 |
+| --- | --- | --- | --- |
+| `id` | string | 是 | 规则唯一标识 |
+| `name` | string | 是 | 规则名称 |
+| `metric` | string | 是 | 监控指标：`error_rate`、`avg_latency_ms`、`total_requests` |
+| `threshold` | number | 是 | 阈值 |
+| `condition` | string | - | 比较条件：`gt`（大于）或 `lt`（小于），默认 `gt` |
+| `webhook_url` | string | 是 | Webhook 地址 |
+| `enabled` | boolean | - | 是否启用，默认 `true` |
+| `cooldown_seconds` | number | - | 冷却时间（秒），默认 `300` |
+
+#### DELETE /v1/alerts/:id
+
+删除告警规则。
+
+#### POST /v1/alerts/:id/enable
+
+启用告警规则。
+
+#### POST /v1/alerts/:id/disable
+
+禁用告警规则。
+
+#### POST /v1/alerts/evaluate
+
+手动触发一次告警评估。
+
+### 模型别名
+
+#### GET /v1/config/aliases
+
+获取当前模型别名映射。
+
+**响应示例：**
+
+```json
+{
+  "aliases": {
+    "fast": "gpt-4o-mini",
+    "smart": "gpt-4o"
+  }
+}
+```
+
+#### PUT /v1/config/aliases
+
+更新模型别名映射。
+
+**请求体：**
+
+```json
+{
+  "fast": "gpt-4o-mini",
+  "smart": "gpt-4o"
 }
 ```
 

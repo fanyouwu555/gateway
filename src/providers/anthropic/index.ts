@@ -10,6 +10,7 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../../types';
+import { fetchWithAgent } from '../../utils/http-client';
 
 export class AnthropicProvider extends BaseProvider {
   name = 'anthropic';
@@ -134,7 +135,7 @@ export class AnthropicProvider extends BaseProvider {
       body.top_p = request.top_p;
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithAgent(url, {
       method: 'POST',
       headers: {
         ...this.buildHeaders(config),

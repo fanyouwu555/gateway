@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-gateway.fullname" . }}-config
+  labels:
+    {{- include "ai-gateway.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.config.port | quote }}
+  HOST: {{ .Values.config.host | quote }}
+  LOG_LEVEL: {{ .Values.config.log_level | quote }}
+  NODE_ENV: "production"
+  CONFIG_PATH: "./conf/default.json"
+  DEFAULT_MODEL: {{ .Values.config.default_model | quote }}

@@ -30,7 +30,9 @@ const chatToolChoiceSchema = z.object({
 
 export const chatCompletionRequestSchema = z.object({
   model: z.string().min(1, 'Missing required field: model'),
-  messages: z.array(chatMessageSchema).min(1, 'messages must contain at least 1 message'),
+  messages: z.array(chatMessageSchema).min(1, 'messages must contain at least 1 message').optional(),
+  template_id: z.string().optional(),
+  template_variables: z.record(z.string()).optional(),
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
   max_tokens: z.number().int().positive().optional(),
@@ -41,6 +43,15 @@ export const chatCompletionRequestSchema = z.object({
   user: z.string().optional(),
   tools: z.array(chatToolSchema).optional(),
   tool_choice: chatToolChoiceSchema.optional(),
+}).refine((data) => {
+  // 必须提供 messages 或 template_id 之一
+  if (!data.messages && !data.template_id) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Either messages or template_id must be provided',
+  path: ['messages'],
 });
 
 // ===== Embedding Request =====

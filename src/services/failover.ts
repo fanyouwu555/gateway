@@ -7,6 +7,7 @@ import { getProviderConfig, getConfig } from '../config';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
+import { fetchWithAgent } from '../utils/http-client';
 
 /**
  * Failover 配置
@@ -396,7 +397,7 @@ class FailoverManager {
         return;
       }
 
-      const response = await fetch(`${config.base_url}/models`, {
+      const response = await fetchWithAgent(`${config.base_url}/models`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,

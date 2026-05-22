@@ -11,6 +11,7 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../../types';
+import { fetchWithAgent } from '../../utils/http-client';
 
 interface GeminiContent {
   role: 'user' | 'model';
@@ -151,7 +152,7 @@ export class GoogleProvider extends BaseProvider {
       },
     };
 
-    const response = await fetch(url, {
+    const response = await fetchWithAgent(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

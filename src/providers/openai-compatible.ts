@@ -5,6 +5,7 @@
  */
 import { BaseProvider } from './base';
 import type { IProviderCapabilities, IProviderConfig, ChatCompletionRequest, ChatCompletionResponse, EmbeddingRequest, EmbeddingResponse } from '../types';
+import { fetchWithAgent } from '../utils/http-client';
 
 /**
  * OpenAI 兼容 Provider 的字段配置
@@ -117,7 +118,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
     const url = `${config.base_url}/chat/completions`;
     const body = this.buildChatBody(request, true);
 
-    const response = await fetch(url, {
+    const response = await fetchWithAgent(url, {
       method: 'POST',
       headers: { ...this.buildHeaders(config), ...this.extraHeaders },
       body: JSON.stringify(body),

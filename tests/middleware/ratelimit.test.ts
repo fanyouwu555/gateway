@@ -14,6 +14,7 @@ jest.mock('../../src/config', () => ({
     },
     auth: { enabled: false, api_keys: [] },
   }),
+  resolveModelAlias: jest.fn((alias: string) => alias),
 }));
 
 describe('RateLimit Middleware', () => {

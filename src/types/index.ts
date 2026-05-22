@@ -279,6 +279,8 @@ export interface IGatewayConfig {
   pricing?: Record<string, { input: number; output: number }>;
   /** 默认模型名称 */
   default_model?: string;
+  /** 模型别名映射 */
+  model_aliases?: Record<string, string>;
   /** 动态 Provider 配置 */
   dynamicProviders?: DynamicProviderConfig[];
 }

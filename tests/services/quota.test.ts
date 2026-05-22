@@ -11,6 +11,7 @@ jest.mock('../../src/config', () => ({
       warn_threshold: 0.8,
     },
   }),
+  resolveModelAlias: jest.fn((alias: string) => alias),
 }));
 
 // Mock metrics
