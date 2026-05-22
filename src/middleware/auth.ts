@@ -7,8 +7,9 @@
 import type { Context, Next } from 'hono';
 import { getConfig } from '../config';
 import type { IAuthResult, IApiKeyMeta } from '../types';
-import { verifyApiKey, hashApiKey } from '../utils';
-import { getAllTenantApiKeys } from '../services/tenant';
+import { verifyApiKey, hashApiKey, generateSecureRandomString } from '../utils';
+import { getAllTenantApiKeys, getTenant } from '../services/tenant';
+import { writeLog } from '../utils/logger';
 
 /**
  * 获取所有可用的 API Key 元数据（配置 + 租户管理）
@@ -16,7 +17,7 @@ import { getAllTenantApiKeys } from '../services/tenant';
  */
 function getAllApiKeys(): IApiKeyMeta[] {
   const config = getConfig();
-  const keys: IApiKeyMeta[] = [...config.auth.api_keys];
+  const keys: IApiKeyMeta[] = [...(config.auth.api_keys || [])];
 
   // 合并租户管理的 API Keys
   try {
@@ -61,6 +62,17 @@ function validateApiKey(apiKey: string): IAuthResult {
     };
   }
 
+  // 检查租户状态
+  if (storedKey.tenant_id) {
+    const tenant = getTenant(storedKey.tenant_id);
+    if (tenant && tenant.status !== 'active') {
+      return {
+        valid: false,
+        error: 'Tenant is not active',
+      };
+    }
+  }
+
   return {
     valid: true,
     tenant_id: storedKey.tenant_id,
@@ -81,7 +93,17 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
   }
 
   // 从Header或Query参数获取API Key (WebSocket使用query参数)
-  const apiKey = c.req.header('x-api-key') || c.req.header('Authorization')?.replace('Bearer ', '') || c.req.query('api_key');
+  let apiKey = c.req.header('x-api-key') || c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!apiKey) {
+    apiKey = c.req.query('api_key') || '';
+    // 非 WebSocket 请求通过 query param 传递 API key 不安全（会记录在 URL / access logs 中）
+    if (apiKey && !c.req.path.startsWith('/v1/ws')) {
+      writeLog('warn', 'API key passed via query parameter — consider using x-api-key header or Authorization header instead', {
+        request_id: c.get('request_id') || 'unknown',
+        path: c.req.path,
+      });
+    }
+  }
 
   if (!apiKey) {
     return c.json({
@@ -142,7 +164,7 @@ export async function requireAdmin(c: Context, next: Next): Promise<Response | v
  * 返回的 key 字段已自动哈希
  */
 export function generateTestApiKey(name: string = 'test-key'): IApiKeyMeta {
-  const plaintext = `sk-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const plaintext = `sk-test-${Date.now()}-${generateSecureRandomString(12)}`;
   return {
     key: hashApiKey(plaintext),
     tenant_id: 'default',
@@ -156,5 +178,5 @@ export function generateTestApiKey(name: string = 'test-key'): IApiKeyMeta {
  * 用于在测试请求中发送
  */
 export function generateTestPlaintextKey(): string {
-  return `sk-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `sk-test-${Date.now()}-${generateSecureRandomString(12)}`;
 }

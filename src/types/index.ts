@@ -232,7 +232,7 @@ export interface IGatewayConfig {
   routing: IRoutingStrategy[];
   auth: {
     enabled: boolean;
-    api_keys: IApiKeyMeta[];
+    api_keys?: IApiKeyMeta[];
   };
   rate_limit: {
     enabled: boolean;
@@ -248,8 +248,8 @@ export interface IGatewayConfig {
     failureThreshold: number;
     successThreshold: number;
     healthCheckInterval: number;
-    healthCheckTimeout: number;
-    healthCheckModel: string;
+    healthCheckTimeout?: number;
+    healthCheckModel?: string;
     /** Explicit failover chains: primary -> [fallback1, fallback2, ...] */
     chains?: Record<string, string[]>;
     /** Error-rate threshold (0-1) that triggers provider-level degradation. Default 0.5 */

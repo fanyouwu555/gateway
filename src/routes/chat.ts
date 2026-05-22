@@ -16,6 +16,7 @@ import { runGuardrailPlugins, runRequestPlugins, runResponsePlugins } from '../p
 import { getCache, setCache } from '../services/cache';
 import { getConfig } from '../config';
 import { templateToMessages } from '../services/prompt';
+import { checkQuota, recordUsage } from '../services/quota';
 
 const chatRouter = new Hono();
 
@@ -95,6 +96,24 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       );
     }
 
+    // 1.5. 配额检查
+    const tenantId = c.get('tenant_id');
+    if (tenantId) {
+      const quotaCheck = checkQuota(tenantId);
+      if (!quotaCheck.allowed) {
+        return c.json(
+          {
+            error: {
+              message: quotaCheck.reason || 'Quota exceeded',
+              type: 'rate_limit_error',
+              code: 'quota_exceeded',
+            },
+          },
+          429
+        );
+      }
+    }
+
     // 2. 运行请求插件（转换/增强请求）
     const processedReq = await runRequestPlugins(c, req);
 
@@ -154,6 +173,24 @@ async function handleChatCompletion(c: Context): Promise<Response> {
 
     // 5. 运行响应插件（转换/增强响应）
     response = await runResponsePlugins(c, response);
+
+    // 5.5. 将 token 使用量写入上下文（供 logger middleware 读取）
+    if (response.usage) {
+      c.set('prompt_tokens', response.usage.prompt_tokens || 0);
+      c.set('completion_tokens', response.usage.completion_tokens || 0);
+    }
+
+    // 5.6. 记录使用量（非流式请求）
+    if (tenantId && response.usage) {
+      const pricing = config.pricing?.[processedReq.model];
+      let cost = 0;
+      if (pricing) {
+        const inputTokens = response.usage.prompt_tokens || 0;
+        const outputTokens = response.usage.completion_tokens || 0;
+        cost = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
+      }
+      recordUsage(tenantId, response.usage.total_tokens || 0, cost);
+    }
 
     // 6. 缓存响应（非流式请求）
     if (config.cache?.enabled && !processedReq.stream) {

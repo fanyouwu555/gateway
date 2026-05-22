@@ -6,7 +6,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { loggerMiddleware } from './middleware/logger';
-import { authMiddleware, requireAdmin } from './middleware/auth';
+import { authMiddleware } from './middleware/auth';
 import { rateLimitMiddleware } from './middleware/ratelimit';
 import { metricsMiddleware, metricsHandler } from './middleware/metrics';
 import chatRouter from './routes/chat';
@@ -33,7 +33,12 @@ export function createApp(): Hono {
   const protectedApi = new Hono();
 
   // ===== 全局中间件（作用于所有路由，包括 sub-app） =====
-  app.use('*', cors());
+  const corsOrigin = process.env.CORS_ORIGIN;
+  app.use('*', cors({
+    origin: corsOrigin || '*',
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
+  }));
   app.use('*', loggerMiddleware);
   app.use('*', metricsMiddleware);
 
@@ -89,16 +94,6 @@ export function createApp(): Hono {
   // ===== 受保护路由（需要 auth + ratelimit） =====
   protectedApi.use('*', authMiddleware);
   protectedApi.use('*', rateLimitMiddleware);
-
-  // 管理 API 权限中间件（需要 admin API Key）
-  protectedApi.use('/v1/tenants/*', requireAdmin);
-  protectedApi.use('/v1/config/*', requireAdmin);
-  protectedApi.use('/v1/plugins/*', requireAdmin);
-  protectedApi.use('/v1/usage/*', requireAdmin);
-  protectedApi.use('/v1/quota/*', requireAdmin);
-  protectedApi.use('/v1/cache/*', requireAdmin);
-  protectedApi.use('/v1/sessions/*', requireAdmin);
-  protectedApi.use('/v1/ws/*', requireAdmin);
 
   // 注册路由处理器
   protectedApi.route('/', chatRouter);

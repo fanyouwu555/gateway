@@ -46,7 +46,7 @@ const Providers: React.FC = () => {
         const stat = providerMap.get(p.name)
         return {
           name: p.name,
-          status: p.status === 'healthy' ? 'online' : 'offline',
+          status: p.status === 'active' ? 'online' : 'offline',
           total_requests: stat?.total_requests || 0,
           avg_duration_ms: stat?.avg_duration_ms || 0,
           success_rate: stat?.success_rate || 0,

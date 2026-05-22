@@ -73,6 +73,7 @@ const Settings: React.FC = () => {
         message.success('配置已加载')
       }
     } catch (error) {
+      message.error('加载配置失败')
       console.error(error)
     } finally {
       setLoading(false)
@@ -88,7 +89,8 @@ const Settings: React.FC = () => {
       const values = await form.validateFields()
       await saveGatewayConfig(values)
       message.success('配置保存成功')
-    } catch (error) {
+    } catch (error: any) {
+      message.error(error?.response?.data?.error?.message || '保存配置失败')
       console.error(error)
     }
   }

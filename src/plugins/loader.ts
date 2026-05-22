@@ -187,6 +187,17 @@ function buildPluginFromSandbox(exports: unknown): PluginLoadResult {
 
 /**
  * 在沙箱中加载插件代码
+ *
+ * ⚠️ SECURITY WARNING ⚠️
+ * This function executes arbitrary JavaScript code in a vm.runInNewContext sandbox.
+ * While the sandbox restricts access to Node.js builtins (require, process, fs, etc.)
+ * and only exposes a whitelist of safe globals, it is NOT a fully secure isolation boundary.
+ *
+ * - ONLY call this function from admin-protected endpoints (/v1/plugins/*)
+ * - NEVER allow non-admin users to submit or upload plugin code
+ * - Plugin code execution is admin-only functionality by design
+ * - Consider running plugin code in a separate process or WASM for stronger isolation
+ *
  * @param code 插件 JS 代码字符串
  */
 export function loadPluginInSandbox(code: string): PluginLoadResult {

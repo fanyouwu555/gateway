@@ -113,6 +113,14 @@ class MetricsRegistry {
     return lines.join('\n');
   }
 
+  /**
+   * 重置所有指标
+   */
+  reset(): void {
+    this.counters.clear();
+    this.histograms.clear();
+  }
+
   private formatLabels(labels: Record<string, string>): string {
     const entries = Object.entries(labels).filter(([_, v]) => v);
     if (entries.length === 0) return '';
@@ -127,7 +135,7 @@ const registry = new MetricsRegistry();
  * 重置所有指标（用于测试）
  */
 export function resetMetrics(): void {
-  // 通过重新创建注册表实现
+  registry.reset();
 }
 
 /**

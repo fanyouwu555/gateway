@@ -55,8 +55,20 @@ import {
 } from '../plugins';
 import { loadPluginInSandbox } from '../plugins/loader';
 import { configUpdateSchema, tenantConfigSchema, tenantUpdateSchema, createApiKeySchema } from '../validation';
+import { requireAdmin } from '../middleware/auth';
 
 const adminRouter = new Hono();
+adminRouter.use('*', requireAdmin);
+
+// === 认证验证（用于前端登录校验）===
+adminRouter.get('/v1/auth/verify', (c: Context) => {
+  const apiKeyMeta = c.get('api_key_meta');
+  return c.json({
+    valid: true,
+    is_admin: apiKeyMeta?.is_admin || false,
+    tenant_id: apiKeyMeta?.tenant_id || 'default',
+  });
+});
 
 // === 用量统计 ===
 adminRouter.get('/v1/usage', (c: Context) => {
@@ -372,7 +384,7 @@ adminRouter.get('/v1/config', (c: Context) => {
     host: config.host,
     log_level: config.log_level,
     routing: config.routing,
-    auth: { enabled: config.auth.enabled, api_key_count: config.auth.api_keys.length },
+    auth: { enabled: config.auth.enabled, api_key_count: config.auth.api_keys?.length || 0 },
     rate_limit: config.rate_limit,
     failover: config.failover,
     loadBalance: config.loadBalance,

@@ -32,7 +32,7 @@ const Tenants: React.FC = () => {
       const data: any = await getTenants()
       setTenants(data.tenants || [])
     } catch (error) {
-      message.error('获取租户失败')
+      message.error('获取租户失败，请检查网络连接')
     } finally {
       setLoading(false)
     }
@@ -50,6 +50,7 @@ const Tenants: React.FC = () => {
       setTenantStats(statsAny)
       setApiKeys(keysDataAny.keys || [])
     } catch (error) {
+      message.error('获取租户详情失败')
       console.error(error)
     }
     setDetailVisible(true)
@@ -67,8 +68,8 @@ const Tenants: React.FC = () => {
       setCreateModalVisible(false)
       form.resetFields()
       fetchTenants()
-    } catch (error) {
-      console.error(error)
+    } catch (error: any) {
+      message.error(error?.response?.data?.error?.message || '创建租户失败')
     }
   }
 

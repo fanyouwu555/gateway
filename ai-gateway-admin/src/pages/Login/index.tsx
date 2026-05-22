@@ -14,15 +14,24 @@ export default function LoginPage() {
     if (!apiKey.trim()) return
     setLoading(true)
     try {
-      const res = await fetch('/api/v1/ws', {
+      const res = await fetch('/api/v1/auth/verify', {
         headers: { Authorization: `Bearer ${apiKey.trim()}` },
       })
       if (res.ok) {
-        login(apiKey.trim())
-        message.success('登录成功')
-        navigate('/dashboard')
-      } else {
+        const data = await res.json()
+        if (data.is_admin) {
+          login(apiKey.trim())
+          message.success('登录成功')
+          navigate('/dashboard')
+        } else {
+          message.error('API Key 无管理员权限')
+        }
+      } else if (res.status === 401) {
         message.error('API Key 无效，请重试')
+      } else if (res.status === 403) {
+        message.error('API Key 无管理员权限')
+      } else {
+        message.error('验证失败，请重试')
       }
     } catch {
       message.error('无法连接到服务器')

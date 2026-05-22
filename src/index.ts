@@ -152,11 +152,20 @@ async function startServer() {
     try {
       const requestOptions: RequestInit = { method: req.method, headers };
 
-      // 对于有 body 的请求，读取 body
+      // 对于有 body 的请求，读取 body（带 10MB 大小限制）
       if (req.method && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+        const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
         const body = await new Promise<string>((resolve, reject) => {
           let data = '';
-          req.on('data', (chunk) => { data += chunk; });
+          let size = 0;
+          req.on('data', (chunk) => {
+            size += chunk.length;
+            if (size > MAX_BODY_SIZE) {
+              reject(new Error('Request body too large'));
+              return;
+            }
+            data += chunk;
+          });
           req.on('end', () => resolve(data));
           req.on('error', reject);
         });
@@ -176,6 +185,12 @@ async function startServer() {
       res.end(body);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
+      if (msg === 'Request body too large') {
+        res.writeHead(413);
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: { message: 'Request body too large', type: 'invalid_request_error', code: 'body_too_large' } }));
+        return;
+      }
       writeLog('error', 'Request handling error', { error: msg });
       res.writeHead(500);
       res.setHeader('Content-Type', 'application/json');

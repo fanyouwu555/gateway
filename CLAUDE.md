@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI Gateway - Multi-Provider LLM Routing. A TypeScript/Hono-based gateway that unifies access to multiple LLM providers (OpenAI, DeepSeek, Anthropic, Mistral, Groq, Google, Moonshot) with smart routing, load balancing, rate limiting, caching, and failover.
+AI Gateway - Multi-Provider LLM Routing. A TypeScript/Hono-based gateway that unifies access to multiple LLM providers (OpenAI, DeepSeek, Anthropic, Mistral, Groq, Google, Moonshot, Volcano Engine, Kimi Code) with smart routing, load balancing, rate limiting, caching, failover, session management, prompt templates, model aliases, alert engine, and a plugin system.
 
 ## Commands
 
@@ -12,7 +12,7 @@ AI Gateway - Multi-Provider LLM Routing. A TypeScript/Hono-based gateway that un
 npm run dev       # tsx watch src/index.ts (hot reload on port 3000)
 npm run build     # tsc → dist/
 npm start         # tsx dist/index.js
-npm test          # jest (uses ts-jest ESM preset, 263 tests across 23 suites)
+npm test          # jest (38 suites, 395 tests, ts-jest ESM preset)
 npm run lint      # eslint src/
 npm run format    # prettier --write src/
 ```
@@ -29,10 +29,10 @@ src/index.ts        HTTP server start + init (node:http, graceful shutdown)
 src/routes/         API route handlers (chat, embed, model, admin)
 src/middleware/     Middleware chain: cors → logger → metrics → auth → ratelimit
 src/providers/      AI provider adapters + registry + call orchestration
-src/services/       Business logic: router, metrics, cache, quota, failover, loadbalancer, tenant
-src/plugins/        Plugin system: guardrail, request/response interceptors
-src/stores/         Storage abstraction: interface → MemoryKVStore / RedisKVStore
-src/config/         Config loader (env vars + conf/default.json)
+src/services/       Business logic: router, metrics, cache, quota, failover, loadbalancer, tenant, alert, prompt
+src/plugins/        Plugin system: guardrail, request/response interceptors + VM sandbox loader
+src/stores/         Storage abstraction: interface → MemoryKVStore / RedisKVStore, factory pattern
+src/config/         Config loader (env vars + conf/default.json), model alias resolution
 src/types/          Shared type definitions (no business logic imports allowed)
 src/utils/          Pure utilities: logger (standalone), hashing, helpers
 src/validation/     Zod schemas for request validation
@@ -68,8 +68,8 @@ The app uses Hono's sub-app pattern for middleware scoping:
 
 ### Providers
 
-- **OpenAI-compatible** (openai, deepseek, groq, mistral, moonshot): extend `OpenAICompatibleProvider` (~15 lines each, no HTTP boilerplate)
-- **Non-OpenAI** (anthropic, google): extend `BaseProvider` directly with custom format conversion
+- **OpenAI-compatible** (openai, deepseek, groq, mistral, moonshot, volcano): extend `OpenAICompatibleProvider` (~15 lines each, no HTTP boilerplate)
+- **Non-OpenAI** (anthropic, google, kimi-code): extend `BaseProvider` directly with custom format conversion
 - **DynamicProvider**: config-driven in `conf/default.json` under `dynamicProviders`, no code changes needed
 - **Registry**: `src/providers/registry.ts` — call `registerProvider(name, instance)` to add
 
@@ -78,12 +78,15 @@ The app uses Hono's sub-app pattern for middleware scoping:
 Each module checks its own env var. Default is `memory`. Set to `redis` for production:
 
 ```
-STORAGE_TYPE=memory          # global default
-CACHE_STORAGE=memory         # response cache
-HISTORY_STORAGE=memory       # session history
-METRICS_STORAGE=memory       # usage metrics
-RATE_LIMIT_STORAGE=memory    # sliding window counter
-FAILOVER_STORAGE=memory      # health state persistence
+STORAGE_TYPE=memory           # global default
+CACHE_STORAGE=memory          # response cache
+HISTORY_STORAGE=memory        # session history
+METRICS_STORAGE=memory        # usage metrics
+RATE_LIMIT_STORAGE=memory     # sliding window counter
+FAILOVER_STORAGE=memory       # health state persistence
+ALERT_STORAGE=memory          # alert rule state
+TENANT_STORAGE=memory         # tenant data
+QUOTA_STORAGE=memory          # quota state
 ```
 
 Redis config: `REDIS_URL`, or `REDIS_HOST/PORT/PASSWORD/DB`.
@@ -103,6 +106,18 @@ Environment variable > `conf/default.json` > hardcoded defaults in `src/config/i
 
 Config path override: `CONFIG_PATH` env var.
 
+### Model Aliases
+
+Configured in `conf/default.json` under `model_aliases` (e.g., `{ "gpt-4": "gpt-4o" }`). The `resolveModelAlias()` function in `src/config/index.ts` resolves aliases at request time. Managed at runtime via Admin API `PUT /v1/config/aliases`. Aliases allow clients to reference models by simplified names or migrate traffic without client-side changes.
+
+### Alert Engine
+
+Defined in `src/services/alert.ts`. A rule-based alert system that periodically evaluates metrics (`error_rate`, `avg_latency_ms`, `total_requests`) against thresholds and sends webhook notifications. Rules are managed via Admin API (`/v1/alerts/*`) and the engine runs on a configurable interval (default 60s).
+
+### Prompt Templates
+
+Defined in `src/services/prompt.ts`. Built-in template store with support for `{{var}}` variable substitution. Includes 4 preset templates (translate, summarize, code-review, qa). Templates can be rendered at request time via the `template_id` field in chat completion requests, or managed via Admin API (`/v1/prompts/*`).
+
 ## Routes
 
 | Method | Path | Description | Auth |
@@ -119,7 +134,11 @@ Config path override: `CONFIG_PATH` env var.
 | ALL | `/v1/usage/*` | Usage analytics | Admin Key |
 | ALL | `/v1/quota/*` | Quota management | Admin Key |
 | ALL | `/v1/cache/*` | Cache management | Admin Key |
-| WS | `/v1/ws/*` | WebSocket admin | Admin Key |
+| ALL | `/v1/prompts/*` | Prompt template CRUD + render | Admin Key |
+| ALL | `/v1/alerts/*` | Alert rule management | Admin Key |
+| GET | `/v1/router/status` | Router status | Admin Key |
+| ALL | `/v1/sessions/*` | Session management | Admin Key |
+| WS | `/v1/ws/*` | WebSocket admin + streaming | Admin Key |
 
 ## Type System
 
@@ -146,9 +165,11 @@ Error types: `invalid_request_error`, `authentication_error`, `rate_limit_error`
 React 18 + Vite + Ant Design 5 + Zustand 4 + ECharts 5 + React Router 6. Package manager: **pnpm only**.
 
 ```bash
+pnpm install      # install dependencies (pnpm only — do NOT use npm)
 pnpm dev          # port 3001, proxies /api → localhost:3000
 pnpm build        # tsc --noEmit && vite build
 pnpm lint         # eslint src/ --ext ts,tsx --max-warnings 0
+pnpm test         # vitest
 ```
 
 Directory structure (locked, do not refactor):
@@ -172,6 +193,7 @@ Key rules:
 - `noUnusedLocals: true`, `noUnusedParameters: true` → tsc error
 - `catch(e) {}` without handling → lint error
 - `noImplicitReturns: true` — every code path must return
+- `noFallthroughCasesInSwitch: true` — switch fallthrough is an error
 
 ## Docker
 
@@ -184,10 +206,11 @@ Dockerfile: `node:20-alpine`, `npm ci --only=production`, runs `dist/index.js`. 
 
 ## Common Development Tasks
 
-**Add a new OpenAI-compatible provider**:
-1. Create `src/providers/[name]/index.ts` extending `OpenAICompatibleProvider`
-2. Register in `src/providers/registry.ts`
-3. Add config env var parsing in `src/config/index.ts`
+**Add a new provider**:
+1. If OpenAI-compatible: extend `OpenAICompatibleProvider` in `src/providers/[name]/index.ts`
+2. If non-standard (Anthropic-style): extend `BaseProvider` with custom chat/chatStream/embed
+3. Register in `src/providers/registry.ts`
+4. Add config env var parsing in `src/config/index.ts`
 
 **Add a new route**:
 1. Add to existing router in `src/routes/` or create new
@@ -197,10 +220,15 @@ Dockerfile: `node:20-alpine`, `npm ci --only=production`, runs `dist/index.js`. 
 1. Implement `IPlugin` interface from `src/plugins/index.ts`
 2. Register via `registerPlugin()` at startup or via Admin API
 
-**Add storage support**:
+**Add a storage support**:
+
 1. Implement `IKVStore` interface from `src/stores/interface.ts`
 2. Add factory case in `src/stores/factory.ts`
 3. Add env var support
+
+**HTTP connection pool**: Configured via `HTTP_POOL_SIZE` (default 100), `HTTP_KEEP_ALIVE` (default true), `HTTP_KEEP_ALIVE_TIMEOUT` (default 60000ms) env vars. Uses undici `Agent` with shared connection pool in `src/utils/http-client.ts`.
+
+**Plugin sandbox**: External plugin code is loaded via Node.js `vm` module in `src/plugins/loader.ts` with a restricted sandbox (no `require`, no `process`, no filesystem access).
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 

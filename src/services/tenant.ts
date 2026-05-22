@@ -3,7 +3,7 @@
  * 租户配置、API Key管理、配额控制
  */
 import type { TenantId, IApiKeyMeta } from '../types';
-import { generateRequestId, hashApiKey, verifyApiKey } from '../utils';
+import { generateRequestId, hashApiKey, verifyApiKey, generateSecureRandomString } from '../utils';
 
 /**
  * 租户配置
@@ -149,7 +149,7 @@ class TenantStore {
       return null;
     }
 
-    const plaintextKey = `sk-${tenantId.slice(0, 8)}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const plaintextKey = `sk-${tenantId.slice(0, 8)}-${Date.now()}-${generateSecureRandomString(12)}`;
     // 存储哈希值，与 auth middleware 的 verifyApiKey() 兼容
     const hashedKey = hashApiKey(plaintextKey);
     const meta: IApiKeyMeta = {
@@ -276,9 +276,22 @@ export function resetTenantStore(): void {
  * 创建租户
  */
 export function createTenant(
-  tenant: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at'>
+  tenant: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at' | 'settings' | 'limits'> & { settings?: TenantSettings; limits?: TenantLimits }
 ): TenantConfig {
-  return tenantStore.create(tenant);
+  // plan 感知的默认限制
+  const planDefaults: Record<string, TenantLimits> = {
+    free:       { daily_requests: 1000, daily_tokens: 100000,  monthly_cost: 100,  max_api_keys: 5,  concurrent_requests: 10 },
+    pro:        { daily_requests: 10000, daily_tokens: 1000000,  monthly_cost: 1000,  max_api_keys: 20,  concurrent_requests: 50 },
+    enterprise: { daily_requests: 100000, daily_tokens: 10000000, monthly_cost: 10000, max_api_keys: 100, concurrent_requests: 200 },
+  };
+
+  const completed: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at'> = {
+    ...tenant,
+    settings: tenant.settings || { allowed_providers: ['openai'] },
+    limits: tenant.limits || planDefaults[tenant.plan] || planDefaults.free,
+  };
+
+  return tenantStore.create(completed);
 }
 
 /**

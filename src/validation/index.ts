@@ -75,14 +75,14 @@ export const tenantConfigSchema = z.object({
     allowed_models: z.array(z.string()).optional(),
     webhook_url: z.string().url().optional(),
     notification_email: z.string().email().optional(),
-  }),
+  }).optional(),
   limits: z.object({
     daily_requests: z.number().int().positive(),
     daily_tokens: z.number().int().positive(),
     monthly_cost: z.number().positive(),
     max_api_keys: z.number().int().positive(),
     concurrent_requests: z.number().int().positive(),
-  }),
+  }).optional(),
 });
 
 export const tenantUpdateSchema = z.object({
@@ -123,11 +123,19 @@ export const configUpdateSchema = z.object({
       tenant_id: z.string(),
       name: z.string(),
       created_at: z.number(),
-    })),
+    })).optional(),
   }).optional(),
   rate_limit: z.object({
     enabled: z.boolean(),
     qps: z.number().positive(),
     burst: z.number().positive(),
+  }).optional(),
+  failover: z.object({
+    enabled: z.boolean(),
+    failureThreshold: z.number().positive(),
+    successThreshold: z.number().positive(),
+    healthCheckInterval: z.number().positive(),
+    healthCheckTimeout: z.number().positive().optional(),
+    healthCheckModel: z.string().optional(),
   }).optional(),
 });

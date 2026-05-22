@@ -67,6 +67,7 @@ const Dashboard: React.FC = () => {
       setProviderStatsData(providerStats as unknown as ProviderStats[])
       setStatusCodeData(statusCode as unknown as Record<string, number>)
     } catch (error) {
+      message.error('加载数据失败，请检查网络连接')
       console.error('Failed to fetch data:', error)
     } finally {
       setLoading(false)

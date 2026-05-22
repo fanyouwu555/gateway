@@ -112,7 +112,7 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
     const keys = adminKeysEnv.split(',').filter(Boolean);
     for (const rawKey of keys) {
       const trimmed = rawKey.trim();
-      config.auth.api_keys.push({
+      (config.auth.api_keys || []).push({
         key: trimmed,
         tenant_id: 'admin',
         name: 'admin-key',
@@ -262,10 +262,12 @@ export function initConfig(configPath?: string): IGatewayConfig {
   }
 
   // 自动哈希 API Key（将明文 key 转为 scrypt 哈希）
-  config.auth.api_keys = config.auth.api_keys.map((k) => ({
-    ...k,
-    key: ensureKeyHashed(k.key),
-  }));
+  if (config.auth.api_keys) {
+    config.auth.api_keys = config.auth.api_keys.map((k) => ({
+      ...k,
+      key: ensureKeyHashed(k.key),
+    }));
+  }
 
   return config;
 }
@@ -341,14 +343,17 @@ export function setConfig(updates: Partial<IGatewayConfig>): IGatewayConfig {
   }
   _config = { ..._config, ...updates };
 
-  // 如果更新了 providers，需要合并而非覆盖
+  // 深度合并 auth，避免更新 enabled 时丢失已有的 api_keys
+  if (updates.auth) {
+    _config.auth = { ..._config.auth, ...updates.auth };
+  }
   if (updates.providers) {
     _config.providers = { ..._config.providers, ...updates.providers };
   }
 
   // 自动哈希新增的 API Key
   if (updates.auth?.api_keys) {
-    _config.auth.api_keys = _config.auth.api_keys.map((k) => ({
+    _config.auth.api_keys = (_config.auth.api_keys || []).map((k) => ({
       ...k,
       key: ensureKeyHashed(k.key),
     }));

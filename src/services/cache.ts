@@ -80,6 +80,12 @@ class CacheStore<T> {
       String(request.temperature || ''),
       String(request.top_p || ''),
       String(request.max_tokens || ''),
+      String(request.presence_penalty || ''),
+      String(request.frequency_penalty || ''),
+      JSON.stringify(request.stop || ''),
+      JSON.stringify(request.tools || ''),
+      JSON.stringify(request.tool_choice || ''),
+      String(request.user || ''),
     ];
     return parts.join('|');
   }
@@ -136,10 +142,13 @@ class CacheStore<T> {
     for (const entry of this.cache.values()) {
       if (now > entry.expires_at) continue;
 
-      // 从 key 中解析出 request 文本（简化：只比较当前 key）
-      // 实际实现：存储时也保存 token set
+      // 从 key 中解析出 model 和 request 文本
       const keyParts = entry.key.split('|');
       if (keyParts.length < 2) continue;
+
+      // 必须匹配相同的 model
+      const cachedModel = keyParts[0];
+      if (cachedModel !== request.model) continue;
 
       try {
         const messages = JSON.parse(keyParts[1]);

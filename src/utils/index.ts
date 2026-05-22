@@ -113,6 +113,13 @@ export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * 生成加密安全的随机字符串
+ */
+export function generateSecureRandomString(length = 16): string {
+  return randomBytes(length).toString('base64url').slice(0, length);
+}
+
 // ===== API Key 安全存储 =====
 
 /** 哈希配置 */
