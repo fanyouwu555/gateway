@@ -16,6 +16,7 @@ import { initCache } from './services/cache';
 import { initSessionStore } from './services/history';
 import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
+import { createPiiPlugin, createPiiBlockGuardrail, createPromptInjectionGuardrail } from './plugins/guardrails';
 import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
@@ -36,6 +37,20 @@ async function startServer() {
   // 注册内置插件
   const sensitiveFilter = createSensitiveWordFilterPlugin(['xxx', 'test-bad-word']);
   registerPlugin(sensitiveFilter);
+
+  // 注册 PII 脱敏插件（默认 mask 模式）
+  const piiPlugin = createPiiPlugin();
+  registerPlugin(piiPlugin);
+
+  // 注册 PII Block Guardrail（仅在 action=block 时启用）
+  const piiBlockGuardrail = createPiiBlockGuardrail();
+  if (piiBlockGuardrail.config.enabled) {
+    registerPlugin(piiBlockGuardrail);
+  }
+
+  // 注册提示注入 Guardrail
+  const injectionGuardrail = createPromptInjectionGuardrail();
+  registerPlugin(injectionGuardrail);
 
   // 获取配置
   const config = getConfig();

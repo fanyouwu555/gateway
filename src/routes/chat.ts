@@ -12,7 +12,7 @@ import { chatComplete, chatCompleteStream } from '../providers';
 import { chatCompletionRequestSchema } from '../validation';
 import { writeLog } from '../utils/logger';
 import { smartRoute, type RouterStrategy } from '../services/router';
-import { runGuardrailPlugins, runRequestPlugins, runResponsePlugins } from '../plugins';
+import { runGuardrailPlugins, runRequestPlugins, runResponsePlugins, runTransformPlugins } from '../plugins';
 import { getCache, setCache } from '../services/cache';
 import { getConfig } from '../config';
 import { templateToMessages } from '../services/prompt';
@@ -120,8 +120,11 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       }
     }
 
+    // 0.5. 运行 Transform 插件（PII 脱敏等）
+    const transformedReq = await runTransformPlugins(c, req) as typeof req;
+
     // 1. 运行 Guardrail 插件（拦截不合规请求）
-    const guardrailResult = await runGuardrailPlugins(c, req);
+    const guardrailResult = await runGuardrailPlugins(c, transformedReq);
     if (!guardrailResult.allowed) {
       return c.json(
         {
@@ -153,7 +156,7 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     }
 
     // 2. 运行请求插件（转换/增强请求）
-    const processedReq = await runRequestPlugins(c, req);
+    const processedReq = await runRequestPlugins(c, transformedReq);
 
     const model = processedReq.model;
 

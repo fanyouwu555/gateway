@@ -64,6 +64,7 @@ jest.mock('../../src/plugins', () => ({
   runGuardrailPlugins: jest.fn(() => Promise.resolve({ allowed: true })),
   runRequestPlugins: jest.fn((_c, req) => Promise.resolve(req)),
   runResponsePlugins: jest.fn((_c, res) => Promise.resolve(res)),
+  runTransformPlugins: jest.fn((_c, req) => Promise.resolve(req)),
 }));
 
 jest.mock('../../src/services/router', () => ({

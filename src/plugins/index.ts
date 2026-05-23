@@ -286,6 +286,13 @@ export async function runGuardrailPlugins(c: Context, data: unknown) {
 }
 
 /**
+ * 执行转换插件
+ */
+export async function runTransformPlugins(c: Context, data: unknown): Promise<unknown> {
+  return pluginManager.runTransformPlugins(c, data);
+}
+
+/**
  * 列出所有插件
  */
 export function listPlugins(): PluginConfig[] {
