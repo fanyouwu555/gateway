@@ -151,7 +151,7 @@ export const configUpdateSchema = z.object({
     fallback: z.string().optional(),
   })).optional(),
   auth: z.object({
-    enabled: z.boolean(),
+    enabled: z.boolean().optional(),
     api_keys: z.array(z.object({
       key: z.string(),
       tenant_id: z.string(),
@@ -160,15 +160,15 @@ export const configUpdateSchema = z.object({
     })).optional(),
   }).optional(),
   rate_limit: z.object({
-    enabled: z.boolean(),
-    qps: z.number().positive(),
-    burst: z.number().positive(),
+    enabled: z.boolean().optional(),
+    qps: z.number().positive().optional(),
+    burst: z.number().positive().optional(),
   }).optional(),
   failover: z.object({
-    enabled: z.boolean(),
-    failureThreshold: z.number().positive(),
-    successThreshold: z.number().positive(),
-    healthCheckInterval: z.number().positive(),
+    enabled: z.boolean().optional(),
+    failureThreshold: z.number().positive().optional(),
+    successThreshold: z.number().positive().optional(),
+    healthCheckInterval: z.number().positive().optional(),
     healthCheckTimeout: z.number().positive().optional(),
     healthCheckModel: z.string().optional(),
     chains: z.record(z.array(z.string())).optional(),
@@ -176,9 +176,9 @@ export const configUpdateSchema = z.object({
     latencyThresholdMs: z.number().positive().optional(),
   }).optional(),
   cache: z.object({
-    enabled: z.boolean(),
-    ttl: z.number().positive(),
-    max_size: z.number().positive(),
+    enabled: z.boolean().optional(),
+    ttl: z.number().positive().optional(),
+    max_size: z.number().positive().optional(),
   }).optional(),
   pricing: z.record(z.object({
     input: z.number(),

@@ -239,23 +239,23 @@ export interface IGatewayConfig {
   providers: Record<string, IProviderConfig>;
   routing: IRoutingStrategy[];
   auth: {
-    enabled: boolean;
+    enabled?: boolean;
     api_keys?: IApiKeyMeta[];
   };
   rate_limit: {
-    enabled: boolean;
-    qps: number;
-    burst: number;
+    enabled?: boolean;
+    qps?: number;
+    burst?: number;
   };
   cost_control?: {
     monthly_budget?: number;
     warn_threshold?: number;
   };
   failover?: {
-    enabled: boolean;
-    failureThreshold: number;
-    successThreshold: number;
-    healthCheckInterval: number;
+    enabled?: boolean;
+    failureThreshold?: number;
+    successThreshold?: number;
+    healthCheckInterval?: number;
     healthCheckTimeout?: number;
     healthCheckModel?: string;
     /** Explicit failover chains: primary -> [fallback1, fallback2, ...] */
@@ -271,9 +271,9 @@ export interface IGatewayConfig {
   };
   /** 缓存配置 */
   cache?: {
-    enabled: boolean;
-    ttl: number; // 毫秒
-    max_size: number;
+    enabled?: boolean;
+    ttl?: number; // 毫秒
+    max_size?: number;
   };
   /** 会话历史配置 */
   session?: {

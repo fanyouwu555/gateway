@@ -301,8 +301,8 @@ async function getRateLimitStore(isAdmin = false): Promise<IRateLimitStore> {
     if (!adminRateLimitStore) {
       const config = getConfig();
       // Admin 路由使用更宽松的限流（burst 翻倍）
-      const adminQps = config.rate_limit.qps * 2;
-      const adminBurst = config.rate_limit.burst * 2;
+      const adminQps = (config.rate_limit.qps ?? 10) * 2;
+      const adminBurst = (config.rate_limit.burst ?? 20) * 2;
 
       if (useRedisRateLimit()) {
         const redisStore = new RedisRateLimitStore(adminQps, adminBurst);
@@ -320,15 +320,15 @@ async function getRateLimitStore(isAdmin = false): Promise<IRateLimitStore> {
 
     if (useRedisRateLimit()) {
       const redisStore = new RedisRateLimitStore(
-        config.rate_limit.qps,
-        config.rate_limit.burst
+        config.rate_limit.qps ?? 10,
+        config.rate_limit.burst ?? 20
       );
       await redisStore.connect();
       rateLimitStore = redisStore;
     } else {
       rateLimitStore = new MemoryRateLimitStore(
-        config.rate_limit.qps,
-        config.rate_limit.burst
+        config.rate_limit.qps ?? 10,
+        config.rate_limit.burst ?? 20
       );
     }
   }
@@ -364,7 +364,7 @@ export async function rateLimitMiddleware(
     c.req.path.startsWith('/v1/auth/verify');
 
   const store = await getRateLimitStore(isAdminPath);
-  const limit = isAdminPath ? config.rate_limit.burst * 2 : config.rate_limit.burst;
+  const limit = isAdminPath ? (config.rate_limit.burst ?? 20) * 2 : (config.rate_limit.burst ?? 20);
 
   const allowed = await store.consume(c);
   const remaining = await store.getRemainingTokens(c);
