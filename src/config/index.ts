@@ -35,6 +35,9 @@ const DEFAULT_CONFIG: IGatewayConfig = {
         { model: 'command-r-plus', provider: 'cohere' },
         { model: 'llama-3-8b', provider: 'together' },
         { model: 'llama-3-70b', provider: 'together' },
+        { model: 'grok-2', provider: 'xai' },
+        { model: 'grok-2-vision', provider: 'xai' },
+        { model: 'grok-beta', provider: 'xai' },
       ],
     },
   ],
@@ -249,6 +252,16 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
       provider: 'azure-openai',
       base_url: `https://${azureResource}.openai.azure.com/openai/deployments/${azureDeployment}`,
       api_key: azureKey,
+    };
+  }
+
+  // xAI
+  const xaiKey = getEnv('XAI_API_KEY');
+  if (xaiKey) {
+    config.providers.xai = {
+      provider: 'xai',
+      base_url: getEnv('XAI_BASE_URL', 'https://api.x.ai/v1'),
+      api_key: xaiKey,
     };
   }
 
