@@ -37,7 +37,7 @@ export class MemoryVectorStore implements IVectorStore {
 
       const score = this.cosineSimilarity(query, entry.vector);
       if (score >= threshold) {
-        results.push({ id: entry.id, score });
+        results.push({ id: entry.id, score, metadata: entry.metadata });
       }
     }
 
