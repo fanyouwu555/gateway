@@ -83,6 +83,19 @@ export async function createTenant(data: {
   name: string
   plan: string
   status: string
+  settings?: {
+    default_provider?: string
+    allowed_providers?: string[]
+    allowed_models?: string[]
+    webhook_url?: string
+  }
+  limits?: {
+    daily_requests?: number
+    daily_tokens?: number
+    monthly_cost?: number
+    max_api_keys?: number
+    concurrent_requests?: number
+  }
 }) {
   return api.post('/v1/tenants', data)
 }

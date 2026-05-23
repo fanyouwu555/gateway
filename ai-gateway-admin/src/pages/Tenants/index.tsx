@@ -68,11 +68,34 @@ const Tenants: React.FC = () => {
   const handleCreate = async () => {
     try {
       const values = await form.validateFields()
-      await createTenant({
+      const payload: Parameters<typeof createTenant>[0] = {
         name: values.name,
         plan: values.plan,
         status: 'active',
-      })
+      }
+
+      // Build settings if any field present
+      const settings: Record<string, unknown> = {}
+      if (values.settings?.default_provider) settings.default_provider = values.settings.default_provider
+      if (values.settings?.allowed_providers) {
+        settings.allowed_providers = values.settings.allowed_providers.split(',').map((s: string) => s.trim()).filter(Boolean)
+      }
+      if (values.settings?.allowed_models) {
+        settings.allowed_models = values.settings.allowed_models.split(',').map((s: string) => s.trim()).filter(Boolean)
+      }
+      if (values.settings?.webhook_url) settings.webhook_url = values.settings.webhook_url
+      if (Object.keys(settings).length > 0) payload.settings = settings
+
+      // Build limits if any field present
+      const limits: Record<string, number> = {}
+      if (values.limits?.daily_requests !== undefined) limits.daily_requests = values.limits.daily_requests
+      if (values.limits?.daily_tokens !== undefined) limits.daily_tokens = values.limits.daily_tokens
+      if (values.limits?.monthly_cost !== undefined) limits.monthly_cost = values.limits.monthly_cost
+      if (values.limits?.max_api_keys !== undefined) limits.max_api_keys = values.limits.max_api_keys
+      if (values.limits?.concurrent_requests !== undefined) limits.concurrent_requests = values.limits.concurrent_requests
+      if (Object.keys(limits).length > 0) payload.limits = limits
+
+      await createTenant(payload)
       message.success('创建成功')
       setCreateModalVisible(false)
       form.resetFields()
@@ -327,6 +350,35 @@ const Tenants: React.FC = () => {
               <Select.Option value="pro">Pro</Select.Option>
               <Select.Option value="enterprise">Enterprise</Select.Option>
             </Select>
+          </Form.Item>
+
+          <Form.Item label="默认 Provider" name={['settings', 'default_provider']}>
+            <Input placeholder="openai" />
+          </Form.Item>
+          <Form.Item label="允许的 Providers（逗号分隔）" name={['settings', 'allowed_providers']}>
+            <Input placeholder="openai, deepseek" />
+          </Form.Item>
+          <Form.Item label="允许的模型（逗号分隔）" name={['settings', 'allowed_models']}>
+            <Input placeholder="gpt-4o-mini, deepseek-chat" />
+          </Form.Item>
+          <Form.Item label="Webhook URL" name={['settings', 'webhook_url']}>
+            <Input placeholder="https://example.com/webhook" />
+          </Form.Item>
+
+          <Form.Item label="日请求限制" name={['limits', 'daily_requests']}>
+            <InputNumber min={1} style={{ width: '100%' }} placeholder="1000" />
+          </Form.Item>
+          <Form.Item label="日 Token 限制" name={['limits', 'daily_tokens']}>
+            <InputNumber min={1} style={{ width: '100%' }} placeholder="100000" />
+          </Form.Item>
+          <Form.Item label="月预算（USD）" name={['limits', 'monthly_cost']}>
+            <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="100" />
+          </Form.Item>
+          <Form.Item label="最大 API Keys" name={['limits', 'max_api_keys']}>
+            <InputNumber min={1} style={{ width: '100%' }} placeholder="10" />
+          </Form.Item>
+          <Form.Item label="并发请求限制" name={['limits', 'concurrent_requests']}>
+            <InputNumber min={1} style={{ width: '100%' }} placeholder="100" />
           </Form.Item>
         </Form>
       </Modal>
