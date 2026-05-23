@@ -130,11 +130,13 @@ const Metrics: React.FC = () => {
       <div className="page-header">
         <h2>用量统计</h2>
         <Space>
-          <Segmented
-            options={TIME_RANGES.map((t) => ({ label: t.label, value: t.value }))}
-            value={timeRange}
-            onChange={(v) => setTimeRange(v as number)}
-          />
+          <div onClick={(e) => e.stopPropagation()}>
+            <Segmented
+              options={TIME_RANGES.map((t) => ({ label: t.label, value: t.value }))}
+              value={timeRange}
+              onChange={(v) => setTimeRange(v as number)}
+            />
+          </div>
           <Button icon={<DownloadOutlined />} onClick={handleExportCSV}>导出 CSV</Button>
           <Button icon={<ReloadOutlined />} onClick={fetchData} loading={loading}>
             刷新
