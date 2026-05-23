@@ -22,6 +22,10 @@ const providerIcons: Record<string, string> = {
   groq: '🟡',
   google: '🟠',
   moonshot: '🌙',
+  volcano: '🌋',
+  'kimi-code': '🌙',
+  cohere: '⚫',
+  together: '🔷',
 }
 
 const Providers: React.FC = () => {
