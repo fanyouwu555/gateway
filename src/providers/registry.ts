@@ -13,6 +13,8 @@ import { googleProvider } from './google';
 import { moonshotProvider } from './moonshot';
 import { volcanoProvider } from './volcano';
 import { kimiCodeProvider } from './kimi-code';
+import { cohereProvider } from './cohere';
+import { togetherProvider } from './together';
 import { DynamicProvider } from './dynamic';
 import { getConfig } from '../config';
 import { writeLog } from '../utils/logger';
@@ -144,6 +146,8 @@ export function initProviders(): void {
   registerProvider('moonshot', moonshotProvider);
   registerProvider('volcano', volcanoProvider);
   registerProvider('kimi-code', kimiCodeProvider);
+  registerProvider('cohere', cohereProvider);
+  registerProvider('together', togetherProvider);
 
   // 注册 mock provider（仅在 MOCK_PROVIDER=1 时启用）
   if (process.env.MOCK_PROVIDER === '1') {
@@ -172,4 +176,4 @@ export function initProviders(): void {
   });
 }
 
-export { openaiProvider, deepseekProvider, anthropicProvider, mistralProvider, groqProvider, googleProvider, moonshotProvider, volcanoProvider, kimiCodeProvider };
+export { openaiProvider, deepseekProvider, anthropicProvider, mistralProvider, groqProvider, googleProvider, moonshotProvider, volcanoProvider, kimiCodeProvider, cohereProvider, togetherProvider };

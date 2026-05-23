@@ -31,6 +31,10 @@ const DEFAULT_CONFIG: IGatewayConfig = {
         { model: 'gemini', provider: 'google' },
         { model: 'ark-code-latest', provider: 'volcano' },
         { model: 'kimi-for-coding', provider: 'kimi-code' },
+        { model: 'command-r', provider: 'cohere' },
+        { model: 'command-r-plus', provider: 'cohere' },
+        { model: 'llama-3-8b', provider: 'together' },
+        { model: 'llama-3-70b', provider: 'together' },
       ],
     },
   ],
@@ -207,6 +211,26 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
       provider: 'kimi-code',
       base_url: getEnv('KIMI_CODE_BASE_URL', 'https://api.kimi.com/coding/v1'),
       api_key: kimiCodeKey,
+    };
+  }
+
+  // Cohere
+  const cohereKey = getEnv('COHERE_API_KEY');
+  if (cohereKey) {
+    config.providers.cohere = {
+      provider: 'cohere',
+      base_url: getEnv('COHERE_BASE_URL', 'https://api.cohere.com/v1'),
+      api_key: cohereKey,
+    };
+  }
+
+  // Together AI
+  const togetherKey = getEnv('TOGETHER_API_KEY');
+  if (togetherKey) {
+    config.providers.together = {
+      provider: 'together',
+      base_url: getEnv('TOGETHER_BASE_URL', 'https://api.together.xyz/v1'),
+      api_key: togetherKey,
     };
   }
 
