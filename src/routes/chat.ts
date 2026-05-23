@@ -14,6 +14,7 @@ import { writeLog } from '../utils/logger';
 import { smartRoute, type RouterStrategy } from '../services/router';
 import { runGuardrailPlugins, runRequestPlugins, runResponsePlugins, runTransformPlugins } from '../plugins';
 import { getCache, setCache } from '../services/cache';
+import { getSemanticCache } from '../services/semantic-cache';
 import { getConfig } from '../config';
 import { templateToMessages } from '../services/prompt';
 import { checkQuota, recordUsage, checkKeyQuota } from '../services/quota';
@@ -127,6 +128,17 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       }
     }
     endSpan(cacheSpan);
+
+    // L3 向量语义缓存
+    const semanticCache = getSemanticCache();
+    if (semanticCache && config.semantic_cache?.enabled && !req.stream) {
+      const semanticCached = await semanticCache.get(req, tenantId);
+      if (semanticCached) {
+        writeLog('debug', 'Semantic cache hit', { model: req.model });
+        c.set('cache_hit', true);
+        return c.json(JSON.parse(semanticCached), 200);
+      }
+    }
 
     // 0.5. 运行 Transform 插件（PII 脱敏等）
     const transformedReq = await runTransformPlugins(c, req) as typeof req;
@@ -276,6 +288,13 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     if (config.cache?.enabled && !processedReq.stream) {
       setCache(processedReq, JSON.stringify(response), tenantId).catch((err) => {
         writeLog('warn', 'Failed to cache response', { error: err instanceof Error ? err.message : String(err) });
+      });
+    }
+
+    // L3 语义缓存写入
+    if (semanticCache && config.semantic_cache?.enabled && !processedReq.stream) {
+      semanticCache.set(processedReq, JSON.stringify(response), tenantId).catch((err) => {
+        writeLog('warn', 'Failed to set semantic cache', { error: err instanceof Error ? err.message : String(err) });
       });
     }
 

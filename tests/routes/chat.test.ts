@@ -60,6 +60,11 @@ jest.mock('../../src/services/cache', () => ({
   setCache: jest.fn(() => Promise.resolve()),
 }));
 
+jest.mock('../../src/services/semantic-cache', () => ({
+  getSemanticCache: jest.fn(() => null),
+  initSemanticCache: jest.fn(),
+}));
+
 jest.mock('../../src/plugins', () => ({
   runGuardrailPlugins: jest.fn(() => Promise.resolve({ allowed: true })),
   runRequestPlugins: jest.fn((_c, req) => Promise.resolve(req)),

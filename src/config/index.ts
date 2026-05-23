@@ -67,6 +67,12 @@ const DEFAULT_CONFIG: IGatewayConfig = {
     ttl: 3600000,
     max_size: 1000,
   },
+  semantic_cache: {
+    enabled: false,
+    threshold: 0.85,
+    backend: 'memory',
+    max_entries: 10000,
+  },
   session: {
     max_sessions: 1000,
     max_messages_per_session: 100,
@@ -267,6 +273,17 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
   const latencyThreshold = getEnv('FAILOVER_LATENCY_THRESHOLD_MS');
   if (latencyThreshold !== undefined) {
     config.failover.latencyThresholdMs = parseInt(latencyThreshold || '30000', 10);
+  }
+
+  // Semantic cache config
+  const semanticCacheEnabled = getEnv('SEMANTIC_CACHE_ENABLED');
+  if (semanticCacheEnabled !== undefined) {
+    config.semantic_cache = {
+      enabled: semanticCacheEnabled === 'true',
+      threshold: parseFloat(getEnv('SEMANTIC_CACHE_THRESHOLD', '0.85') || '0.85'),
+      backend: (getEnv('SEMANTIC_CACHE_BACKEND', 'memory') || 'memory') as 'memory' | 'redis_vector',
+      max_entries: parseInt(getEnv('SEMANTIC_CACHE_MAX_ENTRIES', '10000') || '10000', 10),
+    };
   }
 
   return config;

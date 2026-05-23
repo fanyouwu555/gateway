@@ -275,6 +275,13 @@ export interface IGatewayConfig {
     ttl?: number; // 毫秒
     max_size?: number;
   };
+  /** 语义缓存配置 */
+  semantic_cache?: {
+    enabled?: boolean;
+    threshold?: number;
+    backend?: 'memory' | 'redis_vector';
+    max_entries?: number;
+  };
   /** 会话历史配置 */
   session?: {
     max_sessions: number;

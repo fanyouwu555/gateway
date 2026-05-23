@@ -13,6 +13,7 @@ import { getConfig } from './config';
 import { initProviders } from './providers/registry';
 import { initPricing } from './services/metrics';
 import { initCache } from './services/cache';
+import { initSemanticCache } from './services/semantic-cache';
 import { initSessionStore } from './services/history';
 import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
@@ -64,6 +65,9 @@ async function startServer() {
 
   // 初始化缓存配置
   initCache(config.cache);
+
+  // 初始化语义缓存
+  initSemanticCache(config.semantic_cache);
 
   // 初始化会话历史配置
   initSessionStore(config.session);
