@@ -87,8 +87,6 @@ const Settings: React.FC = () => {
   const handleSave = async () => {
     try {
       const values = await form.validateFields()
-      // Merge with currently loaded config to avoid sending partial nested objects
-      const current = form.getFieldsValue(true)
       await saveGatewayConfig(values)
       message.success('配置保存成功')
     } catch (error) {
