@@ -7,6 +7,7 @@ import type { ChatCompletionRequest } from '../types';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
+import { recordCacheHit, recordCacheMiss } from '../middleware/metrics';
 
 /**
  * 语义缓存配置
@@ -358,6 +359,7 @@ export async function getCache(request: ChatCompletionRequest, tenantId?: string
   const exactMatch = await cacheStore.get(key);
   if (exactMatch) {
     writeLog('debug', 'Exact cache hit');
+    recordCacheHit('exact');
     return exactMatch;
   }
 
@@ -365,10 +367,12 @@ export async function getCache(request: ChatCompletionRequest, tenantId?: string
   if (useSemantic) {
     const semanticMatch = cacheStore.semanticFind(request);
     if (semanticMatch) {
+      recordCacheHit('semantic');
       return semanticMatch;
     }
   }
 
+  recordCacheMiss();
   return null;
 }
 

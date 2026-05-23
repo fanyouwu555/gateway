@@ -200,6 +200,20 @@ export function recordResponseTime(ms: number): void {
   registry.inc('gateway_response_time_ms_sum', {}, ms);
 }
 
+/**
+ * Record cache hit
+ */
+export function recordCacheHit(type: 'exact' | 'semantic'): void {
+  registry.inc('gateway_cache_hits_total', { type });
+}
+
+/**
+ * Record cache miss
+ */
+export function recordCacheMiss(): void {
+  registry.inc('gateway_cache_misses_total', {});
+}
+
 // 为 Hono 应用提供 /metrics 路由处理函数
 export function metricsHandler(c: Context): Response {
   return c.text(getMetrics(), 200, {
