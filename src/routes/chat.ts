@@ -17,6 +17,8 @@ import { getCache, setCache } from '../services/cache';
 import { getConfig } from '../config';
 import { templateToMessages } from '../services/prompt';
 import { checkQuota, recordUsage, checkKeyQuota } from '../services/quota';
+import { createChildSpan, endSpan } from '../utils/tracing';
+import { recordAiTtfb, recordAiTpot, recordAiCost, recordAiTokens } from '../middleware/metrics';
 
 const chatRouter = new Hono();
 
@@ -109,22 +111,30 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       req.max_tokens = keyMaxTokens;
     }
 
+    // 获取 Root Span（如存在）用于创建 Child Span
+    const rootSpan = c.get('span');
+
     // 0. 缓存检查（非流式请求）
     const config = getConfig();
+    const cacheSpan = createChildSpan(rootSpan, 'cache_lookup');
     if (config.cache?.enabled && !req.stream) {
       const cached = await getCache(req, tenantId);
       if (cached) {
         writeLog('debug', 'Cache hit', { model: req.model });
         c.set('cache_hit', true);
+        endSpan(cacheSpan);
         return c.json(JSON.parse(cached), 200);
       }
     }
+    endSpan(cacheSpan);
 
     // 0.5. 运行 Transform 插件（PII 脱敏等）
     const transformedReq = await runTransformPlugins(c, req) as typeof req;
 
     // 1. 运行 Guardrail 插件（拦截不合规请求）
+    const guardrailSpan = createChildSpan(rootSpan, 'guardrail_check');
     const guardrailResult = await runGuardrailPlugins(c, transformedReq);
+    endSpan(guardrailSpan);
     if (!guardrailResult.allowed) {
       return c.json(
         {
@@ -198,8 +208,12 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     c.set('model', model);
 
     // 4. 调用 Provider (支持 Failover)
+    const providerSpan = createChildSpan(rootSpan, 'provider_call');
+    const providerCallStart = Date.now();
+
     if (processedReq.stream) {
       const streamResponse = await chatCompleteStream(providerName, processedReq);
+      endSpan(providerSpan);
 
       return new Response(streamResponse, {
         headers: {
@@ -211,6 +225,12 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     }
 
     let response = await chatComplete(providerName, processedReq);
+    const providerCallEnd = Date.now();
+    const ttfbMs = providerCallEnd - providerCallStart;
+    endSpan(providerSpan);
+
+    // 记录 AI 指标：TTFT
+    recordAiTtfb(ttfbMs, providerName, model);
 
     // 5. 运行响应插件（转换/增强响应）
     response = await runResponsePlugins(c, response);
@@ -223,9 +243,19 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       c.set('prompt_tokens', promptTokens);
       c.set('completion_tokens', completionTokens);
       c.set('total_tokens', totalTokens);
+
+      // 记录 AI Token 使用量指标
+      recordAiTokens(promptTokens, completionTokens, providerName, model);
+
+      // 计算并记录 TPOT（每输出 token 耗时）
+      if (completionTokens > 0) {
+        const tpotMs = ttfbMs / completionTokens;
+        recordAiTpot(tpotMs, providerName, model);
+      }
     }
 
     // 5.6. 记录使用量（非流式请求）
+    const usageSpan = createChildSpan(rootSpan, 'usage_record');
     if (tenantId && response.usage) {
       const pricing = config.pricing?.[processedReq.model];
       let cost = 0;
@@ -236,7 +266,11 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       }
       const keyHash = c.get('key_hash') as string | undefined;
       recordUsage(tenantId, response.usage.total_tokens || 0, cost, keyHash);
+
+      // 记录 AI 成本指标
+      recordAiCost(cost, providerName, model, tenantId);
     }
+    endSpan(usageSpan);
 
     // 6. 缓存响应（非流式请求）
     if (config.cache?.enabled && !processedReq.stream) {

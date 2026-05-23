@@ -21,6 +21,7 @@ import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { startAlertEngine } from './services/alert';
+import { initTracing } from './utils/tracing';
 
 // 创建 Hono 应用实例
 const app = createApp();
@@ -33,6 +34,9 @@ const app = createApp();
 async function startServer() {
   // 初始化 Providers
   initProviders();
+
+  // 初始化 Tracing（默认关闭，需 OTEL_ENABLED=true）
+  initTracing();
 
   // 注册内置插件
   const sensitiveFilter = createSensitiveWordFilterPlugin(['xxx', 'test-bad-word']);

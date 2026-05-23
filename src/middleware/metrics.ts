@@ -214,6 +214,40 @@ export function recordCacheMiss(): void {
   registry.inc('gateway_cache_misses_total', {});
 }
 
+/**
+ * 记录 AI 首字节/首 token 延迟 (TTFT)
+ */
+export function recordAiTtfb(ms: number, provider: string, model: string): void {
+  registry.observe('gateway_ai_ttfb_ms', ms, { provider, model });
+}
+
+/**
+ * 记录 AI 每输出 token 耗时 (TPOT)
+ */
+export function recordAiTpot(ms: number, provider: string, model: string): void {
+  registry.observe('gateway_ai_tpot_ms', ms, { provider, model });
+}
+
+/**
+ * 记录 AI 调用成本 (USD)
+ */
+export function recordAiCost(cost: number, provider: string, model: string, tenantId?: string): void {
+  registry.inc('gateway_ai_cost_usd', { provider, model, tenant_id: tenantId || 'default' }, cost);
+}
+
+/**
+ * 记录 AI Token 使用量
+ */
+export function recordAiTokens(
+  promptTokens: number,
+  completionTokens: number,
+  provider: string,
+  model: string
+): void {
+  registry.inc('gateway_ai_tokens_total', { provider, model, type: 'prompt' }, promptTokens);
+  registry.inc('gateway_ai_tokens_total', { provider, model, type: 'completion' }, completionTokens);
+}
+
 // 为 Hono 应用提供 /metrics 路由处理函数
 export function metricsHandler(c: Context): Response {
   return c.text(getMetrics(), 200, {
