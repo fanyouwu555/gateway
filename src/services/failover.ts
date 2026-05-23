@@ -328,6 +328,22 @@ class FailoverManager {
    */
   getProviderHealthStatus(): Record<string, { isHealthy: boolean; totalRequests: number; errorRate: number; avgLatencyMs: number }> {
     const status: Record<string, { isHealthy: boolean; totalRequests: number; errorRate: number; avgLatencyMs: number }> = {};
+
+    // When failover is disabled, assume all configured providers are healthy.
+    // This prevents stale failure records from showing providers as offline.
+    if (!this.config.enabled) {
+      const appConfig = getConfig();
+      for (const name of Object.keys(appConfig.providers || {})) {
+        status[name] = {
+          isHealthy: true,
+          totalRequests: 0,
+          errorRate: 0,
+          avgLatencyMs: 0,
+        };
+      }
+      return status;
+    }
+
     this.providerHealth.forEach((health, key) => {
       const errorRate = health.total_requests > 0 ? health.error_count / health.total_requests : 0;
       const avgLatency = health.total_requests > 0 ? health.total_latency_ms / health.total_requests : 0;
