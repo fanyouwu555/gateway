@@ -240,6 +240,18 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
     };
   }
 
+  // Azure OpenAI
+  const azureKey = getEnv('AZURE_OPENAI_API_KEY');
+  if (azureKey) {
+    const azureResource = getEnv('AZURE_OPENAI_RESOURCE', '');
+    const azureDeployment = getEnv('AZURE_OPENAI_DEPLOYMENT', '');
+    config.providers['azure-openai'] = {
+      provider: 'azure-openai',
+      base_url: `https://${azureResource}.openai.azure.com/openai/deployments/${azureDeployment}`,
+      api_key: azureKey,
+    };
+  }
+
   // Failover 配置
   const failoverEnabled = getEnv('FAILOVER_ENABLED');
   if (failoverEnabled !== undefined) {
