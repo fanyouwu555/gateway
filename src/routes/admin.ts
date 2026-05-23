@@ -58,6 +58,7 @@ import {
 import { loadPluginInSandbox } from '../plugins/loader';
 import { configUpdateSchema, tenantConfigSchema, tenantUpdateSchema, createApiKeySchema, updateKeyPolicySchema } from '../validation';
 import { requireAdmin } from '../middleware/auth';
+import { auditAdmin } from '../utils/audit';
 import { getKeyUsage } from '../services/metrics';
 
 const adminRouter = new Hono();
@@ -347,6 +348,13 @@ adminRouter.post('/v1/tenants/:id/keys', async (c: Context) => {
   if (!key) {
     return c.json({ error: { message: 'Failed to create API key', type: 'invalid_request_error' } }, 400);
   }
+  auditAdmin({
+    tenantId,
+    ruleId: 'admin.key_created',
+    action: 'allow',
+    metadata: { key_name: key.name },
+    severity: 'low',
+  });
   return c.json(key, 201);
 });
 
@@ -356,6 +364,12 @@ adminRouter.delete('/v1/keys/:key', (c: Context) => {
   if (!deleted) {
     return c.json({ error: { message: 'API key not found', type: 'invalid_request_error' } }, 404);
   }
+  auditAdmin({
+    ruleId: 'admin.key_deleted',
+    action: 'allow',
+    metadata: { key_id: key },
+    severity: 'low',
+  });
   return c.json({ deleted: true });
 });
 
@@ -452,6 +466,12 @@ adminRouter.put('/v1/config', async (c: Context) => {
     }, 400);
   }
   setConfig(parsed.data);
+  auditAdmin({
+    ruleId: 'admin.config_updated',
+    action: 'allow',
+    metadata: { updated_fields: Object.keys(parsed.data) },
+    severity: 'medium',
+  });
   return c.json({ updated: true });
 });
 
