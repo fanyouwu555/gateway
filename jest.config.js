@@ -18,6 +18,7 @@ export default {
   ],
   testPathIgnorePatterns: [
     '/node_modules/',
+    '/.claude/',
   ],
   collectCoverageFrom: [
     'src/**/*.ts',
