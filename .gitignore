@@ -31,6 +31,9 @@ coverage/
 
 # Agent workspace
 .sisyphus/
+.claude/
+.playwright-mcp/
+.superpowers/
 
 # Temp files
 *.tmp
