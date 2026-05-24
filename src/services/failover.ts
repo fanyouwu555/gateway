@@ -385,6 +385,7 @@ class FailoverManager {
     const timer = setInterval(async () => {
       await this.performHealthCheck(provider, apiKey);
     }, this.config.healthCheckInterval);
+    if (timer.unref) timer.unref();
 
     this.healthCheckTimers.set(key, timer);
 
@@ -477,6 +478,7 @@ class FailoverManager {
     const timer = setInterval(async () => {
       await this.performProviderHealthCheck(provider);
     }, this.config.healthCheckInterval);
+    if (timer.unref) timer.unref();
 
     this.providerCheckTimers.set(provider, timer);
     this.performProviderHealthCheck(provider);

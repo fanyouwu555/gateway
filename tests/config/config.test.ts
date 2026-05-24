@@ -90,5 +90,75 @@ describe('Config', () => {
       expect(resolveModelAlias('fast')).toBe('gpt-4o-mini');
       expect(resolveModelAlias('smart')).toBe('gpt-4o');
     });
+
+    it('should detect circular aliases', () => {
+      setConfig({ model_aliases: { a: 'b', b: 'a' } });
+      expect(resolveModelAlias('a')).toBe('a');
+    });
+
+    it('should stop at max depth', () => {
+      setConfig({ model_aliases: { a: 'b', b: 'c', c: 'd', d: 'e', e: 'f', f: 'g' } });
+      expect(resolveModelAlias('a')).toBe('f');
+    });
+
+    it('should stop when alias points to itself', () => {
+      setConfig({ model_aliases: { same: 'same' } });
+      expect(resolveModelAlias('same')).toBe('same');
+    });
+  });
+
+  describe('getProviderForModel', () => {
+    it('should match model prefix', () => {
+      const provider = getProviderForModel('gpt-4o-2024');
+      expect(provider).toBe('openai');
+    });
+  });
+
+  describe('setConfig', () => {
+    it('should deep merge auth config', () => {
+      setConfig({ auth: { enabled: false } });
+      const config = getConfig();
+      expect(config.auth.enabled).toBe(false);
+    });
+
+    it('should deep merge providers config', () => {
+      setConfig({ providers: { openai: { provider: 'openai', base_url: 'https://custom.com', api_key: 'sk-test' } } });
+      const config = getConfig();
+      expect(config.providers.openai?.base_url).toBe('https://custom.com');
+    });
+
+    it('should hash new api keys in auth', () => {
+      setConfig({ auth: { api_keys: [{ key: 'plaintext-key', tenant_id: 'test', name: 'test', created_at: Date.now() }] } });
+      const config = getConfig();
+      expect(config.auth.api_keys?.[0]?.key).not.toBe('plaintext-key');
+    });
+  });
+
+  describe('loadConfigFile', () => {
+    it('should handle missing config file', () => {
+      const { reloadConfig } = require('../../src/config');
+      const config = reloadConfig('./nonexistent-config.json');
+      expect(config).toBeDefined();
+      expect(config.port).toBeGreaterThan(0);
+    });
+  });
+
+  describe('overrideFromEnv', () => {
+    it('should override with env vars', () => {
+      process.env.API_KEYS = 'key1,key2';
+      process.env.OPENAI_API_KEY = 'sk-test';
+      process.env.FAILOVER_ENABLED = 'true';
+      process.env.SEMANTIC_CACHE_ENABLED = 'true';
+      const { reloadConfig } = require('../../src/config');
+      const config = reloadConfig();
+      expect(config.auth.api_keys?.length).toBeGreaterThanOrEqual(2);
+      expect(config.providers.openai?.api_key).toBe('sk-test');
+      expect(config.failover?.enabled).toBe(true);
+      expect(config.semantic_cache?.enabled).toBe(true);
+      delete process.env.API_KEYS;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.FAILOVER_ENABLED;
+      delete process.env.SEMANTIC_CACHE_ENABLED;
+    });
   });
 });

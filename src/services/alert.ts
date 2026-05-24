@@ -80,6 +80,7 @@ class AlertEngine {
   start(intervalMs = 60000): void {
     if (this.timer) return;
     this.timer = setInterval(() => this.evaluate(), intervalMs);
+    if (this.timer.unref) this.timer.unref();
   }
 
   /**

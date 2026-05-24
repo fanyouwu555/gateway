@@ -41,13 +41,31 @@
     "volcano": {
       "provider": "volcano",
       "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
-      "api_key": "ark-82a7a1bd-7187-4d4f-9d68-4e324e90d270-849bc",
       "timeout": 30000
     },
     "kimi-code": {
       "provider": "kimi-code",
       "base_url": "https://api.kimi.com/coding/v1",
-      "api_key": "sk-kimi-o79cdWQI7MUeoO7EKkPBdzimZkH3AbUCuyTcouUBxNC9DdnoDH7pJD96QWl8xkfx",
+      "timeout": 30000
+    },
+    "cohere": {
+      "provider": "cohere",
+      "base_url": "https://api.cohere.com/v1",
+      "timeout": 30000
+    },
+    "together": {
+      "provider": "together",
+      "base_url": "https://api.together.xyz/v1",
+      "timeout": 30000
+    },
+    "azure-openai": {
+      "provider": "azure-openai",
+      "base_url": "https://your-resource.openai.azure.com",
+      "timeout": 30000
+    },
+    "xai": {
+      "provider": "xai",
+      "base_url": "https://api.x.ai/v1",
       "timeout": 30000
     }
   },

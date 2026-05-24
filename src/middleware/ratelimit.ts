@@ -406,6 +406,7 @@ export function initRateLimitCleanInterval(ms?: number): void {
   _cleanInterval = setInterval(() => {
     cleanRateLimitStore(interval);
   }, interval);
+  if (_cleanInterval.unref) _cleanInterval.unref();
 }
 
 // 设置定期清理（默认值）
@@ -413,4 +414,5 @@ if (typeof setInterval !== 'undefined') {
   _cleanInterval = setInterval(() => {
     cleanRateLimitStore(60000);
   }, 60000);
+  if (_cleanInterval.unref) _cleanInterval.unref();
 }

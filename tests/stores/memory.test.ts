@@ -41,6 +41,13 @@ describe('MemoryKVStore', () => {
       const result = await store.get('key');
       expect(result).toBe('value');
     });
+
+    it('should return null when TTL expires', async () => {
+      await store.set('key', 'value', 10);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const result = await store.get('key');
+      expect(result).toBeNull();
+    });
   });
 
   describe('delete', () => {
@@ -67,6 +74,26 @@ describe('MemoryKVStore', () => {
     it('should return false for non-existent key', async () => {
       const exists = await store.exists('nonexistent');
       expect(exists).toBe(false);
+    });
+
+    it('should return false when TTL expires', async () => {
+      await store.set('key', 'value', 10);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const exists = await store.exists('key');
+      expect(exists).toBe(false);
+    });
+  });
+
+  describe('expire', () => {
+    it('should set expiration on existing key', async () => {
+      await store.set('key', 'value');
+      const result = await store.expire('key', 10);
+      expect(result).toBe(true);
+    });
+
+    it('should return false for non-existent key', async () => {
+      const result = await store.expire('nonexistent', 10);
+      expect(result).toBe(false);
     });
   });
 
@@ -97,6 +124,11 @@ describe('MemoryKVStore', () => {
       await store.hSet('hash', 'field', 'value');
       const deleted = await store.hDel('hash', 'field');
       expect(deleted).toBe(1);
+    });
+
+    it('should return 0 when deleting from non-existent hash', async () => {
+      const deleted = await store.hDel('nonexistent', 'field');
+      expect(deleted).toBe(0);
     });
   });
 
@@ -137,6 +169,37 @@ describe('MemoryKVStore', () => {
       await store.set('other:key', 'value3');
       const count = await store.delByPattern('test:*');
       expect(count).toBe(2);
+    });
+  });
+
+  describe('lTrim edge cases', () => {
+    it('should delete list when trim range is out of bounds', async () => {
+      await store.lPush('list', 'a', 'b');
+      await store.lTrim('list', 5, 10);
+      const result = await store.lRange('list', 0, -1);
+      expect(result).toEqual([]);
+    });
+
+    it('should handle negative indices in trim', async () => {
+      await store.lPush('list', 'a', 'b', 'c', 'd', 'e');
+      await store.lTrim('list', -3, -1);
+      const result = await store.lRange('list', 0, -1);
+      expect(result.length).toBe(3);
+    });
+
+    it('should handle lRange with negative indices', async () => {
+      await store.lPush('list', 'a', 'b', 'c');
+      const result = await store.lRange('list', -2, -1);
+      expect(result.length).toBe(2);
+    });
+  });
+
+  describe('MemoryStorageFactory', () => {
+    it('should create MemoryKVStore', () => {
+      const { MemoryStorageFactory } = require('../../src/stores/memory');
+      const factory = new MemoryStorageFactory();
+      const kv = factory.createKVStore('test');
+      expect(kv.type).toBe('memory');
     });
   });
 });

@@ -35,7 +35,10 @@ describe('LoginPage', () => {
   })
 
   it('calls login and navigates on successful verification', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ is_admin: true }),
+    })
     globalThis.fetch = mockFetch
 
     renderLogin()
@@ -46,7 +49,7 @@ describe('LoginPage', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/v1/ws', {
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/auth/verify', {
         headers: { Authorization: 'Bearer valid-key' }
       })
     })
@@ -55,7 +58,7 @@ describe('LoginPage', () => {
   })
 
   it('shows error message on failed verification', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401 })
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({}) })
 
     renderLogin()
     const input = screen.getByPlaceholderText('请输入管理员 API Key')
