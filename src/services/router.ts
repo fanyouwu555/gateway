@@ -2,7 +2,7 @@
  * 智能路由服务
  * 根据请求特征自动选择最优Provider
  */
-import type { ChatCompletionRequest, IRoutingStrategy } from '../types';
+import type { ChatCompletionRequest, IRoutingStrategy, IConditionalRoutingRule } from '../types';
 import { getRoutingStrategy, getConfig } from '../config';
 
 /**
@@ -268,6 +268,105 @@ class SmartRouter {
     }
 
     return { providers };
+  }
+}
+
+/**
+ * 条件路由评估上下文
+ */
+export interface ConditionalRoutingRequest {
+  model: string;
+  tenant_id?: string;
+  content_length?: number;
+  has_tools?: boolean;
+  headers?: Record<string, string>;
+}
+
+/**
+ * 评估条件路由规则
+ * 遍历所有条件规则（按优先级降序），返回第一个匹配的决策
+ */
+export function evaluateConditionalRules(
+  request: ConditionalRoutingRequest
+): RoutingDecision | null {
+  const strategyConfig = getRoutingStrategy();
+  if (!strategyConfig?.conditional_rules || strategyConfig.conditional_rules.length === 0) {
+    return null;
+  }
+
+  // 按优先级降序排序
+  const sorted = [...strategyConfig.conditional_rules].sort(
+    (a, b) => (b.priority ?? 0) - (a.priority ?? 0)
+  );
+
+  for (const rule of sorted) {
+    if (evaluateCondition(rule, request)) {
+      return {
+        provider: rule.target.provider,
+        model: rule.target.model || request.model,
+        reason: `conditional_rule:${rule.name}`,
+        confidence: 1.0,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 评估单条条件
+ */
+function evaluateCondition(
+  rule: IConditionalRoutingRule,
+  request: ConditionalRoutingRequest
+): boolean {
+  const { field, operator, value } = rule.condition;
+
+  // 解析 field，支持 header.* 语法
+  let actualValue: unknown;
+  if (field.startsWith('header.')) {
+    const headerName = field.slice(7).toLowerCase();
+    actualValue = request.headers?.[headerName];
+  } else {
+    switch (field) {
+      case 'model':
+        actualValue = request.model;
+        break;
+      case 'tenant_id':
+        actualValue = request.tenant_id;
+        break;
+      case 'has_tools':
+        actualValue = request.has_tools;
+        break;
+      case 'content_length':
+        actualValue = request.content_length;
+        break;
+      default:
+        return false;
+    }
+  }
+
+  if (actualValue === undefined || actualValue === null) return false;
+
+  switch (operator) {
+    case 'eq':
+      return String(actualValue) === String(value);
+    case 'neq':
+      return String(actualValue) !== String(value);
+    case 'contains':
+      return String(actualValue).includes(String(value));
+    case 'gt':
+      return Number(actualValue) > Number(value);
+    case 'lt':
+      return Number(actualValue) < Number(value);
+    case 'regex':
+      try {
+        return new RegExp(String(value)).test(String(actualValue));
+      } catch {
+        return false;
+      }
+    default:
+      return false;
   }
 }
 

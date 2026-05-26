@@ -28,6 +28,7 @@ import {
   parseTemplate,
 } from '../services/prompt';
 import { getRouterStatus } from '../services/router';
+import { getRequestLogStore } from '../services/request-log';
 import {
   listTenants,
   getTenant,
@@ -314,8 +315,26 @@ adminRouter.get('/v1/tenants/:id', (c: Context) => {
 
 adminRouter.get('/v1/tenants/:id/stats', (c: Context) => {
   const id = c.req.param('id')!;
-  const stats = getTenantStats(id);
-  return c.json(stats);
+  const tenant = getTenantStats(id);
+  if (!tenant) {
+    return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error' } }, 404);
+  }
+  // 获取该租户的使用统计（最近 30 天）
+  const end = Date.now();
+  const start = end - 30 * 24 * 60 * 60 * 1000;
+  const allStats = getAllTenantsStats(start, end);
+  const usage = allStats.find((t) => t.tenant_id === id);
+
+  return c.json({
+    ...tenant,
+    total_requests: usage?.total_requests || 0,
+    total_tokens: usage?.total_tokens || 0,
+    total_cost: usage?.total_cost || 0,
+    avg_duration_ms: usage?.avg_duration_ms || 0,
+    success_rate: usage?.success_rate || 0,
+    by_provider: usage?.by_provider || {},
+    by_model: usage?.by_model || {},
+  });
 });
 
 adminRouter.get('/v1/tenants/:id/keys', (c: Context) => {
@@ -692,6 +711,28 @@ adminRouter.post('/v1/alerts/:id/disable', (c: Context) => {
 adminRouter.post('/v1/alerts/evaluate', (c: Context) => {
   evaluateAlerts();
   return c.json({ evaluated: true });
+});
+
+// === 请求日志 ===
+adminRouter.get('/v1/request-logs', (c: Context) => {
+  const store = getRequestLogStore();
+  const start = c.req.query('start');
+  const end = c.req.query('end');
+  const tenantId = c.req.query('tenant_id');
+  const model = c.req.query('model');
+  const statusCode = c.req.query('status_code');
+  const limit = c.req.query('limit');
+  const offset = c.req.query('offset');
+  const logs = store.getLogs({
+    start: start ? parseInt(start, 10) : undefined,
+    end: end ? parseInt(end, 10) : undefined,
+    tenant_id: tenantId || undefined,
+    model: model || undefined,
+    status_code: statusCode ? parseInt(statusCode, 10) : undefined,
+    limit: limit ? parseInt(limit, 10) : 50,
+    offset: offset ? parseInt(offset, 10) : 0,
+  });
+  return c.json({ logs, total: store.getTotalCount() });
 });
 
 export default adminRouter;

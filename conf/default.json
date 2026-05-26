@@ -3,41 +3,6 @@
   "host": "0.0.0.0",
   "log_level": "info",
   "providers": {
-    "openai": {
-      "provider": "openai",
-      "base_url": "https://api.openai.com/v1",
-      "timeout": 30000
-    },
-    "deepseek": {
-      "provider": "deepseek",
-      "base_url": "https://api.deepseek.com/v1",
-      "timeout": 30000
-    },
-    "anthropic": {
-      "provider": "anthropic",
-      "base_url": "https://api.anthropic.com",
-      "timeout": 30000
-    },
-    "mistral": {
-      "provider": "mistral",
-      "base_url": "https://api.mistral.ai/v1",
-      "timeout": 30000
-    },
-    "groq": {
-      "provider": "groq",
-      "base_url": "https://api.groq.com/openai/v1",
-      "timeout": 30000
-    },
-    "google": {
-      "provider": "google",
-      "base_url": "https://generativelanguage.googleapis.com/v1beta",
-      "timeout": 30000
-    },
-    "moonshot": {
-      "provider": "moonshot",
-      "base_url": "https://api.moonshot.cn/v1",
-      "timeout": 30000
-    },
     "volcano": {
       "provider": "volcano",
       "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
@@ -47,55 +12,16 @@
       "provider": "kimi-code",
       "base_url": "https://api.kimi.com/coding/v1",
       "timeout": 30000
-    },
-    "cohere": {
-      "provider": "cohere",
-      "base_url": "https://api.cohere.com/v1",
-      "timeout": 30000
-    },
-    "together": {
-      "provider": "together",
-      "base_url": "https://api.together.xyz/v1",
-      "timeout": 30000
-    },
-    "azure-openai": {
-      "provider": "azure-openai",
-      "base_url": "https://your-resource.openai.azure.com",
-      "timeout": 30000
-    },
-    "xai": {
-      "provider": "xai",
-      "base_url": "https://api.x.ai/v1",
-      "timeout": 30000
     }
   },
   "routing": [
     {
       "name": "default",
       "rules": [
-        { "model": "gpt-4o", "provider": "openai", "max_tokens": 128000 },
-        { "model": "gpt-4o-mini", "provider": "openai", "max_tokens": 4096 },
-        { "model": "gpt-3.5-turbo", "provider": "openai", "max_tokens": 4096 },
-        { "model": "gpt-4-turbo", "provider": "openai", "max_tokens": 128000 },
-        { "model": "deepseek-chat", "provider": "deepseek", "max_tokens": 4096 },
-        { "model": "deepseek-coder", "provider": "deepseek", "max_tokens": 4096 },
-        { "model": "claude-3-5-sonnet-20241022", "provider": "anthropic", "max_tokens": 4096 },
-        { "model": "claude-3-opus-20240229", "provider": "anthropic", "max_tokens": 4096 },
-        { "model": "claude-3-sonnet-20240229", "provider": "anthropic", "max_tokens": 4096 },
-        { "model": "mistral-large-latest", "provider": "mistral", "max_tokens": 32000 },
-        { "model": "mistral-small-latest", "provider": "mistral", "max_tokens": 32000 },
-        { "model": "llama-3.3-70b-versatile", "provider": "groq", "max_tokens": 8000 },
-        { "model": "mixtral-8x7b-32768", "provider": "groq", "max_tokens": 8000 },
-        { "model": "gemini-2.0-flash", "provider": "google", "max_tokens": 8000 },
-        { "model": "gemini-2.0-pro", "provider": "google", "max_tokens": 8000 },
-        { "model": "gemini-1.5-pro", "provider": "google", "max_tokens": 8000 },
-        { "model": "moonshot-v1-8k", "provider": "moonshot", "max_tokens": 8192 },
-        { "model": "moonshot-v1-32k", "provider": "moonshot", "max_tokens": 32768 },
-        { "model": "moonshot-v1-128k", "provider": "moonshot", "max_tokens": 131072 },
         { "model": "ark-code-latest", "provider": "volcano", "max_tokens": 128000 },
         { "model": "kimi-for-coding", "provider": "kimi-code", "max_tokens": 128000 }
       ],
-      "fallback": "openai"
+      "fallback": "volcano"
     }
   ],
   "auth": {
@@ -131,12 +57,10 @@
     "successThreshold": 2,
     "healthCheckInterval": 60000,
     "healthCheckTimeout": 5000,
-    "healthCheckModel": "gpt-4o-mini",
+    "healthCheckModel": "ark-code-latest",
     "chains": {
-      "openai": ["deepseek", "anthropic"],
-      "deepseek": ["openai", "anthropic"],
-      "anthropic": ["openai", "deepseek"],
-      "volcano": ["moonshot", "openai"]
+      "volcano": ["kimi-code"],
+      "kimi-code": ["volcano"]
     },
     "errorRateThreshold": 0.5,
     "latencyThresholdMs": 30000
@@ -150,6 +74,19 @@
     "ttl": 3600000,
     "max_size": 1000
   },
+  "request_logging": {
+    "enabled": false,
+    "max_body_size": 4096,
+    "sample_rate": 1.0
+  },
+  "model_equivalents": {
+    "ark-code-latest": {
+      "kimi-code": "kimi-for-coding"
+    },
+    "kimi-for-coding": {
+      "volcano": "ark-code-latest"
+    }
+  },
   "session": {
     "max_sessions": 1000,
     "max_messages_per_session": 100,
@@ -157,14 +94,6 @@
   },
   "rate_limit_clean_interval": 60000,
   "pricing": {
-    "gpt-4o": { "input": 5.0, "output": 15.0 },
-    "gpt-4o-mini": { "input": 0.15, "output": 0.6 },
-    "gpt-4-turbo": { "input": 10.0, "output": 30.0 },
-    "gpt-3.5-turbo": { "input": 0.5, "output": 1.5 },
-    "deepseek-chat": { "input": 0.27, "output": 1.1 },
-    "deepseek-coder": { "input": 0.27, "output": 1.1 },
-    "claude-3-5-sonnet": { "input": 3.0, "output": 15.0 },
-    "claude-3-opus": { "input": 15.0, "output": 75.0 },
     "ark-code-latest": { "input": 0.5, "output": 2.0 }
   }
 }

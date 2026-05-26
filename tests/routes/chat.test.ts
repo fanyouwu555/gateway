@@ -74,6 +74,7 @@ jest.mock('../../src/plugins', () => ({
 
 jest.mock('../../src/services/router', () => ({
   smartRoute: jest.fn(() => ({ provider: 'openai', reason: 'default' })),
+  evaluateConditionalRules: jest.fn(() => null),
 }));
 
 jest.mock('../../src/utils', () => ({

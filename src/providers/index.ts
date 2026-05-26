@@ -157,6 +157,18 @@ async function callProviderWithRetry(
 }
 
 /**
+ * 根据 `model_equivalents` 配置解析目标 Provider 的等效模型名
+ * 当 Failover 切换到其他 Provider 时自动重命名 model 字段
+ */
+export function resolveModelForProvider(model: string, provider: string): string {
+  const equivalents = getConfig().model_equivalents;
+  if (!equivalents) return model;
+  const perProvider = equivalents[model];
+  if (!perProvider) return model;
+  return perProvider[provider] || model;
+}
+
+/**
  * 通用聊天完成请求（带 Failover）
  * 主 Provider 失败后自动切换到其他可用 Provider
  */
@@ -193,7 +205,7 @@ export async function chatComplete(
       continue;
     }
 
-    // 检查 Provider 级健康状态（所有 provider 都检查）
+    // 检查 Provider 级健康状态
     if (failoverConfig?.enabled) {
       if (!activeFailover.isProviderHealthy(currentProvider)) {
         errors.push({ provider: currentProvider, error: 'Provider unhealthy' });
@@ -210,10 +222,16 @@ export async function chatComplete(
       }
     }
 
+    // 根据 model_equivalents 重映射 model 名称
+    const mappedModel = resolveModelForProvider(request.model, currentProvider);
+    const providerRequest = mappedModel !== request.model
+      ? { ...request, model: mappedModel }
+      : request;
+
     let startTime = 0;
     try {
       startTime = Date.now();
-      const result = await callProviderWithRetry(provider, config, request, false);
+      const result = await callProviderWithRetry(provider, config, providerRequest, false);
       const latency = Date.now() - startTime;
       activeFailover.recordProviderRequest(currentProvider, true, latency);
       return result as ChatCompletionResponse;

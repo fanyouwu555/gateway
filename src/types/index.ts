@@ -23,6 +23,8 @@ export interface ChatMessage {
   name?: string;
   tool_call_id?: string;
   tool_calls?: ChatToolCall[];
+  /** Reasoning/thinking content from reasoning models (DeepSeek R1, Kimi thinking mode, etc.) */
+  reasoning_content?: string;
 }
 
 /** Chat Tool Call（assistant 调用的 tool） */
@@ -191,6 +193,8 @@ export interface IRoutingStrategy {
   fallback?: string;
   /** Provider 成本排序（从低到高），用于 cost 策略 */
   cost_order?: string[];
+  /** 条件路由规则 */
+  conditional_rules?: IConditionalRoutingRule[];
 }
 
 /** 路由规则 */
@@ -199,6 +203,21 @@ export interface IRoutingRule {
   provider: string;
   max_tokens?: number;
   priority?: number;
+}
+
+/** 条件路由规则 */
+export interface IConditionalRoutingRule {
+  name: string;
+  priority: number;
+  condition: {
+    field: string;
+    operator: 'eq' | 'neq' | 'contains' | 'gt' | 'lt' | 'regex';
+    value: string | number | boolean;
+  };
+  target: {
+    provider: string;
+    model?: string;
+  };
 }
 
 // ===== 鉴权类型 =====
@@ -250,6 +269,13 @@ export interface IRequestLog {
   completion_tokens?: number;
   total_tokens?: number;
   error?: string;
+}
+
+/** 详细的请求日志（包含请求和响应体） */
+export interface IRequestLogDetail extends IRequestLog {
+  request_body?: string;
+  response_body?: string;
+  cost?: number;
 }
 
 // ===== 配置类型 =====
@@ -305,6 +331,12 @@ export interface IGatewayConfig {
     backend?: 'memory' | 'redis_vector';
     max_entries?: number;
   };
+  /** 请求/响应日志配置 */
+  request_logging?: {
+    enabled?: boolean;
+    max_body_size?: number;
+    sample_rate?: number;
+  };
   /** 会话历史配置 */
   session?: {
     max_sessions: number;
@@ -315,10 +347,17 @@ export interface IGatewayConfig {
   rate_limit_clean_interval?: number;
   /** Token 定价配置 (每 1M tokens 美元价格) */
   pricing?: Record<string, { input: number; output: number }>;
+  /** Token 级按模型限流配置 */
+  model_rate_limits?: Record<string, { tokens_per_minute: number; burst_tokens?: number }>;
   /** 默认模型名称 */
   default_model?: string;
   /** 模型别名映射 */
   model_aliases?: Record<string, string>;
+  /** 跨 Provider 模型等效映射：当 Failover 切换 Provider 时自动重命名 model 字段
+   *  key = 请求中的 model 名，value = { provider → 等效 model 名 }
+   *  例: { "gpt-4o": { "deepseek": "deepseek-chat", "anthropic": "claude-3-5-sonnet-20241022" } }
+   */
+  model_equivalents?: Record<string, Record<string, string>>;
   /** 动态 Provider 配置 */
   dynamicProviders?: DynamicProviderConfig[];
 }

@@ -32,9 +32,10 @@ describe('Config', () => {
 
   describe('getProviderConfig', () => {
     it('should return provider config', () => {
-      // 设置环境变量
+      // 设置环境变量后重新加载配置
       process.env.OPENAI_API_KEY = 'sk-test-key';
       process.env.DEEPSEEK_API_KEY = 'sk-deepseek-key';
+      reloadConfig();
 
       const openaiConfig = getProviderConfig('openai');
       expect(openaiConfig).toBeDefined();
@@ -62,7 +63,7 @@ describe('Config', () => {
 
   describe('getProviderForModel', () => {
     it('should return provider for known model', () => {
-      const provider = getProviderForModel('gpt-4o');
+      const provider = getProviderForModel('ark-code-latest');
       expect(provider).toBeDefined();
     });
 
@@ -109,8 +110,8 @@ describe('Config', () => {
 
   describe('getProviderForModel', () => {
     it('should match model prefix', () => {
-      const provider = getProviderForModel('gpt-4o-2024');
-      expect(provider).toBe('openai');
+      const provider = getProviderForModel('ark-code-2024');
+      expect(provider).toBe('volcano');
     });
   });
 

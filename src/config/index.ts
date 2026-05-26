@@ -18,26 +18,8 @@ const DEFAULT_CONFIG: IGatewayConfig = {
     {
       name: 'default',
       rules: [
-        { model: 'gpt-4o', provider: 'openai' },
-        { model: 'gpt-4o-mini', provider: 'openai' },
-        { model: 'moonshot-v1-8k', provider: 'moonshot' },
-        { model: 'moonshot-v1-32k', provider: 'moonshot' },
-        { model: 'moonshot-v1-128k', provider: 'moonshot' },
-        { model: 'deepseek-chat', provider: 'deepseek' },
-        { model: 'mistral', provider: 'mistral' },
-        { model: 'mistral-large', provider: 'mistral' },
-        { model: 'llama', provider: 'groq' },
-        { model: 'mixtral', provider: 'groq' },
-        { model: 'gemini', provider: 'google' },
         { model: 'ark-code-latest', provider: 'volcano' },
         { model: 'kimi-for-coding', provider: 'kimi-code' },
-        { model: 'command-r', provider: 'cohere' },
-        { model: 'command-r-plus', provider: 'cohere' },
-        { model: 'llama-3-8b', provider: 'together' },
-        { model: 'llama-3-70b', provider: 'together' },
-        { model: 'grok-2', provider: 'xai' },
-        { model: 'grok-2-vision', provider: 'xai' },
-        { model: 'grok-beta', provider: 'xai' },
       ],
     },
   ],
@@ -56,7 +38,7 @@ const DEFAULT_CONFIG: IGatewayConfig = {
     successThreshold: 2,
     healthCheckInterval: 60000,
     healthCheckTimeout: 5000,
-    healthCheckModel: 'gpt-4o-mini',
+    healthCheckModel: 'ark-code-latest',
     chains: {},
     errorRateThreshold: 0.5,
     latencyThresholdMs: 30000,
@@ -81,10 +63,13 @@ const DEFAULT_CONFIG: IGatewayConfig = {
     max_messages_per_session: 100,
     ttl: 3600000,
   },
-  default_model: getEnv('DEFAULT_MODEL', 'gpt-4o-mini'),
+  default_model: getEnv('DEFAULT_MODEL', 'ark-code-latest'),
   rate_limit_clean_interval: 60000,
+  model_rate_limits: {},
+  request_logging: { enabled: false, max_body_size: 4096, sample_rate: 1.0 },
   pricing: {},
   model_aliases: {},
+  model_equivalents: {},
 };
 
 /**
@@ -143,6 +128,16 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
       base_url: getEnv('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
       api_key: openaiKey,
     };
+  }
+
+  // 从环境变量读取模型等效映射（JSON 格式）
+  const modelEquivalentsEnv = getEnv('MODEL_EQUIVALENTS');
+  if (modelEquivalentsEnv) {
+    try {
+      config.model_equivalents = JSON.parse(modelEquivalentsEnv);
+    } catch {
+      writeLog('warn', 'Failed to parse MODEL_EQUIVALENTS env var, skipping');
+    }
   }
 
   const deepseekKey = getEnv('DEEPSEEK_API_KEY');

@@ -13,6 +13,8 @@ import { writeLog } from '../utils/logger';
 import { checkQuota, recordUsage } from '../services/quota';
 import { runGuardrailPlugins, runRequestPlugins } from '../plugins';
 import { smartRoute, type RouterStrategy } from '../services/router';
+import type { ChatMessage } from '../types';
+import { countPromptTokens, countCompletionTokens, accumulateStreamContent } from '../services/token-counter';
 
 /**
  * WebSocket 消息类型
@@ -655,6 +657,7 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     const decoder = new TextDecoder();
     let buffer = '';
     let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
+    let accumulatedContent = '';
 
     try {
       // eslint-disable-next-line no-constant-condition
@@ -687,6 +690,12 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
               if (chunk.usage) {
                 usage = chunk.usage;
               }
+              // 累加 delta content（供本地 token 计数降级使用）
+              if (chunk.choices && Array.isArray(chunk.choices)) {
+                for (const choice of chunk.choices as Array<{ delta?: { content?: string; role?: string } }>) {
+                  accumulatedContent = accumulateStreamContent(accumulatedContent, choice.delta);
+                }
+              }
               wsManager.send(connectionId, {
                 type: 'chat.completion.chunk',
                 id: connectionId,
@@ -703,22 +712,29 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
       reader.releaseLock();
       wsManager.setAbortController(connectionId, null);
 
-      // 记录真实使用量（如果 provider 返回了 usage）
+      let promptTokens = 0;
+      let completionTokens = 0;
+      let totalTokens = 0;
+
       if (usage) {
-        const totalTokens = usage.total_tokens || 0;
-        const config = getConfig();
-        const pricing = config.pricing?.[model];
-        let cost = 0;
-        if (pricing) {
-          const inputTokens = usage.prompt_tokens || 0;
-          const outputTokens = usage.completion_tokens || 0;
-          cost = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
-        }
-        recordUsage(conn.tenant_id, totalTokens, cost);
+        // Provider 返回了 usage，优先使用
+        promptTokens = usage.prompt_tokens || 0;
+        completionTokens = usage.completion_tokens || 0;
+        totalTokens = usage.total_tokens || promptTokens + completionTokens;
       } else {
-        // Provider 未返回 usage，记录 0 tokens（保持兼容性）
-        recordUsage(conn.tenant_id, 0, 0);
+        // Provider 未返回 usage，使用本地计数
+        promptTokens = await countPromptTokens(processedReq.messages as ChatMessage[], model);
+        completionTokens = await countCompletionTokens(accumulatedContent, model);
+        totalTokens = promptTokens + completionTokens;
       }
+
+      const config = getConfig();
+      const pricing = config.pricing?.[model];
+      let cost = 0;
+      if (pricing) {
+        cost = (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000;
+      }
+      recordUsage(conn.tenant_id, totalTokens, cost);
     }
 
   } catch (e) {
