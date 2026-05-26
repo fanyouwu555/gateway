@@ -11,6 +11,7 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../../types';
+import { contentToString } from '../../utils';
 import { fetchWithAgent } from '../../utils/http-client';
 
 interface GeminiContent {
@@ -65,14 +66,14 @@ export class GoogleProvider extends BaseProvider {
         // 将 system 消息作为 user 消息添加前缀
         contents.push({
           role: 'user',
-          parts: [{ text: `System instruction: ${msg.content}` }],
+          parts: [{ text: `System instruction: ${contentToString(msg.content)}` }],
         });
         continue;
       }
 
       contents.push({
         role,
-        parts: [{ text: msg.content }],
+        parts: [{ text: contentToString(msg.content) }],
       });
     }
 

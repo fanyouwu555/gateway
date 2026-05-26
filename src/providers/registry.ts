@@ -4,6 +4,7 @@
  */
 import { registerProvider, getProviderNames } from './index';
 import type { IProvider } from '../types';
+import { contentToString } from '../utils';
 import { openaiProvider } from './openai';
 import { deepseekProvider } from './deepseek';
 import { anthropicProvider } from './anthropic';
@@ -85,12 +86,12 @@ const mockProvider: IProvider = {
   capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
   async chat(request) {
     // 1. 计算 prompt_tokens：所有历史消息累计
-    const allText = request.messages.map((m) => `${m.role}: ${m.content}`).join('\n');
+    const allText = request.messages.map((m) => `${m.role}: ${contentToString(m.content)}`).join('\n');
     const promptTokens = estimateTokens(allText);
 
     // 2. 根据最后一条用户消息生成回复
     const lastUserMsg = request.messages.filter((m) => m.role === 'user').pop();
-    const userContent = lastUserMsg?.content || 'Hello';
+    const userContent = contentToString(lastUserMsg?.content || 'Hello');
 
     // 生成有意义的模拟回复（带一些长度，让 completion_tokens 可见）
     const replies: Record<string, string> = {

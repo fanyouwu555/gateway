@@ -107,25 +107,30 @@ export abstract class BaseProvider implements IProvider {
 
         for (const line of lines) {
           const trimmed = line.trim();
+          // 兼容 "data: {...}" 和 "data:{...}" 两种 SSE 格式
+          let data: string | undefined;
           if (trimmed.startsWith('data: ')) {
-            const data = trimmed.slice(6);
-            if (data === '[DONE]') {
-              controller.close();
-              return;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              const chunk = {
-                id: parsed.id || '',
-                object: 'chat.completion.chunk',
-                created: parsed.created || Date.now(),
-                model: parsed.model || '',
-                choices: parsed.choices || [],
-              };
-              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
-            } catch {
-              // 忽略解析错误
-            }
+            data = trimmed.slice(6);
+          } else if (trimmed.startsWith('data:')) {
+            data = trimmed.slice(5);
+          }
+          if (data === undefined) continue;
+          if (data === '[DONE]') {
+            controller.close();
+            return;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            const chunk = {
+              id: parsed.id || '',
+              object: 'chat.completion.chunk',
+              created: parsed.created || Date.now(),
+              model: parsed.model || '',
+              choices: parsed.choices || [],
+            };
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+          } catch {
+            // 忽略解析错误
           }
         }
       },

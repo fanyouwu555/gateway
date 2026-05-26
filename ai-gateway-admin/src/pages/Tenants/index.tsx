@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, Select, Drawer, Descriptions, message, Popconfirm } from 'antd'
-import { PlusOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, EditOutlined, KeyOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, Select, Drawer, Descriptions, message, Popconfirm, Typography } from 'antd'
+import { PlusOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CopyOutlined } from '@ant-design/icons'
 import { getTenants, getTenantStats, getTenantKeys, createTenant, createTenantKey, updateKeyPolicy, deleteTenant, deleteApiKey } from '@/services/api'
 import type { Tenant, TenantStats, ApiKey } from '@/types'
 
@@ -34,6 +34,9 @@ const Tenants: React.FC = () => {
   const [editPolicyModalVisible, setEditPolicyModalVisible] = useState(false)
   const [editingKey, setEditingKey] = useState<ApiKey | null>(null)
   const [editPolicyForm] = Form.useForm()
+
+  // Copy Key modal
+  const [newKeyData, setNewKeyData] = useState<{ key: string; name: string } | null>(null)
 
   const fetchTenants = async () => {
     setLoading(true)
@@ -136,8 +139,8 @@ const Tenants: React.FC = () => {
         payload.metadata = { [values.metadata_key]: values.metadata_value || '' }
       }
       const result = await createTenantKey(currentTenant.tenant_id, payload as Parameters<typeof createTenantKey>[1]) as unknown as { key?: string }
+      setNewKeyData({ key: result.key || '', name: values.name || '未命名' })
       message.success('Key 创建成功')
-      message.info(`Key: ${result.key} — 请立即保存，关闭后将无法再次获取`)
       setCreateKeyModalVisible(false)
       createKeyForm.resetFields()
       // Refresh keys
@@ -513,6 +516,53 @@ const Tenants: React.FC = () => {
           scroll={{ x: 'max-content' }}
         />
       </Drawer>
+
+      {/* Key 创建成功 — 复制弹窗 */}
+      <Modal
+        title="API Key 创建成功"
+        open={!!newKeyData}
+        onCancel={() => setNewKeyData(null)}
+        footer={
+          <Space>
+            <Button onClick={() => setNewKeyData(null)}>关闭</Button>
+            <Button
+              type="primary"
+              icon={<CopyOutlined />}
+              onClick={() => {
+                if (newKeyData?.key) {
+                  navigator.clipboard.writeText(newKeyData.key).then(() => {
+                    message.success('已复制到剪贴板')
+                  }).catch(() => {
+                    message.error('复制失败，请手动选中复制')
+                  })
+                }
+              }}
+            >
+              复制 Key
+            </Button>
+          </Space>
+        }
+        width={520}
+      >
+        <div style={{ marginBottom: 12, color: '#ff4d4f', fontWeight: 500 }}>
+          ⚠ 关闭后将无法再次查看，请立即保存
+        </div>
+        <div style={{ marginBottom: 4, fontSize: 13, color: '#666' }}>名称: {newKeyData?.name}</div>
+        <Typography.Paragraph
+          copyable={{ tooltips: ['点击复制', '已复制'] }}
+          code
+          style={{
+            padding: '8px 12px',
+            background: '#f5f5f5',
+            borderRadius: 6,
+            fontSize: 13,
+            wordBreak: 'break-all',
+            marginBottom: 0,
+          }}
+        >
+          {newKeyData?.key || ''}
+        </Typography.Paragraph>
+      </Modal>
     </div>
   )
 }

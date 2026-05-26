@@ -3,6 +3,7 @@
  * HTTP 服务器生命周期管理（启动、优雅关闭、初始化）
  * 应用配置见 src/app.ts
  */
+import 'dotenv/config';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from 'hono';

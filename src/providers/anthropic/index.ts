@@ -10,6 +10,7 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../../types';
+import { contentToString } from '../../utils';
 import { fetchWithAgent } from '../../utils/http-client';
 
 export class AnthropicProvider extends BaseProvider {
@@ -31,13 +32,13 @@ export class AnthropicProvider extends BaseProvider {
     content: string;
   }[] {
     return messages.map((msg) => {
+      const content = contentToString(msg.content);
       if (msg.role === 'system') {
-        // Anthropic 使用 system 消息，但需要特殊处理
-        return { role: 'user' as const, content: msg.content };
+        return { role: 'user' as const, content };
       }
       return {
         role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
-        content: msg.content,
+        content,
       };
     });
   }

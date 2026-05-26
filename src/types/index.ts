@@ -18,9 +18,31 @@ export type ApiKey = string;
 
 /** Chat Completion 请求消息 */
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | ChatContentPart[];
   name?: string;
+  tool_call_id?: string;
+  tool_calls?: ChatToolCall[];
+}
+
+/** Chat Tool Call（assistant 调用的 tool） */
+export interface ChatToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+/** Chat Content Part（支持多模态） */
+export interface ChatContentPart {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: {
+    url: string;
+    detail?: 'low' | 'high' | 'auto';
+  };
 }
 
 /** Chat Completion 请求体 */
@@ -50,10 +72,11 @@ export interface ChatTool {
 }
 
 /** 工具选择 */
-export interface ChatToolChoice {
-  type: 'function';
-  function: { name: string };
-}
+export type ChatToolChoice =
+  | 'none'
+  | 'auto'
+  | 'required'
+  | { type: 'function'; function: { name: string } };
 
 /** Embedding 请求体 */
 export interface EmbeddingRequest {

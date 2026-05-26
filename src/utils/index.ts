@@ -3,7 +3,7 @@
  */
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
-import type { RequestId } from '../types';
+import type { ChatContentPart, RequestId } from '../types';
 
 /**
  * 生成请求ID
@@ -111,6 +111,18 @@ export function safeJsonParse<T>(
  */
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 将消息内容转为字符串（处理多模态 content 数组）
+ */
+export function contentToString(content: string | ChatContentPart[] | undefined): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  return content
+    .filter((p) => p.type === 'text' && p.text)
+    .map((p) => (p as { text: string }).text)
+    .join('\n');
 }
 
 /**

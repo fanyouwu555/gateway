@@ -6,10 +6,28 @@ import { z } from 'zod';
 
 // ===== Chat Message Schema =====
 
+const chatContentPartSchema = z.object({
+  type: z.enum(['text', 'image_url']),
+  text: z.string().optional(),
+  image_url: z.object({
+    url: z.string(),
+    detail: z.enum(['low', 'high', 'auto']).optional(),
+  }).optional(),
+});
+
 const chatMessageSchema = z.object({
-  role: z.enum(['system', 'user', 'assistant']),
-  content: z.string().min(1),
+  role: z.enum(['system', 'user', 'assistant', 'tool']),
+  content: z.union([z.string(), z.array(chatContentPartSchema).min(1)]).optional().default(''),
   name: z.string().optional(),
+  tool_call_id: z.string().optional(),
+  tool_calls: z.array(z.object({
+    id: z.string(),
+    type: z.literal('function'),
+    function: z.object({
+      name: z.string(),
+      arguments: z.string(),
+    }),
+  })).optional(),
 });
 
 const chatToolSchema = z.object({
@@ -21,10 +39,13 @@ const chatToolSchema = z.object({
   }),
 });
 
-const chatToolChoiceSchema = z.object({
-  type: z.literal('function'),
-  function: z.object({ name: z.string().min(1) }),
-});
+const chatToolChoiceSchema = z.union([
+  z.enum(['none', 'auto', 'required']),
+  z.object({
+    type: z.literal('function'),
+    function: z.object({ name: z.string().min(1) }),
+  }),
+]);
 
 // ===== Chat Completion Request =====
 
