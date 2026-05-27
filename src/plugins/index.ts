@@ -179,7 +179,10 @@ class PluginManager {
           reasons.push(`[${plugin.config.name}] ${result.reason}`);
         }
       } catch (error) {
-        writeLog('error', 'Guardrail plugin error', { plugin_id: plugin.config.id, error: error instanceof Error ? error.message : String(error) });
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        writeLog('error', 'Guardrail plugin error', { plugin_id: plugin.config.id, error: errorMsg });
+        // Fail-closed: guardrail 异常视为阻止请求
+        reasons.push(`[${plugin.config.name}] Guardrail check failed (error): ${errorMsg}`);
       }
     }
 

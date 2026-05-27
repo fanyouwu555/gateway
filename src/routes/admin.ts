@@ -57,7 +57,12 @@ import {
   setPluginEnabled,
 } from '../plugins';
 import { loadPluginInSandbox } from '../plugins/loader';
-import { configUpdateSchema, tenantConfigSchema, tenantUpdateSchema, createApiKeySchema, updateKeyPolicySchema } from '../validation';
+import {
+  configUpdateSchema, tenantConfigSchema, tenantUpdateSchema,
+  createApiKeySchema, updateKeyPolicySchema,
+  promptTemplateSchema, promptTemplateUpdateSchema,
+  alertRuleSchema, pluginRegisterSchema, modelAliasesSchema,
+} from '../validation';
 import { requireAdmin } from '../middleware/auth';
 import { auditAdmin } from '../utils/audit';
 import { getKeyUsage } from '../services/metrics';
@@ -208,21 +213,26 @@ adminRouter.get('/v1/prompts/:id', (c: Context) => {
 });
 
 adminRouter.post('/v1/prompts', async (c: Context) => {
-  const body = await c.req.json();
-  if (!body.id || !body.name || !body.template) {
+  const parsed = promptTemplateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
     return c.json({
-      error: { message: 'Missing required fields: id, name, template', type: 'invalid_request_error', code: 'invalid_request' },
+      error: {
+        message: parsed.error.errors[0]?.message || 'Invalid prompt template',
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+        param: parsed.error.errors[0]?.path?.join('.'),
+      },
     }, 400);
   }
 
-  const variables = body.variables || parseTemplate(body.template);
+  const variables = parsed.data.variables || parseTemplate(parsed.data.template);
   const template = createTemplate({
-    id: body.id,
-    name: body.name,
-    description: body.description || '',
-    template: body.template,
+    id: parsed.data.id,
+    name: parsed.data.name,
+    description: parsed.data.description,
+    template: parsed.data.template,
     variables,
-    default_values: body.default_values || {},
+    default_values: parsed.data.default_values || {},
   });
 
   return c.json(template, 201);
@@ -234,18 +244,22 @@ adminRouter.put('/v1/prompts/:id', async (c: Context) => {
     return c.json({ error: { message: 'Template id is required', type: 'invalid_request_error', code: 'invalid_request' } }, 400);
   }
 
-  const body = await c.req.json();
-  const updates: Parameters<typeof updateTemplate>[1] = {};
-  if (body.name !== undefined) updates.name = body.name;
-  if (body.description !== undefined) updates.description = body.description;
-  if (body.template !== undefined) {
-    updates.template = body.template;
-    if (body.variables === undefined) {
-      updates.variables = parseTemplate(body.template);
-    }
+  const parsed = promptTemplateUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({
+      error: {
+        message: parsed.error.errors[0]?.message || 'Invalid template update',
+        type: 'invalid_request_error',
+        code: 'invalid_request',
+        param: parsed.error.errors[0]?.path?.join('.'),
+      },
+    }, 400);
   }
-  if (body.variables !== undefined) updates.variables = body.variables;
-  if (body.default_values !== undefined) updates.default_values = body.default_values;
+
+  const updates: Parameters<typeof updateTemplate>[1] = { ...parsed.data };
+  if (parsed.data.template !== undefined && parsed.data.variables === undefined) {
+    updates.variables = parseTemplate(parsed.data.template);
+  }
 
   const updated = updateTemplate(id, updates);
   if (!updated) {
@@ -299,7 +313,7 @@ adminRouter.post('/v1/tenants', async (c: Context) => {
   }
   const tenant = createTenant(parsed.data);
   if (!tenant) {
-    return c.json({ error: { message: 'Failed to create tenant', type: 'invalid_request_error' } }, 400);
+    return c.json({ error: { message: 'Failed to create tenant', type: 'invalid_request_error', code: 'create_failed' } }, 400);
   }
   return c.json(tenant, 201);
 });
@@ -308,7 +322,7 @@ adminRouter.get('/v1/tenants/:id', (c: Context) => {
   const id = c.req.param('id')!;
   const tenant = getTenant(id);
   if (!tenant) {
-    return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error' } }, 404);
+    return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
   return c.json(tenant);
 });
@@ -317,7 +331,7 @@ adminRouter.get('/v1/tenants/:id/stats', (c: Context) => {
   const id = c.req.param('id')!;
   const tenant = getTenantStats(id);
   if (!tenant) {
-    return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error' } }, 404);
+    return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
   // 获取该租户的使用统计（最近 30 天）
   const end = Date.now();
@@ -365,7 +379,7 @@ adminRouter.post('/v1/tenants/:id/keys', async (c: Context) => {
     metadata,
   });
   if (!key) {
-    return c.json({ error: { message: 'Failed to create API key', type: 'invalid_request_error' } }, 400);
+    return c.json({ error: { message: 'Failed to create API key', type: 'invalid_request_error', code: 'create_failed' } }, 400);
   }
   auditAdmin({
     tenantId,
@@ -381,7 +395,7 @@ adminRouter.delete('/v1/keys/:key', (c: Context) => {
   const key = c.req.param('key')!;
   const deleted = deleteTenantApiKey(key);
   if (!deleted) {
-    return c.json({ error: { message: 'API key not found', type: 'invalid_request_error' } }, 404);
+    return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
   auditAdmin({
     ruleId: 'admin.key_deleted',
@@ -437,7 +451,7 @@ adminRouter.put('/v1/tenants/:id', async (c: Context) => {
   }
   const tenant = updateTenant(id, parsed.data);
   if (!tenant) {
-    return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error' } }, 404);
+    return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
   return c.json(tenant);
 });
@@ -446,7 +460,7 @@ adminRouter.delete('/v1/tenants/:id', (c: Context) => {
   const id = c.req.param('id')!;
   const deleted = deleteTenant(id);
   if (!deleted) {
-    return c.json({ error: { message: 'Cannot delete tenant', type: 'invalid_request_error' } }, 400);
+    return c.json({ error: { message: 'Cannot delete tenant', type: 'invalid_request_error', code: 'delete_failed' } }, 400);
   }
   return c.json({ deleted: true });
 });
@@ -501,13 +515,13 @@ adminRouter.get('/v1/config/aliases', (c: Context) => {
 });
 
 adminRouter.put('/v1/config/aliases', async (c: Context) => {
-  const body = await c.req.json();
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+  const parsed = modelAliasesSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
     return c.json({
       error: { message: 'Invalid aliases format', type: 'invalid_request_error', code: 'invalid_request' },
     }, 400);
   }
-  setConfig({ model_aliases: body as Record<string, string> });
+  setConfig({ model_aliases: parsed.data });
   return c.json({ updated: true });
 });
 
@@ -528,18 +542,18 @@ adminRouter.get('/v1/plugins', (c: Context) => {
 
 // 注册插件（从代码字符串加载）
 adminRouter.post('/v1/plugins/register', async (c: Context) => {
-  const body = await c.req.json();
-  if (typeof body.code !== 'string' || !body.code) {
+  const parsed = pluginRegisterSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
     return c.json({
       error: {
-        message: 'Plugin code is required',
+        message: parsed.error.errors[0]?.message || 'Invalid plugin registration',
         type: 'invalid_request_error',
         code: 'invalid_request',
       },
     }, 400);
   }
 
-  const result = loadPluginInSandbox(body.code);
+  const result = loadPluginInSandbox(parsed.data.code);
   if (!result.success || !result.plugin) {
     return c.json({
       error: {
@@ -635,26 +649,27 @@ adminRouter.get('/v1/alerts', (c: Context) => {
 });
 
 adminRouter.post('/v1/alerts', async (c: Context) => {
-  const body = await c.req.json();
-  if (!body.id || !body.name || !body.metric || body.threshold === undefined || !body.webhook_url) {
+  const parsed = alertRuleSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
     return c.json({
       error: {
-        message: 'Missing required fields: id, name, metric, threshold, webhook_url',
+        message: parsed.error.errors[0]?.message || 'Invalid alert rule',
         type: 'invalid_request_error',
         code: 'invalid_request',
+        param: parsed.error.errors[0]?.path?.join('.'),
       },
     }, 400);
   }
 
   addAlertRule({
-    id: body.id,
-    name: body.name,
-    metric: body.metric,
-    threshold: body.threshold,
-    condition: body.condition || 'gt',
-    webhook_url: body.webhook_url,
-    enabled: body.enabled !== false,
-    cooldown_seconds: body.cooldown_seconds || 300,
+    id: parsed.data.id,
+    name: parsed.data.name,
+    metric: parsed.data.metric,
+    threshold: parsed.data.threshold,
+    condition: parsed.data.condition,
+    webhook_url: parsed.data.webhook_url,
+    enabled: parsed.data.enabled,
+    cooldown_seconds: parsed.data.cooldown_seconds,
   });
 
   return c.json({ created: true }, 201);

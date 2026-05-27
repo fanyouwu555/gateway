@@ -229,7 +229,7 @@ async function startServer() {
       writeLog('error', 'Request handling error', { error: msg });
       res.writeHead(500);
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: { message: 'Internal server error', type: 'internal_error' } }));
+      res.end(JSON.stringify({ error: { message: 'Internal server error', type: 'internal_error', code: 'internal_error' } }));
     }
   });
 

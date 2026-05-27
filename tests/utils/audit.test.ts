@@ -28,11 +28,11 @@ describe('Audit Log Utility', () => {
     expect(existsSync(auditFile)).toBe(true);
 
     const content = readFileSync(auditFile, 'utf-8');
-    const lines = content.trim().split('\n');
-    const event = JSON.parse(lines[lines.length - 1]);
-    expect(event.event_type).toBe('guardrail.triggered');
-    expect(event.rule_id).toBe('test-rule');
-    expect(event.severity).toBe('high');
+    const events = content.trim().split('\n').map((l) => JSON.parse(l));
+    const event = events.reverse().find((e: Record<string, unknown>) => e.event_type === 'guardrail.triggered');
+    expect(event).toBeDefined();
+    expect(event!.rule_id).toBe('test-rule');
+    expect(event!.severity).toBe('high');
   });
 
   it('should compute sha256 content hash', () => {
@@ -57,11 +57,11 @@ describe('Audit Log Utility', () => {
     const date = new Date().toISOString().slice(0, 10);
     const auditFile = pathJoin(LOG_DIR, `audit-${date}.log`);
     const content = readFileSync(auditFile, 'utf-8');
-    const lines = content.trim().split('\n');
-    const event = JSON.parse(lines[lines.length - 1]);
-    expect(event.event_type).toBe('guardrail.masked');
-    expect(event.request_id).toBe('req-123');
-    expect(event.content_hash).toBe('sha256:abc');
+    const events = content.trim().split('\n').map((l) => JSON.parse(l));
+    const event = events.reverse().find((e: Record<string, unknown>) => e.event_type === 'guardrail.masked');
+    expect(event).toBeDefined();
+    expect(event!.request_id).toBe('req-123');
+    expect(event!.content_hash).toBe('sha256:abc');
   });
 
   it('should write admin audit event via convenience function', () => {
@@ -76,9 +76,9 @@ describe('Audit Log Utility', () => {
     const date = new Date().toISOString().slice(0, 10);
     const auditFile = pathJoin(LOG_DIR, `audit-${date}.log`);
     const content = readFileSync(auditFile, 'utf-8');
-    const lines = content.trim().split('\n');
-    const event = JSON.parse(lines[lines.length - 1]);
-    expect(event.event_type).toBe('admin.key_created');
-    expect(event.metadata).toEqual({ key_name: 'test-key' });
+    const events = content.trim().split('\n').map((l) => JSON.parse(l));
+    const event = events.reverse().find((e: Record<string, unknown>) => e.event_type === 'admin.key_created');
+    expect(event).toBeDefined();
+    expect(event!.metadata).toEqual({ key_name: 'test-key' });
   });
 });

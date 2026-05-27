@@ -36,6 +36,7 @@ function isValidProviderUrl(url: string): boolean {
     if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
       return false;
     }
+    // IPv4 私有地址检查
     if (hostname === '0.0.0.0' || hostname.startsWith('127.')) {
       return false;
     }
@@ -51,6 +52,22 @@ function isValidProviderUrl(url: string): boolean {
     }
     if (hostname.startsWith('169.254.')) {
       return false;
+    }
+    // IPv6 私有地址检查（URL API 解析后 hostname 不含方括号）
+    if (hostname.includes(':')) {
+      const ipv6 = hostname.toLowerCase();
+      // ::1 loopback
+      if (ipv6 === '::1' || ipv6 === '0:0:0:0:0:0:0:1') return false;
+      // :: unspecified
+      if (ipv6 === '::' || ipv6 === '0:0:0:0:0:0:0:0') return false;
+      // fc00::/7 unique local (fc00–fdff)
+      if (ipv6.startsWith('fc') || ipv6.startsWith('fd')) return false;
+      // fe80::/10 link-local (fe80–febf)
+      if (ipv6.startsWith('fe8') || ipv6.startsWith('fe9') || ipv6.startsWith('fea') || ipv6.startsWith('feb')) return false;
+      // ff00::/8 multicast
+      if (ipv6.startsWith('ff')) return false;
+      // fec0::/10 site-local (deprecated)
+      if (ipv6.startsWith('fec') || ipv6.startsWith('fed') || ipv6.startsWith('fee') || ipv6.startsWith('fef')) return false;
     }
     return true;
   } catch {

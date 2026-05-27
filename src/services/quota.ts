@@ -51,6 +51,19 @@ class QuotaStore {
   }
 
   /**
+   * 检查 keyMonthlyCosts 条目是否需要月度重置
+   * 如果 last_reset 不在当前月份，将 cost 归零并更新时间戳
+   */
+  private ensureKeyMonthlyReset(entry: { cost: number; last_reset: number }): void {
+    const now = new Date();
+    const last = new Date(entry.last_reset);
+    if (now.getUTCFullYear() !== last.getUTCFullYear() || now.getUTCMonth() !== last.getUTCMonth()) {
+      entry.cost = 0;
+      entry.last_reset = now.getTime();
+    }
+  }
+
+  /**
    * 获取配额
    */
   get(tenantId: TenantId): {
@@ -95,6 +108,7 @@ class QuotaStore {
         keyCost = { cost: 0, last_reset: Date.now() };
         this.keyMonthlyCosts.set(keyHash, keyCost);
       }
+      this.ensureKeyMonthlyReset(keyCost);
       keyCost.cost += cost;
     }
 
@@ -221,6 +235,9 @@ class QuotaStore {
    */
   checkKeyBudget(keyHash: string, monthlyBudget: number): { allowed: boolean; current_cost: number; reason?: string } {
     const keyCost = this.keyMonthlyCosts.get(keyHash);
+    if (keyCost) {
+      this.ensureKeyMonthlyReset(keyCost);
+    }
     const currentCost = keyCost?.cost || 0;
 
     if (currentCost >= monthlyBudget) {
@@ -264,6 +281,11 @@ export async function flushQuotaStore(): Promise<void> {
 
 /**
  * 检查配额
+ *
+ * 使用 quotaStore.get() 作为数据源，而非 metrics store。
+ * 原因：recordUsage() 同步更新 quotaStore，而 metricsStore 的更新在之后发生。
+ * 使用 quotaStore 消除了 check → record 之间的 TOCTOU 窗口，
+ * 确保并发请求在 check 时能感知到已完成的请求的用量。
  */
 export function checkQuota(tenantId: TenantId): QuotaCheckResult {
   const config = getConfig();
@@ -273,13 +295,13 @@ export function checkQuota(tenantId: TenantId): QuotaCheckResult {
     return { allowed: true };
   }
 
-  const usage = getTenantUsage(tenantId);
+  const current = quotaStore.get(tenantId);
   const limits = quotaStore.getLimits(tenantId);
   const budget = config.cost_control.monthly_budget;
   const warnThreshold = config.cost_control.warn_threshold || 0.8;
 
   // 检查月度预算
-  if (usage.total_cost >= budget) {
+  if (current.monthly_cost >= budget) {
     return {
       allowed: false,
       reason: 'Monthly budget exceeded',
@@ -287,31 +309,31 @@ export function checkQuota(tenantId: TenantId): QuotaCheckResult {
   }
 
   // 警告阈值
-  if (usage.total_cost >= budget * warnThreshold) {
+  if (current.monthly_cost >= budget * warnThreshold) {
     writeLog('warn', 'Tenant quota warning', {
       tenant_id: tenantId,
-      usage_percent: Math.round((usage.total_cost / budget) * 100),
-      total_cost: usage.total_cost,
+      usage_percent: Math.round((current.monthly_cost / budget) * 100),
+      total_cost: current.monthly_cost,
       budget,
     });
   }
 
   // 检查自定义限制
-  if (limits?.daily_requests && usage.total_requests >= limits.daily_requests) {
+  if (limits?.daily_requests && current.daily_requests >= limits.daily_requests) {
     return {
       allowed: false,
       reason: 'Daily request limit exceeded',
     };
   }
 
-  if (limits?.daily_tokens && usage.total_tokens >= limits.daily_tokens) {
+  if (limits?.daily_tokens && current.daily_tokens >= limits.daily_tokens) {
     return {
       allowed: false,
       reason: 'Daily token limit exceeded',
     };
   }
 
-  if (limits?.monthly_cost && usage.total_cost >= limits.monthly_cost) {
+  if (limits?.monthly_cost && current.monthly_cost >= limits.monthly_cost) {
     return {
       allowed: false,
       reason: 'Monthly cost limit exceeded',
@@ -320,12 +342,12 @@ export function checkQuota(tenantId: TenantId): QuotaCheckResult {
 
   // 计算剩余
   const remainingRequests = limits?.daily_requests
-    ? limits.daily_requests - usage.total_requests
+    ? limits.daily_requests - current.daily_requests
     : undefined;
   const remainingTokens = limits?.daily_tokens
-    ? limits.daily_tokens - usage.total_tokens
+    ? limits.daily_tokens - current.daily_tokens
     : undefined;
-  const remainingCost = budget - usage.total_cost;
+  const remainingCost = budget - current.monthly_cost;
 
   return {
     allowed: true,

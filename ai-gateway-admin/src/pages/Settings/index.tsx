@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, Form, Input, InputNumber, Switch, Select, Button, Space, message, Row, Col } from 'antd'
+import { Card, Form, Input, InputNumber, Switch, Select, Button, Tag, Space, message, Row, Col } from 'antd'
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons'
 import { getConfig as fetchGatewayConfig, updateConfig as saveGatewayConfig } from '@/services/api'
 
@@ -192,6 +192,150 @@ const Settings: React.FC = () => {
           <p style={{ color: '#8c8c8c', fontSize: 12 }}>
             当 API Key 连续失败达到阈值后，将自动切换到备用 Key；连续成功达到阈值后，将恢复使用
           </p>
+        </Card>
+
+        {/* 成本控制 */}
+        <Card title="成本控制" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>月度预算上限</div>
+                <Input disabled value="$100" style={{ maxWidth: 200 }} />
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>环境变量: COST_CONTROL_MONTHLY_BUDGET</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>预算警告阈值</div>
+                <Input disabled value="80%" style={{ maxWidth: 200 }} />
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>环境变量: COST_CONTROL_WARN_THRESHOLD</div>
+              </div>
+            </Col>
+          </Row>
+          <p style={{ color: '#8c8c8c', fontSize: 12 }}>
+            成本控制通过环境变量配置，修改后需重启服务生效
+          </p>
+        </Card>
+
+        {/* 语义缓存 */}
+        <Card title="语义缓存" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>状态</div>
+                <Tag color="default">未启用</Tag>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>SEMANTIC_CACHE_ENABLED=false</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>相似度阈值</div>
+                <div>0.85</div>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>SEMANTIC_CACHE_THRESHOLD</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>后端存储</div>
+                <Tag>memory</Tag>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>SEMANTIC_CACHE_BACKEND</div>
+              </div>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 内容安全 Guardrails */}
+        <Card title="内容安全 Guardrails" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>PII 检测</div>
+                <Tag color="default">未启用</Tag>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>GUARDRAIL_PII_ENABLED=false | GUARDRAIL_PII_ACTION=mask</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>提示注入检测</div>
+                <Tag color="default">未启用</Tag>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>GUARDRAIL_PROMPT_INJECTION_ENABLED=false</div>
+              </div>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 告警引擎 */}
+        <Card title="告警引擎" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>状态</div>
+                <Tag color="green">运行中</Tag>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>ALERT_ENABLED=true（默认启动）</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>检查间隔</div>
+                <div>60000ms</div>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>ALERT_CHECK_INTERVAL</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>默认 Webhook</div>
+                <div style={{ color: '#8c8c8c' }}>-</div>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>ALERT_WEBHOOK_URL</div>
+              </div>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 审计日志 */}
+        <Card title="审计日志" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>日志目录</div>
+                <Tag>./logs</Tag>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>LOG_DIR</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>保留天数</div>
+                <div>90 天</div>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>AUDIT_LOG_RETENTION_DAYS</div>
+              </div>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* HTTP 连接池 */}
+        <Card title="HTTP 连接池" style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>池大小</div>
+                <div>100</div>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>HTTP_POOL_SIZE</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>Keep-Alive</div>
+                <Tag color="green">启用</Tag>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>HTTP_KEEP_ALIVE=true</div>
+              </div>
+            </Col>
+            <Col xs={24} sm={8}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>Keep-Alive 超时</div>
+                <div>60000ms</div>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>HTTP_KEEP_ALIVE_TIMEOUT</div>
+              </div>
+            </Col>
+          </Row>
         </Card>
 
         {/* 按钮 */}

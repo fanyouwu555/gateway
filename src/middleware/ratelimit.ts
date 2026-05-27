@@ -187,6 +187,20 @@ class RedisRateLimitStore implements IRateLimitStore {
   }
 
   /**
+   * 获取带 Per-Key 变体的客户端标识
+   * 当 keyQps 存在时使用 key-v: 前缀（与 MemoryRateLimitStore 一致）
+   */
+  private getEffectiveKey(c: Context): { key: string; burst: number } {
+    const key = this.getClientKey(c);
+    const keyBurst = c.get('key_rate_limit_burst') as number | undefined;
+    const keyQps = c.get('key_rate_limit_qps') as number | undefined;
+    if (keyQps !== undefined) {
+      return { key: `key-v:${key}`, burst: keyBurst ?? this.burst };
+    }
+    return { key, burst: this.burst };
+  }
+
+  /**
    * 尝试消费令牌（原子操作）
    * 使用精确滑动窗口：统计前一窗口的加权部分 + 当前窗口的请求数
    */
@@ -196,7 +210,7 @@ class RedisRateLimitStore implements IRateLimitStore {
       return true;
     }
 
-    const key = this.getClientKey(c);
+    const { key, burst } = this.getEffectiveKey(c);
     const now = Date.now();
     const windowMs = 1000; // 1 秒窗口
 
@@ -235,7 +249,7 @@ class RedisRateLimitStore implements IRateLimitStore {
         end
       `;
 
-      const result = await this.client.eval(luaScript, 2, currentKey, previousKey, windowProgress, this.burst, 2);
+      const result = await this.client.eval(luaScript, 2, currentKey, previousKey, windowProgress, burst, 2);
       return result === 1;
     } catch (err) {
       writeLog('warn', 'Redis consume error', { error: err instanceof Error ? err.message : String(err) });
@@ -245,7 +259,7 @@ class RedisRateLimitStore implements IRateLimitStore {
 
   async getRemainingTokens(c: Context): Promise<number> {
     if (!this.client) return this.burst;
-    const key = this.getClientKey(c);
+    const { key, burst } = this.getEffectiveKey(c);
     const now = Date.now();
     const windowMs = 1000;
 
@@ -262,7 +276,7 @@ class RedisRateLimitStore implements IRateLimitStore {
       const previous = results[1] ? parseInt(results[1], 10) : 0;
 
       const slidingCount = previous * (1 - windowProgress) + current;
-      return Math.max(0, Math.floor(this.burst - slidingCount));
+      return Math.max(0, Math.floor(burst - slidingCount));
     } catch (err) {
       writeLog('warn', 'Redis getRemainingTokens error', { error: err instanceof Error ? err.message : String(err) });
       return this.burst;

@@ -159,26 +159,38 @@ class AlertEngine {
   }
 
   private async sendWebhook(rule: AlertRule, status: string, value: number): Promise<void> {
-    try {
-      await fetchWithAgent(rule.webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rule_id: rule.id,
-          rule_name: rule.name,
-          status,
-          metric: rule.metric,
-          threshold: rule.threshold,
-          current_value: value,
-          condition: rule.condition,
-          timestamp: new Date().toISOString(),
-        }),
-      });
-    } catch (error) {
-      writeLog('error', 'Failed to send alert webhook', {
-        rule_id: rule.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        await fetchWithAgent(rule.webhook_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rule_id: rule.id,
+            rule_name: rule.name,
+            status,
+            metric: rule.metric,
+            threshold: rule.threshold,
+            current_value: value,
+            condition: rule.condition,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+        return; // success
+      } catch (error) {
+        const isLastAttempt = attempt === maxRetries - 1;
+        if (isLastAttempt) {
+          writeLog('error', 'Failed to send alert webhook after retries', {
+            rule_id: rule.id,
+            error: error instanceof Error ? error.message : String(error),
+            attempts: maxRetries,
+          });
+        } else {
+          // Exponential backoff: 200ms, 500ms, 1000ms
+          const delay = Math.min(200 * Math.pow(2, attempt), 1000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
     }
   }
 }

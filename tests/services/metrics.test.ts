@@ -57,13 +57,14 @@ describe('Metrics Service', () => {
       expect(cost).toBeGreaterThan(0);
     });
 
-    it('should return undefined for unknown models', () => {
+    it('should return default cost for unknown models', () => {
       const cost = calculateCost('unknown-model', {
         prompt_tokens: 1000,
         completion_tokens: 500,
         total_tokens: 1500,
       });
-      expect(cost).toBeUndefined();
+      expect(cost).toBeDefined();
+      expect(cost).toBeGreaterThan(0);
     });
   });
 
@@ -258,7 +259,7 @@ describe('Metrics Service', () => {
   });
 
   describe('recordMetric edge cases', () => {
-    it('should not set cost for unknown model', () => {
+    it('should set default cost for unknown model', () => {
       const metric = recordMetric(
         'req-1',
         'tenant-1',
@@ -268,7 +269,8 @@ describe('Metrics Service', () => {
         200,
         { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }
       );
-      expect(metric.cost).toBeUndefined();
+      expect(metric.cost).toBeDefined();
+      expect(metric.cost).toBeGreaterThan(0);
     });
 
     it('should handle undefined tenant_id', () => {

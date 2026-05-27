@@ -171,16 +171,23 @@ export function getPricing(): Record<string, { input: number; output: number }> 
   return _pricing;
 }
 
+// 模型未配置定价时的默认价格（美元/百万 token）
+// 使用 GPT-4 级别的保守价格，防止缺失定价导致免费使用
+const DEFAULT_INPUT_PRICE = 30;  // $30/1M input tokens
+const DEFAULT_OUTPUT_PRICE = 60; // $60/1M output tokens
+
 /**
  * 计算请求费用
+ * 如果模型未配置特定定价，使用默认价格防止免费绕过配额
  */
 export function calculateCost(
   model: string,
   tokens: TokenUsage
 ): number | undefined {
-  const pricing = _pricing[model];
+  const pricing = _pricing[model] || _pricing['__default__'];
   if (!pricing) {
-    return undefined;
+    // 使用默认价格防止未知模型成为"免费通道"
+    return (tokens.prompt_tokens * DEFAULT_INPUT_PRICE + tokens.completion_tokens * DEFAULT_OUTPUT_PRICE) / 1_000_000;
   }
 
   const inputCost = (tokens.prompt_tokens / 1000000) * pricing.input;

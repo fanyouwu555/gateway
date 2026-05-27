@@ -10,6 +10,7 @@ import { authMiddleware } from './middleware/auth';
 import { virtualKeyMiddleware } from './middleware/virtual-key';
 import { rateLimitMiddleware } from './middleware/ratelimit';
 import { metricsMiddleware, metricsHandler } from './middleware/metrics';
+import { tracingMiddleware } from './middleware/tracing';
 import chatRouter from './routes/chat';
 import embedRouter from './routes/embed';
 import modelRouter from './routes/model';
@@ -42,6 +43,7 @@ export function createApp(): Hono {
   }));
   app.use('*', loggerMiddleware);
   app.use('*', metricsMiddleware);
+  app.use('*', tracingMiddleware);
 
   // ===== 公共路由（不受 auth / ratelimit 影响） =====
   // WebSocket 升级认证端点 - 用于在升级前验证 API Key

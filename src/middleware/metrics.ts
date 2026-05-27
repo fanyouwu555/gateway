@@ -124,7 +124,7 @@ class MetricsRegistry {
   private formatLabels(labels: Record<string, string>): string {
     const entries = Object.entries(labels).filter(([_, v]) => v);
     if (entries.length === 0) return '';
-    return `{${entries.map(([k, v]) => `${k}="${v}"`).join(',')}}`;
+    return `{${entries.map(([k, v]) => `${k}="${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`).join(',')}}`;
   }
 }
 
@@ -139,11 +139,37 @@ export function resetMetrics(): void {
 }
 
 /**
+ * 将动态路径中的 ID 段归一化为占位符
+ * 防止 Prometheus label 基数爆炸
+ * 例: /v1/tenants/abc-123/stats → /v1/tenants/:id/stats
+ */
+function normalizePath(path: string): string {
+  // 已知的静态段，不应被替换
+  const knownWords = new Set([
+    'tenants', 'keys', 'usage', 'stats', 'config', 'plugins',
+    'prompts', 'cache', 'sessions', 'alerts', 'router', 'status',
+    'health', 'metrics', 'messages', 'register', 'aliases', 'clean',
+  ]);
+  const segments = path.split('/');
+  return segments.map((seg) => {
+    // 空段或已知静态词
+    if (!seg || knownWords.has(seg)) return seg;
+    // 看起来像 id 的段: UUID / hash / tenant_xxx 或 8+ 字母数字混合
+    if (/^[0-9a-f]{8,}(-[0-9a-f]{4,}){2,}$/i.test(seg)) return ':id';
+    if (seg.startsWith('tenant_') || seg.startsWith('sk-') || seg.startsWith('key-')) return ':id';
+    if (/^\d+$/.test(seg) && seg.length >= 3) return ':id';
+    // 8+ 字符且非已知词 → 可能是 id
+    if (seg.length >= 8 && !knownWords.has(seg)) return ':id';
+    return seg;
+  }).join('/');
+}
+
+/**
  * Prometheus 指标中间件
  */
 export async function metricsMiddleware(c: Context, next: Next): Promise<void> {
   const start = Date.now();
-  const path = c.req.path;
+  const path = normalizePath(c.req.path);
   const method = c.req.method;
 
   // 排除 /metrics 自身的监控
@@ -230,9 +256,10 @@ export function recordAiTpot(ms: number, provider: string, model: string): void 
 
 /**
  * 记录 AI 调用成本 (USD)
+ * tenant_id 不作为 label（防止高基数），仅在成本追踪服务中记录
  */
-export function recordAiCost(cost: number, provider: string, model: string, tenantId?: string): void {
-  registry.inc('gateway_ai_cost_usd', { provider, model, tenant_id: tenantId || 'default' }, cost);
+export function recordAiCost(cost: number, provider: string, model: string): void {
+  registry.inc('gateway_ai_cost_usd', { provider, model }, cost);
 }
 
 /**

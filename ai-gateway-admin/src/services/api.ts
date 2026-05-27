@@ -52,6 +52,70 @@ export async function cleanCache() {
   return api.post('/v1/cache/clean')
 }
 
+// ============ 告警规则 ============
+export async function getAlerts() {
+  return api.get('/v1/alerts')
+}
+
+export async function createAlert(data: {
+  id: string
+  name: string
+  metric: 'error_rate' | 'avg_latency_ms' | 'total_requests'
+  threshold: number
+  condition?: 'gt' | 'lt'
+  webhook_url: string
+  enabled?: boolean
+  cooldown_seconds?: number
+}) {
+  return api.post('/v1/alerts', data)
+}
+
+export async function deleteAlert(id: string) {
+  return api.delete(`/v1/alerts/${id}`)
+}
+
+export async function toggleAlert(id: string, enabled: boolean) {
+  return api.post(`/v1/alerts/${id}/${enabled ? 'enable' : 'disable'}`)
+}
+
+// ============ 提示词模板 ============
+export async function getPrompts() {
+  return api.get('/v1/prompts')
+}
+
+export async function getPrompt(id: string) {
+  return api.get(`/v1/prompts/${id}`)
+}
+
+export async function createPrompt(data: {
+  id: string
+  name: string
+  description?: string
+  template: string
+  variables?: string[]
+  default_values?: Record<string, string>
+}) {
+  return api.post('/v1/prompts', data)
+}
+
+export async function updatePrompt(id: string, data: {
+  name?: string
+  description?: string
+  template?: string
+  variables?: string[]
+  default_values?: Record<string, string>
+}) {
+  return api.put(`/v1/prompts/${id}`, data)
+}
+
+export async function deletePrompt(id: string) {
+  return api.delete(`/v1/prompts/${id}`)
+}
+
+export async function renderPrompt(id: string, variables: Record<string, string>) {
+  return api.post(`/v1/prompts/${id}/render`, { variables })
+}
+
 // ============ 会话 ============
 export async function getSessions() {
   return api.get('/v1/sessions')

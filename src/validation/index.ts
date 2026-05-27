@@ -207,3 +207,45 @@ export const configUpdateSchema = z.object({
   })).optional(),
   model_aliases: z.record(z.string()).optional(),
 });
+
+// ===== Prompt Template =====
+
+export const promptTemplateSchema = z.object({
+  id: z.string().min(1, 'Template id is required'),
+  name: z.string().min(1, 'Template name is required'),
+  description: z.string().optional().default(''),
+  template: z.string().min(1, 'Template content is required'),
+  variables: z.array(z.string()).optional(),
+  default_values: z.record(z.string()).optional(),
+});
+
+export const promptTemplateUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  template: z.string().min(1).optional(),
+  variables: z.array(z.string()).optional(),
+  default_values: z.record(z.string()).optional(),
+});
+
+// ===== Alert Rule =====
+
+export const alertRuleSchema = z.object({
+  id: z.string().min(1, 'Alert rule id is required'),
+  name: z.string().min(1, 'Alert rule name is required'),
+  metric: z.enum(['error_rate', 'avg_latency_ms', 'total_requests']),
+  threshold: z.number({ required_error: 'threshold is required' }),
+  condition: z.enum(['gt', 'lt']).optional().default('gt'),
+  webhook_url: z.string().url('webhook_url must be a valid URL'),
+  enabled: z.boolean().optional().default(true),
+  cooldown_seconds: z.number().int().positive().optional().default(300),
+});
+
+// ===== Plugin Register =====
+
+export const pluginRegisterSchema = z.object({
+  code: z.string().min(1, 'Plugin code is required'),
+});
+
+// ===== Model Aliases =====
+
+export const modelAliasesSchema = z.record(z.string());

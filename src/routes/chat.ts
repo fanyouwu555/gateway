@@ -217,19 +217,18 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       }
     }
 
-    // 0.5. 运行 Transform 插件（PII 脱敏等）
-    const transformedReq = await runTransformPlugins(c, req) as typeof req;
-
-    // 1. 运行 Guardrail 插件（拦截不合规请求）
+    // 1. 运行 Guardrail 插件（安全校验优先于数据转换）
+    //    顺序原因：guardrail 需要检查原始请求中的敏感内容（如 PII），
+    //    如果先运行 transform（如 PII 脱敏），敏感信息已被遮盖，guardrail 将无法检测。
     const guardrailSpan = createChildSpan(rootSpan, 'guardrail_check');
-    const guardrailResult = await runGuardrailPlugins(c, transformedReq);
+    const guardrailResult = await runGuardrailPlugins(c, req);
     endSpan(guardrailSpan);
     if (!guardrailResult.allowed) {
       recordMetric(
         c.get('request_id') as string,
         tenantId,
         'gateway',
-        transformedReq.model,
+        req.model,
         0,
         400,
         { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
@@ -248,7 +247,11 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       );
     }
 
-    // 1.5. 配额检查
+    // 1.5. 运行 Transform 插件（PII 脱敏等数据转换）
+    //    在 guardrail 放行之后执行，确保只对已校验通过的数据做转换
+    const transformedReq = await runTransformPlugins(c, req) as typeof req;
+
+    // 1.6. 配额检查
     if (tenantId) {
       const quotaCheck = checkQuota(tenantId);
       if (!quotaCheck.allowed) {
@@ -372,12 +375,19 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       let textBuffer = '';
       let accumulatedContent = '';
       const streamStart = Date.now();
+      let streamCancelled = false;
 
       const wrappedStream = new ReadableStream({
         async pull(controller) {
           const { done, value } = await reader.read();
           if (done) {
-            // 流结束：计算 completion tokens 并记录用量
+            // 如果客户端已断连，跳过所有指标记录和费用结算
+            if (streamCancelled) {
+              controller.close();
+              return;
+            }
+
+            // 流正常结束：计算 completion tokens 并记录用量
             const completionTokens = await countCompletionTokens(accumulatedContent, model);
             const totalTokens = promptTokens + completionTokens;
             c.set('completion_tokens', completionTokens);
@@ -397,7 +407,7 @@ async function handleChatCompletion(c: Context): Promise<Response> {
             if (tenantId) {
               const keyHash = c.get('key_hash') as string | undefined;
               recordUsage(tenantId, totalTokens, cost, keyHash);
-              recordAiCost(cost, providerName, model, tenantId);
+              recordAiCost(cost, providerName, model);
             }
 
             // Token 级按模型限流消耗
@@ -489,7 +499,8 @@ async function handleChatCompletion(c: Context): Promise<Response> {
           }
         },
         cancel() {
-          reader.cancel();
+          streamCancelled = true;
+          reader.cancel().catch(() => {});
         },
       });
 
@@ -548,7 +559,7 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       recordUsage(tenantId, response.usage.total_tokens || 0, cost, keyHash);
 
       // 记录 AI 成本指标
-      recordAiCost(cost, providerName, model, tenantId);
+      recordAiCost(cost, providerName, model);
 
       // 记录完整指标到 MetricsStore（供管理面板展示）
       const requestId = c.get('request_id') as string;

@@ -89,6 +89,19 @@ export function createChildSpan(parent: Span | null, name: string): Span | null 
 }
 
 /**
+ * 记录 Span 错误
+ */
+export function setSpanError(span: Span | null, error: Error | string): void {
+  if (!span) return;
+  const msg = typeof error === 'string' ? error : error.message;
+  span.setAttribute('error', true);
+  span.setAttribute('error.message', msg);
+  if (typeof error !== 'string') {
+    span.setAttribute('error.type', error.name || 'Error');
+  }
+}
+
+/**
  * 结束 Span
  */
 export function endSpan(span: Span | null): void {

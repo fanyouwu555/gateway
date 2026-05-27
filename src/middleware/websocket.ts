@@ -10,7 +10,7 @@ import { generateRequestId } from '../utils';
 import { getProviderForModel, getConfig, resolveModelAlias } from '../config';
 import { chatCompleteStream } from '../providers';
 import { writeLog } from '../utils/logger';
-import { checkQuota, recordUsage } from '../services/quota';
+import { checkQuota, recordUsage, checkKeyQuota } from '../services/quota';
 import { runGuardrailPlugins, runRequestPlugins } from '../plugins';
 import { smartRoute, type RouterStrategy } from '../services/router';
 import type { ChatMessage } from '../types';
@@ -52,6 +52,12 @@ export interface WSConnection {
   connected_at: number;
   last_activity: number;
   abort_controller?: AbortController;
+  /** 虚拟密钥策略字段（由 auth middleware 设置，可选以兼容旧连接） */
+  key_hash?: string;
+  key_allowed_models?: string[];
+  key_monthly_budget?: number;
+  key_max_tokens?: number;
+  key_metadata?: Record<string, unknown>;
 }
 
 /**
@@ -161,7 +167,13 @@ class WebSocketManager {
   /**
    * 添加连接
    */
-  addConnection(ws: WebSocket, tenantId: string, model: string): string {
+  addConnection(ws: WebSocket, tenantId: string, model: string, keyPolicy?: {
+    key_hash?: string;
+    key_allowed_models?: string[];
+    key_monthly_budget?: number;
+    key_max_tokens?: number;
+    key_metadata?: Record<string, unknown>;
+  }): string {
     const id = `ws_${generateRequestId()}`;
 
     const connection: WSConnection = {
@@ -171,6 +183,7 @@ class WebSocketManager {
       model,
       connected_at: Date.now(),
       last_activity: Date.now(),
+      ...keyPolicy,
     };
 
     this.connections.set(id, connection);
@@ -456,7 +469,13 @@ export function handleWSConnection(ws: WebSocket, ctx: Context): void {
   const tenantId = ctx.get('tenant_id') || 'default';
   const model = ctx.req.query('model') || getConfig().default_model || 'gpt-4o-mini';
 
-  const connectionId = wsManager.addConnection(ws, tenantId, model);
+  const connectionId = wsManager.addConnection(ws, tenantId, model, {
+    key_hash: ctx.get('key_hash'),
+    key_allowed_models: ctx.get('key_allowed_models'),
+    key_monthly_budget: ctx.get('key_monthly_budget'),
+    key_max_tokens: ctx.get('key_max_tokens_per_request'),
+    key_metadata: ctx.get('key_metadata'),
+  });
 
   // 消息处理
   ws.on('message', async (data: Buffer) => {
@@ -561,6 +580,40 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     // 解析模型别名
     request.model = resolveModelAlias(request.model || conn.model);
 
+    // 虚拟密钥策略检查：允许的模型列表（与 HTTP 路径一致）
+    if (conn.key_allowed_models && conn.key_allowed_models.length > 0 && !conn.key_allowed_models.includes(request.model)) {
+      wsManager.send(connectionId, {
+        type: 'error',
+        error: {
+          message: `Model '${request.model}' is not allowed by this API key. Allowed: ${conn.key_allowed_models.join(', ')}`,
+          type: 'invalid_request_error',
+          code: 'model_not_allowed',
+        },
+      });
+      return;
+    }
+
+    // 虚拟密钥策略检查：月度预算
+    if (conn.key_monthly_budget !== undefined && conn.key_hash) {
+      const budgetCheck = checkKeyQuota(conn.key_hash, conn.key_monthly_budget);
+      if (!budgetCheck.allowed) {
+        wsManager.send(connectionId, {
+          type: 'error',
+          error: {
+            message: budgetCheck.reason || 'API key monthly budget exceeded',
+            type: 'rate_limit_error',
+            code: 'budget_exceeded',
+          },
+        });
+        return;
+      }
+    }
+
+    // 虚拟密钥策略：clamp max_tokens
+    if (conn.key_max_tokens !== undefined && (request.max_tokens === undefined || request.max_tokens > conn.key_max_tokens)) {
+      request.max_tokens = conn.key_max_tokens;
+    }
+
     // 创建轻量 mock Context 供插件使用
     const mockCtx = {
       get: (key: string) => {
@@ -658,10 +711,18 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     let buffer = '';
     let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
     let accumulatedContent = '';
+    let wsClientDisconnected = false;
 
     try {
       // eslint-disable-next-line no-constant-condition
       while (true) {
+        // 客户端断连检查：如果连接已被移除，停止处理并跳过费用记录
+        if (!wsManager.getConnection(connectionId)) {
+          wsClientDisconnected = true;
+          reader.cancel().catch(() => {});
+          break;
+        }
+
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -711,6 +772,9 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     } finally {
       reader.releaseLock();
       wsManager.setAbortController(connectionId, null);
+
+      // 客户端已断连，跳过费用记录
+      if (wsClientDisconnected) return;
 
       let promptTokens = 0;
       let completionTokens = 0;

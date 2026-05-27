@@ -70,33 +70,27 @@ describe('Quota Service', () => {
     });
 
     it('should deny when monthly budget exceeded', () => {
-      (getTenantUsage as jest.Mock).mockReturnValue({
-        total_requests: 10,
-        total_tokens: 1000,
-        total_cost: 150,
-      });
+      // quotaStore is the data source — populate via recordUsage
+      recordUsage('test-tenant', 1000, 150);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(false);
       expect(result.reason).toBe('Monthly budget exceeded');
     });
 
     it('should warn when usage exceeds threshold', () => {
-      (getTenantUsage as jest.Mock).mockReturnValue({
-        total_requests: 10,
-        total_tokens: 1000,
-        total_cost: 85,
-      });
+      recordUsage('test-tenant', 1000, 85);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(true);
     });
 
     it('should deny when daily request limit exceeded', () => {
       setTenantLimits('test-tenant', { daily_requests: 5 });
-      (getTenantUsage as jest.Mock).mockReturnValue({
-        total_requests: 10,
-        total_tokens: 1000,
-        total_cost: 10,
-      });
+      recordUsage('test-tenant', 100, 1);
+      recordUsage('test-tenant', 100, 1);
+      recordUsage('test-tenant', 100, 1);
+      recordUsage('test-tenant', 100, 1);
+      recordUsage('test-tenant', 100, 1);
+      recordUsage('test-tenant', 100, 1); // 6th request over 5 limit
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(false);
       expect(result.reason).toBe('Daily request limit exceeded');
@@ -104,11 +98,7 @@ describe('Quota Service', () => {
 
     it('should deny when daily token limit exceeded', () => {
       setTenantLimits('test-tenant', { daily_tokens: 100 });
-      (getTenantUsage as jest.Mock).mockReturnValue({
-        total_requests: 1,
-        total_tokens: 200,
-        total_cost: 1,
-      });
+      recordUsage('test-tenant', 200, 1);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(false);
       expect(result.reason).toBe('Daily token limit exceeded');
@@ -116,11 +106,7 @@ describe('Quota Service', () => {
 
     it('should deny when monthly cost limit exceeded', () => {
       setTenantLimits('test-tenant', { monthly_cost: 10 });
-      (getTenantUsage as jest.Mock).mockReturnValue({
-        total_requests: 1,
-        total_tokens: 100,
-        total_cost: 15,
-      });
+      recordUsage('test-tenant', 100, 15);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(false);
       expect(result.reason).toBe('Monthly cost limit exceeded');
@@ -128,11 +114,9 @@ describe('Quota Service', () => {
 
     it('should return remaining requests when limit set', () => {
       setTenantLimits('test-tenant', { daily_requests: 10 });
-      (getTenantUsage as jest.Mock).mockReturnValue({
-        total_requests: 3,
-        total_tokens: 100,
-        total_cost: 5,
-      });
+      recordUsage('test-tenant', 100, 5);
+      recordUsage('test-tenant', 100, 5);
+      recordUsage('test-tenant', 100, 5);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(true);
       expect(result.remaining_requests).toBe(7);
@@ -140,11 +124,7 @@ describe('Quota Service', () => {
 
     it('should return remaining tokens when limit set', () => {
       setTenantLimits('test-tenant', { daily_tokens: 1000 });
-      (getTenantUsage as jest.Mock).mockReturnValue({
-        total_requests: 1,
-        total_tokens: 100,
-        total_cost: 5,
-      });
+      recordUsage('test-tenant', 100, 5);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(true);
       expect(result.remaining_tokens).toBe(900);

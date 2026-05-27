@@ -19,8 +19,12 @@ import type {
 
 /**
  * 沙箱中允许的全局对象
+ *
+ * 注意：不主动传入 Object/Array/String 等构造函数，VM 会使用自身上下文中的安全副本。
+ * 如果显式传入宿主环境的构造函数，可通过 constructor.constructor 链追踪到 Function，
+ * 进而执行沙箱外代码。保留 JSON 和 Math 是因为它们没有构造函数链风险（typeof JSON === 'object'）。
  */
-const ALLOWED_GLOBALS = {
+const ALLOWED_GLOBALS: Record<string, unknown> = {
   console: {
     log: (...args: unknown[]) => writeLog('info', 'Plugin log', { args: args.map((a) => String(a)) }),
     error: (...args: unknown[]) => writeLog('error', 'Plugin error', { args: args.map((a) => String(a)) }),
@@ -28,18 +32,6 @@ const ALLOWED_GLOBALS = {
   },
   JSON,
   Math,
-  Date,
-  Array,
-  Object,
-  String,
-  Number,
-  Boolean,
-  RegExp,
-  Error,
-  Promise,
-  Set,
-  Map,
-  Symbol,
   parseInt,
   parseFloat,
   isNaN,
@@ -201,11 +193,15 @@ function buildPluginFromSandbox(exports: unknown): PluginLoadResult {
  * @param code 插件 JS 代码字符串
  */
 export function loadPluginInSandbox(code: string): PluginLoadResult {
-  const sandbox = {
-    ...ALLOWED_GLOBALS,
-    exports: {},
-    module: { exports: {} as Record<string, unknown> },
-  };
+  // 使用 null 原型创建沙箱，避免原型链污染攻击
+  const sandbox = Object.create(null);
+  // 只赋值白名单中的全局对象（不包含宿主构造函数）
+  for (const key of Object.keys(ALLOWED_GLOBALS)) {
+    sandbox[key] = ALLOWED_GLOBALS[key];
+  }
+  sandbox.exports = {};
+  sandbox.module = { exports: {} as Record<string, unknown> };
+  // 注：不冻结 sandbox，因为 runInNewContext 的 createContext 需要添加内置对象到沙箱
 
   try {
     const wrappedCode = `
