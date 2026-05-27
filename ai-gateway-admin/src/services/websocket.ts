@@ -25,7 +25,7 @@ class WebSocketService {
       console.warn('[WebSocket] No API key available')
       return
     }
-    this.url = `${baseUrl}/v1/ws/${tenantId}?api_key=${encodeURIComponent(apiKey)}`
+    this.url = `${baseUrl}/v1/ws?tenant_id=${encodeURIComponent(tenantId)}&api_key=${encodeURIComponent(apiKey)}`
 
     try {
       this.ws = new WebSocket(this.url)

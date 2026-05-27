@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Row, Col, Card, Table, Button, Tag, Select, Badge, message } from 'antd'
 import { ReloadOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import StatsCard from '@/components/common/StatsCard'
@@ -44,6 +44,7 @@ const Dashboard: React.FC = () => {
   const [statusCodeData, setStatusCodeData] = useState<Record<string, number>>({})
   const [wsConnected, setWsConnected] = useState(false)
   const [recentLogs, setRecentLogs] = useState<RecentLog[]>([])
+  const seenRequestIds = useRef(new Set<string>())
 
   const fetchData = async () => {
     setLoading(true)
@@ -90,8 +91,13 @@ const Dashboard: React.FC = () => {
         total_tenants: (data.total_tenants as number | undefined) ?? prev?.total_tenants ?? 0,
       }))
     } else if (data.type === 'chat.completion.chunk' || data.event === 'request_complete') {
+      const requestId = (data.request_id as string)
+      if (requestId) {
+        if (seenRequestIds.current.has(requestId)) return
+        seenRequestIds.current.add(requestId)
+      }
       const log: RecentLog = {
-        id: (data.request_id as string) || Math.random().toString(36).substr(2, 9),
+        id: requestId || Math.random().toString(36).substr(2, 9),
         time: new Date().toLocaleTimeString(),
         model: (data.model as string) || 'unknown',
         status: data.error ? 'error' : 'success',
@@ -187,6 +193,14 @@ const Dashboard: React.FC = () => {
       description: `错误率: ${((overviewData?.error_rate || 0) * 100).toFixed(2)}%`,
     },
   ]
+
+  function formatUptime(seconds: number): string {
+    if (seconds < 60) return '刚刚启动'
+    if (seconds < 3600) return `${Math.ceil(seconds / 60)} 分钟`
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.ceil((seconds % 3600) / 60)
+    return mins > 0 ? `${hours} 小时 ${mins} 分钟` : `${hours} 小时`
+  }
 
   function formatTokens(tokens: number): string {
     if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(2)}M`
@@ -291,7 +305,7 @@ const Dashboard: React.FC = () => {
           <Card title="系统信息">
             <div style={{ padding: '8px 0' }}>
               <div>版本: {(healthData as { version?: string })?.version || '1.0.0'}</div>
-              <div>运行时间: {Math.floor(((healthData as { uptime?: number })?.uptime || 0) / 3600)}h</div>
+              <div>运行时间: {formatUptime((healthData as { uptime?: number })?.uptime || 0)}</div>
               <div>活跃租户: {overviewData?.total_tenants || 0} 个</div>
             </div>
           </Card>
