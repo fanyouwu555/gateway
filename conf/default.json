@@ -1,0 +1,108 @@
+{
+  "port": 3000,
+  "host": "0.0.0.0",
+  "log_level": "info",
+  "providers": {
+    "volcano": {
+      "provider": "volcano",
+      "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
+      "timeout": 30000
+    },
+    "kimi-code": {
+      "provider": "kimi-code",
+      "base_url": "https://api.kimi.com/coding/v1",
+      "timeout": 30000
+    }
+  },
+  "routing": [
+    {
+      "name": "default",
+      "rules": [
+        { "model": "ark-code-latest", "provider": "volcano", "max_tokens": 128000 },
+        { "model": "kimi-for-coding", "provider": "kimi-code", "max_tokens": 128000 },
+        { "model": "kimi-k2.6", "provider": "moonshot", "max_tokens": 128000 }
+      ],
+      "fallback": "volcano"
+    }
+  ],
+  "auth": {
+    "enabled": true,
+    "api_keys": [
+      {
+        "key": "gateway-test-key-123",
+        "tenant_id": "default",
+        "name": "test-key",
+        "created_at": 1735689600000
+      },
+      {
+        "key": "admin-dashboard-key-456",
+        "tenant_id": "admin",
+        "name": "admin-dashboard",
+        "created_at": 1735689600000,
+        "is_admin": true
+      }
+    ]
+  },
+  "rate_limit": {
+    "enabled": true,
+    "qps": 10,
+    "burst": 20
+  },
+  "cost_control": {
+    "monthly_budget": 100,
+    "warn_threshold": 0.8
+  },
+  "failover": {
+    "enabled": true,
+    "failureThreshold": 3,
+    "successThreshold": 2,
+    "healthCheckInterval": 60000,
+    "healthCheckTimeout": 5000,
+    "healthCheckModel": "ark-code-latest",
+    "chains": {
+      "volcano": ["kimi-code"],
+      "kimi-code": ["volcano"]
+    },
+    "errorRateThreshold": 0.5,
+    "latencyThresholdMs": 30000
+  },
+  "loadBalance": {
+    "strategy": "roundRobin"
+  },
+  "cache": {
+    "enabled": true,
+    "ttl": 3600000,
+    "max_size": 1000
+  },
+  "request_logging": {
+    "enabled": true,
+    "max_body_size": 4096,
+    "sample_rate": 1.0
+  },
+  "conversation_logging": {
+    "enabled": true,
+    "max_memory_sessions": 100,
+    "redis_ttl_days": 7,
+    "max_turns_per_session": 500
+  },
+  "model_equivalents": {
+    "ark-code-latest": {
+      "kimi-code": "kimi-for-coding"
+    },
+    "kimi-for-coding": {
+      "volcano": "ark-code-latest"
+    }
+  },
+  "rate_limit_clean_interval": 60000,
+  "pricing": {
+    "ark-code-latest": { "input": 0.5, "output": 2.0 },
+    "kimi-for-coding": { "input": 0.5, "output": 2.0 },
+    "kimi-k2.6": { "input": 0.5, "output": 2.0 },
+    "gpt-4o": { "input": 2.5, "output": 10.0 },
+    "gpt-4o-mini": { "input": 0.15, "output": 0.6 },
+    "claude-3-opus": { "input": 15.0, "output": 75.0 },
+    "claude-3-sonnet": { "input": 3.0, "output": 15.0 },
+    "claude-3-haiku": { "input": 0.25, "output": 1.25 },
+    "deepseek-chat": { "input": 0.14, "output": 0.28 }
+  }
+}

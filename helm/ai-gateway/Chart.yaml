@@ -1,0 +1,19 @@
+apiVersion: v2
+name: ai-gateway
+description: A lightweight, high-performance multi-provider AI Gateway built with Hono
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/fanyouwu555/ai-gateway
+sources:
+  - https://github.com/fanyouwu555/ai-gateway
+keywords:
+  - ai
+  - gateway
+  - llm
+  - openai
+  - deepseek
+  - anthropic
+maintainers:
+  - name: AI Gateway Team
+    email: dev@example.com

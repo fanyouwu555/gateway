@@ -1,0 +1,106 @@
+# Default values for ai-gateway.
+replicaCount: 2
+
+image:
+  repository: ai-gateway
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: ai-gateway.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Gateway configuration
+config:
+  port: 3000
+  host: "0.0.0.0"
+  log_level: "info"
+  default_model: "gpt-4o-mini"
+
+# Secrets (should be overridden in production)
+secrets:
+  apiKeys: "gateway-test-key-123"
+  adminKeys: "admin-dashboard-key-456"
+  openaiApiKey: ""
+  deepseekApiKey: ""
+  moonshotApiKey: ""
+  volcanoApiKey: ""
+  kimiCodeApiKey: ""
+
+# Provider routing configuration
+providers:
+  openai:
+    enabled: true
+    base_url: "https://api.openai.com/v1"
+  deepseek:
+    enabled: true
+    base_url: "https://api.deepseek.com/v1"
+  anthropic:
+    enabled: true
+    base_url: "https://api.anthropic.com"
+  mistral:
+    enabled: true
+    base_url: "https://api.mistral.ai/v1"
+  groq:
+    enabled: true
+    base_url: "https://api.groq.com/openai/v1"
+  google:
+    enabled: true
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+  moonshot:
+    enabled: true
+    base_url: "https://api.moonshot.cn/v1"
+  volcano:
+    enabled: true
+    base_url: "https://ark.cn-beijing.volces.com/api/coding/v3"
+  kimiCode:
+    enabled: true
+    base_url: "https://api.kimi.com/coding/v1"
