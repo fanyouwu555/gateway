@@ -100,6 +100,29 @@ class MetricsStore {
   async initStorage(): Promise<void> {
     if (this.useStorage && this.store) {
       await this.store.connect();
+      // 从 Redis 恢复历史数据到内存
+      await this.loadFromStorage();
+    }
+  }
+
+  private async loadFromStorage(): Promise<void> {
+    if (!this.store) return;
+    try {
+      const items = await this.store.lRange(this.storageKey, 0, -1);
+      if (items && items.length > 0) {
+        const parsed: RequestMetrics[] = [];
+        for (const item of items) {
+          try {
+            parsed.push(JSON.parse(item) as RequestMetrics);
+          } catch {
+            // 忽略损坏的数据
+          }
+        }
+        this.metrics = parsed;
+        writeLog('info', 'Metrics loaded from storage', { count: this.metrics.length });
+      }
+    } catch (err) {
+      writeLog('warn', 'Failed to load metrics from storage', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -143,6 +166,13 @@ class MetricsStore {
 
 // 单例
 let metricsStore = new MetricsStore();
+
+/**
+ * 初始化指标存储（从 Redis 加载历史数据）
+ */
+export async function initMetricsStore(): Promise<void> {
+  await metricsStore.initStorage();
+}
 
 /**
  * 重置指标存储（用于测试隔离）

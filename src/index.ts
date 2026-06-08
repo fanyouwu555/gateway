@@ -21,6 +21,7 @@ import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { initTenantStore, flushTenantStore } from './services/tenant';
+import { initMetricsStore } from './services/metrics';
 import { startAlertEngine } from './services/alert';
 import { initTracing } from './utils/tracing';
 
@@ -83,6 +84,9 @@ async function startServer() {
 
   // 初始化租户存储（从 Redis 加载历史数据）
   await initTenantStore();
+
+  // 初始化指标存储（从 Redis 加载历史数据）
+  await initMetricsStore();
 
   // 定期 flush 配额数据到 Redis（每 60 秒）
   setInterval(() => {

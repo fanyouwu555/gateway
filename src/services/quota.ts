@@ -6,6 +6,7 @@
 import type { TenantId } from '../types';
 import { getTenantUsage } from './metrics';
 import { getConfig } from '../config';
+import { getTenant } from './tenant';
 import { writeLog } from '../utils/logger';
 import { createKVStore } from '../stores/factory';
 
@@ -297,72 +298,86 @@ export async function flushQuotaStore(): Promise<void> {
  * 确保并发请求在 check 时能感知到已完成的请求的用量。
  */
 export function checkQuota(tenantId: TenantId): QuotaCheckResult {
-  const config = getConfig();
+  const current = quotaStore.get(tenantId);
 
-  // 如果未配置成本控制，跳过
-  if (!config.cost_control?.monthly_budget) {
+  // 1. 优先使用 Tenant 级别的 limits
+  const tenant = getTenant(tenantId);
+  const tenantLimits = tenant?.limits;
+
+  // 2. 其次使用 quotaStore 中自定义的 limits
+  const customLimits = quotaStore.getLimits(tenantId);
+
+  // 3. 最后回退到全局 cost_control 配置
+  const config = getConfig();
+  const globalBudget = config.cost_control?.monthly_budget;
+
+  // 确定有效的月度预算：tenant limits > custom limits > global config
+  const monthlyBudget = tenantLimits?.monthly_cost ?? customLimits?.monthly_cost ?? globalBudget;
+
+  // 确定有效的日请求限制：tenant limits > custom limits
+  const dailyRequestLimit = tenantLimits?.daily_requests ?? customLimits?.daily_requests;
+
+  // 确定有效的日 token 限制：tenant limits > custom limits
+  const dailyTokenLimit = tenantLimits?.daily_tokens ?? customLimits?.daily_tokens;
+
+  // 如果没有配置任何限制，允许通过
+  if (monthlyBudget === undefined && dailyRequestLimit === undefined && dailyTokenLimit === undefined) {
     return { allowed: true };
   }
 
-  const current = quotaStore.get(tenantId);
-  const limits = quotaStore.getLimits(tenantId);
-  const budget = config.cost_control.monthly_budget;
-  const warnThreshold = config.cost_control.warn_threshold || 0.8;
-
-  // 检查月度预算
-  if (current.monthly_cost >= budget) {
-    return {
-      allowed: false,
-      reason: 'Monthly budget exceeded',
-    };
-  }
-
-  // 警告阈值
-  if (current.monthly_cost >= budget * warnThreshold) {
-    writeLog('warn', 'Tenant quota warning', {
-      tenant_id: tenantId,
-      usage_percent: Math.round((current.monthly_cost / budget) * 100),
-      total_cost: current.monthly_cost,
-      budget,
-    });
-  }
-
-  // 检查自定义限制
-  if (limits?.daily_requests && current.daily_requests >= limits.daily_requests) {
+  // 检查日请求限制
+  if (dailyRequestLimit !== undefined && current.daily_requests >= dailyRequestLimit) {
     return {
       allowed: false,
       reason: 'Daily request limit exceeded',
     };
   }
 
-  if (limits?.daily_tokens && current.daily_tokens >= limits.daily_tokens) {
+  // 检查日 token 限制
+  if (dailyTokenLimit !== undefined && current.daily_tokens >= dailyTokenLimit) {
     return {
       allowed: false,
       reason: 'Daily token limit exceeded',
     };
   }
 
-  if (limits?.monthly_cost && current.monthly_cost >= limits.monthly_cost) {
-    return {
-      allowed: false,
-      reason: 'Monthly cost limit exceeded',
-    };
+  // 检查月度预算限制
+  if (monthlyBudget !== undefined) {
+    if (current.monthly_cost >= monthlyBudget) {
+      return {
+        allowed: false,
+        reason: 'Monthly budget exceeded',
+      };
+    }
+
+    // 警告阈值（仅对月度预算）
+    const warnThreshold = config.cost_control?.warn_threshold || 0.8;
+    if (current.monthly_cost >= monthlyBudget * warnThreshold) {
+      writeLog('warn', 'Tenant quota warning', {
+        tenant_id: tenantId,
+        usage_percent: Math.round((current.monthly_cost / monthlyBudget) * 100),
+        total_cost: current.monthly_cost,
+        budget: monthlyBudget,
+      });
+    }
   }
 
   // 计算剩余
-  const remainingRequests = limits?.daily_requests
-    ? limits.daily_requests - current.daily_requests
+  const remainingRequests = dailyRequestLimit !== undefined
+    ? dailyRequestLimit - current.daily_requests
     : undefined;
-  const remainingTokens = limits?.daily_tokens
-    ? limits.daily_tokens - current.daily_tokens
+  const remainingTokens = dailyTokenLimit !== undefined
+    ? dailyTokenLimit - current.daily_tokens
     : undefined;
-  const remainingCost = budget - current.monthly_cost;
+  const remainingCost = monthlyBudget !== undefined
+    ? Math.round((monthlyBudget - current.monthly_cost) * 1000) / 1000
+    : undefined;
 
   return {
     allowed: true,
     remaining_requests: remainingRequests,
     remaining_tokens: remainingTokens,
-    remaining_cost: Math.round(remainingCost * 1000) / 1000,
+    remaining_cost: remainingCost,
   };
 }
 
