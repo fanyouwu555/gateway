@@ -272,6 +272,74 @@ describe('DynamicProvider', () => {
       expect(callBody.stream).toBe(false);
     });
 
+    it('should include tools and tool_choice in body when provided', async () => {
+      const config: DynamicProviderConfig = {
+        name: 'test',
+        base_url: 'https://api.example.com',
+        endpoints: { chat: '/chat' },
+      };
+
+      const provider = new DynamicProvider(config);
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 'chat-1',
+          object: 'chat.completion',
+          created: 1,
+          model: 'test-model',
+          choices: [],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [{ type: 'function', function: { name: 'fn', description: 'desc', parameters: {} } }],
+        tool_choice: { type: 'function', function: { name: 'fn' } },
+      };
+
+      await provider.chat(request, providerConfig);
+
+      const callBody = JSON.parse(mockFetchWithAgent.mock.calls[0][1].body);
+      expect(callBody.tools).toEqual(request.tools);
+      expect(callBody.tool_choice).toEqual(request.tool_choice);
+    });
+
+    it('should not include tools when tools array is empty', async () => {
+      const config: DynamicProviderConfig = {
+        name: 'test',
+        base_url: 'https://api.example.com',
+        endpoints: { chat: '/chat' },
+      };
+
+      const provider = new DynamicProvider(config);
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 'chat-1',
+          object: 'chat.completion',
+          created: 1,
+          model: 'test-model',
+          choices: [],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [],
+      };
+
+      await provider.chat(request, providerConfig);
+
+      const callBody = JSON.parse(mockFetchWithAgent.mock.calls[0][1].body);
+      expect(callBody.tools).toBeUndefined();
+    });
+
     it('should throw on error response', async () => {
       const config: DynamicProviderConfig = {
         name: 'test',
@@ -400,6 +468,41 @@ describe('DynamicProvider', () => {
       await provider.chatStream(request, providerConfig);
 
       const callBody = JSON.parse(mockFetchWithAgent.mock.calls[0][1].body);
+      expect(callBody.stream).toBe(true);
+    });
+
+    it('should include tools and tool_choice in stream body when provided', async () => {
+      const config: DynamicProviderConfig = {
+        name: 'test',
+        base_url: 'https://api.example.com',
+        endpoints: { chat_stream: '/chat/stream' },
+      };
+
+      const provider = new DynamicProvider(config);
+
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      });
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        body: stream,
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [{ type: 'function', function: { name: 'fn', description: 'desc', parameters: {} } }],
+        tool_choice: 'auto',
+      };
+
+      await provider.chatStream(request, providerConfig);
+
+      const callBody = JSON.parse(mockFetchWithAgent.mock.calls[0][1].body);
+      expect(callBody.tools).toEqual(request.tools);
+      expect(callBody.tool_choice).toBe('auto');
       expect(callBody.stream).toBe(true);
     });
 

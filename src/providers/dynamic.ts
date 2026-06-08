@@ -53,6 +53,13 @@ export class DynamicProvider extends BaseProvider {
       user: request.user,
     };
 
+    if (request.tools && request.tools.length > 0) {
+      (body as Record<string, unknown>).tools = request.tools;
+    }
+    if (request.tool_choice) {
+      (body as Record<string, unknown>).tool_choice = request.tool_choice;
+    }
+
     return this.fetch<ChatCompletionResponse>(url, {
       method: 'POST',
       headers: this.buildDynamicHeaders(config),
@@ -80,6 +87,13 @@ export class DynamicProvider extends BaseProvider {
       frequency_penalty: request.frequency_penalty,
       user: request.user,
     };
+
+    if (request.tools && request.tools.length > 0) {
+      (body as Record<string, unknown>).tools = request.tools;
+    }
+    if (request.tool_choice) {
+      (body as Record<string, unknown>).tool_choice = request.tool_choice;
+    }
 
     const response = await fetchWithAgent(url, {
       method: 'POST',
