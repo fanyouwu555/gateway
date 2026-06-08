@@ -12,12 +12,19 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../../types';
-import { contentToString } from '../../utils';
+import { contentToString, safeJsonParse } from '../../utils';
 import { fetchWithAgent } from '../../utils/http-client';
+
+interface GeminiPart {
+  text?: string;
+  inlineData?: { mimeType: string; data: string };
+  functionCall?: { name: string; args: Record<string, unknown> };
+  functionResponse?: { name: string; response: Record<string, unknown> };
+}
 
 interface GeminiContent {
   role: 'user' | 'model';
-  parts: { text: string }[];
+  parts: GeminiPart[];
 }
 
 interface GeminiRequest {
@@ -30,6 +37,19 @@ interface GeminiRequest {
     topP?: number;
     maxOutputTokens?: number;
     stopSequences?: string[];
+  };
+  tools?: Array<{
+    functionDeclarations: Array<{
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    }>;
+  }>;
+  toolConfig?: {
+    functionCallingConfig: {
+      mode: string;
+      allowedFunctionNames?: string[];
+    };
   };
 }
 
@@ -53,7 +73,7 @@ export class GoogleProvider extends BaseProvider {
     embed: false,
     streaming: true,
     vision: true,
-    function_call: false,
+    function_call: true,
   };
 
   /**
@@ -69,12 +89,57 @@ export class GoogleProvider extends BaseProvider {
 
   /**
    * 转换 OpenAI 消息格式到 Gemini 格式，跳过 system 消息
+   * 支持 tool_calls / function_call / function_response 转换
    */
   private convertMessages(messages: ChatCompletionRequest['messages']): GeminiContent[] {
+    // 构建 tool_call_id → name 映射，用于 tool 角色消息转换
+    const toolCallIdToName = new Map<string, string>();
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        for (const tc of msg.tool_calls) {
+          toolCallIdToName.set(tc.id, tc.function.name);
+        }
+      }
+    }
+
     const contents: GeminiContent[] = [];
 
     for (const msg of messages) {
       if (msg.role === 'system') {
+        continue;
+      }
+
+      // tool 角色 → user 角色 + functionResponse part
+      if (msg.role === 'tool') {
+        const name = toolCallIdToName.get(msg.tool_call_id || '') || 'unknown';
+        contents.push({
+          role: 'user',
+          parts: [{
+            functionResponse: {
+              name,
+              response: { result: contentToString(msg.content) },
+            },
+          }],
+        });
+        continue;
+      }
+
+      // assistant 含 tool_calls → functionCall parts + text
+      if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+        const parts: GeminiPart[] = [];
+        const text = contentToString(msg.content);
+        if (text) {
+          parts.push({ text });
+        }
+        for (const tc of msg.tool_calls) {
+          parts.push({
+            functionCall: {
+              name: tc.function.name,
+              args: safeJsonParse(tc.function.arguments, {}),
+            },
+          });
+        }
+        contents.push({ role: 'model', parts });
         continue;
       }
 
@@ -90,9 +155,37 @@ export class GoogleProvider extends BaseProvider {
 
   /**
    * 转换 Gemini 响应到 OpenAI 格式
+   * 支持 functionCall parts → tool_calls
    */
   private convertResponse(model: string, geminiResp: GeminiResponse): ChatCompletionResponse {
     const candidate = geminiResp.candidates[0];
+    const parts = candidate?.content?.parts || [];
+
+    const textParts = parts.filter((p): p is GeminiPart & { text: string } => typeof p.text === 'string');
+    const functionCallParts = parts.filter((p): p is GeminiPart & { functionCall: { name: string; args: Record<string, unknown> } } => !!p.functionCall);
+
+    const message: {
+      role: 'assistant';
+      content: string;
+      tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
+    } = {
+      role: 'assistant',
+      content: textParts.map((p) => p.text).join('') || '',
+    };
+
+    if (functionCallParts.length > 0) {
+      message.tool_calls = functionCallParts.map((p, i) => ({
+        id: `call_${i}`,
+        type: 'function' as const,
+        function: {
+          name: p.functionCall.name,
+          arguments: JSON.stringify(p.functionCall.args),
+        },
+      }));
+    }
+
+    const finishReason = candidate?.finishReason;
+
     return {
       id: `chatcmpl-${Date.now()}`,
       object: 'chat.completion',
@@ -101,11 +194,13 @@ export class GoogleProvider extends BaseProvider {
       choices: [
         {
           index: 0,
-          message: {
-            role: 'assistant',
-            content: candidate?.content?.parts?.[0]?.text || '',
-          },
-          finish_reason: candidate?.finishReason === 'STOP' ? 'stop' : 'length',
+          message,
+          finish_reason:
+            finishReason === 'STOP'
+              ? 'stop'
+              : finishReason === 'MAX_TOKENS'
+                ? 'length'
+                : null,
         },
       ],
       usage: {
@@ -135,6 +230,35 @@ export class GoogleProvider extends BaseProvider {
         stopSequences: request.stop ? (Array.isArray(request.stop) ? request.stop : [request.stop]) : undefined,
       },
     };
+
+    // 转换 tools 定义
+    if (request.tools && request.tools.length > 0) {
+      geminiRequest.tools = [{
+        functionDeclarations: request.tools.map((t) => ({
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters,
+        })),
+      }];
+    }
+
+    // 转换 tool_choice
+    if (request.tool_choice) {
+      if (request.tool_choice === 'none') {
+        geminiRequest.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
+      } else if (request.tool_choice === 'auto') {
+        geminiRequest.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+      } else if (request.tool_choice === 'required') {
+        geminiRequest.toolConfig = { functionCallingConfig: { mode: 'ANY' } };
+      } else if (typeof request.tool_choice === 'object' && request.tool_choice.type === 'function') {
+        geminiRequest.toolConfig = {
+          functionCallingConfig: {
+            mode: 'ANY',
+            allowedFunctionNames: [request.tool_choice.function.name],
+          },
+        };
+      }
+    }
 
     const geminiResp = await this.fetch<GeminiResponse>(url, {
       method: 'POST',
@@ -167,6 +291,35 @@ export class GoogleProvider extends BaseProvider {
         maxOutputTokens: request.max_tokens,
       },
     };
+
+    // 转换 tools 定义
+    if (request.tools && request.tools.length > 0) {
+      geminiRequest.tools = [{
+        functionDeclarations: request.tools.map((t) => ({
+          name: t.function.name,
+          description: t.function.description,
+          parameters: t.function.parameters,
+        })),
+      }];
+    }
+
+    // 转换 tool_choice
+    if (request.tool_choice) {
+      if (request.tool_choice === 'none') {
+        geminiRequest.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
+      } else if (request.tool_choice === 'auto') {
+        geminiRequest.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+      } else if (request.tool_choice === 'required') {
+        geminiRequest.toolConfig = { functionCallingConfig: { mode: 'ANY' } };
+      } else if (typeof request.tool_choice === 'object' && request.tool_choice.type === 'function') {
+        geminiRequest.toolConfig = {
+          functionCallingConfig: {
+            mode: 'ANY',
+            allowedFunctionNames: [request.tool_choice.function.name],
+          },
+        };
+      }
+    }
 
     const response = await fetchWithAgent(url, {
       method: 'POST',
@@ -207,6 +360,27 @@ export class GoogleProvider extends BaseProvider {
 
             try {
               const data = JSON.parse(trimmed.replace(/^data:\s*/, ''));
+              const parts = data.candidates?.[0]?.content?.parts || [];
+              const textParts = parts.filter((p: { text?: string }) => typeof p.text === 'string');
+              const functionCallParts = parts.filter((p: { functionCall?: unknown }) => !!p.functionCall);
+
+              const delta: Record<string, unknown> = { role: 'assistant' };
+              if (textParts.length > 0) {
+                delta.content = textParts.map((p: { text?: string }) => p.text).join('');
+              }
+              if (functionCallParts.length > 0) {
+                delta.tool_calls = functionCallParts.map((p: { functionCall?: { name: string; args: Record<string, unknown> } }, i: number) => ({
+                  index: i,
+                  id: `call_${i}`,
+                  type: 'function',
+                  function: {
+                    name: p.functionCall!.name,
+                    arguments: JSON.stringify(p.functionCall!.args),
+                  },
+                }));
+              }
+
+              const finishReason = data.candidates?.[0]?.finishReason;
               const chunk = {
                 id: `chatcmpl-${Date.now()}`,
                 object: 'chat.completion.chunk',
@@ -215,11 +389,13 @@ export class GoogleProvider extends BaseProvider {
                 choices: [
                   {
                     index: 0,
-                    delta: {
-                      role: 'assistant',
-                      content: data.candidates?.[0]?.content?.parts?.[0]?.text || '',
-                    },
-                    finish_reason: data.candidates?.[0]?.finishReason === 'STOP' ? 'stop' : null,
+                    delta,
+                    finish_reason:
+                      finishReason === 'STOP'
+                        ? 'stop'
+                        : finishReason === 'MAX_TOKENS'
+                          ? 'length'
+                          : null,
                   },
                 ],
               };

@@ -69,11 +69,63 @@ describe('GoogleProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => { role: string; parts: { text: string }[] }[] }).convertMessages(request.messages);
+      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Array<{ role: string; parts: unknown[] }> }).convertMessages(request.messages);
 
       expect(result).toEqual([
         { role: 'user', parts: [{ text: 'hello' }] },
         { role: 'model', parts: [{ text: 'hi there' }] },
+      ]);
+    });
+
+    it('should convert tool role to functionResponse', () => {
+      const provider = new GoogleProvider();
+      const request: ChatCompletionRequest = {
+        model: 'gemini-2.0-flash',
+        messages: [
+          { role: 'user', content: 'Weather?' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: '{}' } }],
+          },
+          { role: 'tool', content: 'Sunny, 25°C', tool_call_id: 'call_1' },
+        ],
+      };
+
+      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Array<{ role: string; parts: unknown[] }> }).convertMessages(request.messages);
+
+      expect(result).toEqual([
+        { role: 'user', parts: [{ text: 'Weather?' }] },
+        { role: 'model', parts: [{ functionCall: { name: 'get_weather', args: {} } }] },
+        { role: 'user', parts: [{ functionResponse: { name: 'get_weather', response: { result: 'Sunny, 25°C' } } }] },
+      ]);
+    });
+
+    it('should convert assistant tool_calls with text to functionCall + text', () => {
+      const provider = new GoogleProvider();
+      const request: ChatCompletionRequest = {
+        model: 'gemini-2.0-flash',
+        messages: [
+          {
+            role: 'assistant',
+            content: 'Let me check',
+            tool_calls: [
+              { id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: '{"location":"Beijing"}' } },
+            ],
+          },
+        ],
+      };
+
+      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Array<{ role: string; parts: unknown[] }> }).convertMessages(request.messages);
+
+      expect(result).toEqual([
+        {
+          role: 'model',
+          parts: [
+            { text: 'Let me check' },
+            { functionCall: { name: 'get_weather', args: { location: 'Beijing' } } },
+          ],
+        },
       ]);
     });
   });
@@ -142,6 +194,37 @@ describe('GoogleProvider', () => {
       expect(result.usage.prompt_tokens).toBe(0);
       expect(result.usage.completion_tokens).toBe(0);
       expect(result.usage.total_tokens).toBe(0);
+    });
+
+    it('should map functionCall parts to tool_calls', () => {
+      const provider = new GoogleProvider();
+      const geminiResp = {
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [
+                { text: 'Let me check' },
+                { functionCall: { name: 'get_weather', args: { location: 'Beijing' } } },
+              ],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 20, totalTokenCount: 30 },
+      };
+
+      const result = (provider as any).convertResponse('gemini-2.0-flash', geminiResp);
+
+      expect(result.choices[0].message.content).toBe('Let me check');
+      expect(result.choices[0].message.tool_calls).toEqual([{
+        id: 'call_0',
+        type: 'function',
+        function: {
+          name: 'get_weather',
+          arguments: '{"location":"Beijing"}',
+        },
+      }]);
     });
   });
 
@@ -282,6 +365,122 @@ describe('GoogleProvider', () => {
 
       await expect(provider.chat(request, providerConfig)).rejects.toThrow('Invalid API key');
     });
+
+    it('should convert tools and tool_choice in request body', async () => {
+      const provider = new GoogleProvider();
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+          usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+        }),
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [{ type: 'function', function: { name: 'get_weather', description: 'desc', parameters: { type: 'object' } } }],
+        tool_choice: { type: 'function', function: { name: 'get_weather' } },
+      };
+
+      await provider.chat(request, providerConfig);
+
+      const callBody = JSON.parse(mockFetchWithAgent.mock.calls[0][1].body);
+      expect(callBody.tools).toEqual([{
+        functionDeclarations: [{
+          name: 'get_weather',
+          description: 'desc',
+          parameters: { type: 'object' },
+        }],
+      }]);
+      expect(callBody.toolConfig).toEqual({
+        functionCallingConfig: {
+          mode: 'ANY',
+          allowedFunctionNames: ['get_weather'],
+        },
+      });
+    });
+
+    it('should convert tool_choice auto/none/required', async () => {
+      const provider = new GoogleProvider();
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
+          usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
+        }),
+      });
+
+      // auto
+      await provider.chat({
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'hi' }],
+        tool_choice: 'auto',
+      } as ChatCompletionRequest, providerConfig);
+      expect(JSON.parse(mockFetchWithAgent.mock.calls[0][1].body).toolConfig).toEqual({
+        functionCallingConfig: { mode: 'AUTO' },
+      });
+
+      // none
+      await provider.chat({
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'hi' }],
+        tool_choice: 'none',
+      } as ChatCompletionRequest, providerConfig);
+      expect(JSON.parse(mockFetchWithAgent.mock.calls[1][1].body).toolConfig).toEqual({
+        functionCallingConfig: { mode: 'NONE' },
+      });
+
+      // required
+      await provider.chat({
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'hi' }],
+        tool_choice: 'required',
+      } as ChatCompletionRequest, providerConfig);
+      expect(JSON.parse(mockFetchWithAgent.mock.calls[2][1].body).toolConfig).toEqual({
+        functionCallingConfig: { mode: 'ANY' },
+      });
+    });
+
+    it('should map functionCall response to tool_calls', async () => {
+      const provider = new GoogleProvider();
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [{
+            content: {
+              role: 'model',
+              parts: [
+                { text: 'Checking' },
+                { functionCall: { name: 'get_weather', args: { location: 'Beijing' } } },
+              ],
+            },
+            finishReason: 'STOP',
+          }],
+          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 20, totalTokenCount: 30 },
+        }),
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'Weather?' }],
+      };
+
+      const result = await provider.chat(request, providerConfig);
+
+      expect(result.choices[0].message.content).toBe('Checking');
+      expect(result.choices[0].message.tool_calls).toEqual([{
+        id: 'call_0',
+        type: 'function',
+        function: {
+          name: 'get_weather',
+          arguments: '{"location":"Beijing"}',
+        },
+      }]);
+    });
   });
 
   describe('chatStream', () => {
@@ -399,6 +598,70 @@ describe('GoogleProvider', () => {
         expect.stringContaining(':streamGenerateContent?alt=sse'),
         expect.any(Object)
       );
+    });
+
+    it('should convert tools in stream request body', async () => {
+      const provider = new GoogleProvider();
+
+      const source = new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      });
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        body: source,
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [{ type: 'function', function: { name: 'get_weather', description: 'desc', parameters: {} } }],
+      };
+
+      await provider.chatStream(request, providerConfig);
+
+      const callBody = JSON.parse(mockFetchWithAgent.mock.calls[0][1].body);
+      expect(callBody.tools).toEqual([{
+        functionDeclarations: [{ name: 'get_weather', description: 'desc', parameters: {} }],
+      }]);
+    });
+
+    it('should parse stream functionCall parts', async () => {
+      const provider = new GoogleProvider();
+
+      const encoder = new TextEncoder();
+      const source = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"candidates":[{"content":{"parts":[{"text":"Checking"}]},"index":0,"finishReason":"STOP"}]}\n\n'
+          ));
+          controller.close();
+        },
+      });
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        body: source,
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'gemini-2.0-flash',
+        messages: [{ role: 'user', content: 'hello' }],
+      };
+
+      const result = await provider.chatStream(request, providerConfig);
+      const reader = result.getReader();
+      const chunks: string[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(new TextDecoder().decode(value));
+      }
+
+      expect(chunks[0]).toContain('Checking');
+      expect(chunks[0]).toContain('"finish_reason":"stop"');
     });
   });
 
