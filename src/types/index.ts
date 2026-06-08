@@ -121,7 +121,7 @@ export interface ChatCompletionChunk {
   choices: Array<{
     index: number;
     delta: ChatMessage;
-    finish_reason: 'stop' | 'length' | null;
+    finish_reason: 'stop' | 'length' | 'tool_calls' | null;
   }>;
 }
 
