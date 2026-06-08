@@ -33,6 +33,8 @@ jest.mock('../src/config', () => ({
     name: 'default',
     rules: [{ model: 'gpt-4o', provider: 'openai' }],
   })),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 // Mock providers — 避免真正调用

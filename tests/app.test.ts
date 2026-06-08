@@ -91,6 +91,8 @@ jest.mock('../src/config', () => ({
       deepseek: { provider: 'deepseek', base_url: 'https://api.deepseek.com/v1', api_key: 'sk-deepseek' },
     },
   })),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 import { createApp } from '../src/app';

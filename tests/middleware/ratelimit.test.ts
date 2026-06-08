@@ -15,6 +15,8 @@ jest.mock('../../src/config', () => ({
     auth: { enabled: false, api_keys: [] },
   }),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 describe('RateLimit Middleware', () => {

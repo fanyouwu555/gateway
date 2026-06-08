@@ -46,6 +46,8 @@ jest.mock('../../src/config', () => ({
     return configs[name];
   },
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 import type { IProviderConfig } from '../../src/types';

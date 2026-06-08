@@ -12,6 +12,7 @@ import {
   resetTenantQuota,
 } from '../../src/../src/services/quota';
 import { getConfig } from '../../src/../src/config';
+import { getTenant } from '../../src/../src/services/tenant';
 import { getTenantUsage } from '../../src/../src/services/metrics';
 
 // Mock config
@@ -23,6 +24,11 @@ jest.mock('../../src/config', () => ({
     },
   })),
   resolveModelAlias: jest.fn((alias: string) => alias),
+}));
+
+// Mock tenant service
+jest.mock('../../src/services/tenant', () => ({
+  getTenant: jest.fn(() => null),
 }));
 
 // Mock metrics
@@ -44,6 +50,7 @@ describe('Quota Service', () => {
         warn_threshold: 0.8,
       },
     });
+    (getTenant as jest.Mock).mockReturnValue(null);
     (getTenantUsage as jest.Mock).mockReturnValue({
       total_requests: 0,
       total_tokens: 0,
@@ -65,8 +72,38 @@ describe('Quota Service', () => {
 
     it('should allow when no monthly_budget configured', () => {
       (getConfig as jest.Mock).mockReturnValue({ cost_control: {} });
+      (getTenant as jest.Mock).mockReturnValue(null);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(true);
+    });
+
+    it('should use tenant limits when available', () => {
+      (getTenant as jest.Mock).mockReturnValue({
+        tenant_id: 'test-tenant',
+        limits: {
+          monthly_cost: 50,
+          daily_requests: 10,
+          daily_tokens: 1000,
+        },
+      });
+      const result = checkQuota('test-tenant');
+      expect(result.allowed).toBe(true);
+      expect(result.remaining_cost).toBe(50);
+      expect(result.remaining_requests).toBe(10);
+      expect(result.remaining_tokens).toBe(1000);
+    });
+
+    it('should deny when tenant monthly cost limit exceeded', () => {
+      (getTenant as jest.Mock).mockReturnValue({
+        tenant_id: 'test-tenant',
+        limits: {
+          monthly_cost: 10,
+        },
+      });
+      recordUsage('test-tenant', 100, 15);
+      const result = checkQuota('test-tenant');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('Monthly budget exceeded');
     });
 
     it('should deny when monthly budget exceeded', () => {
@@ -104,12 +141,12 @@ describe('Quota Service', () => {
       expect(result.reason).toBe('Daily token limit exceeded');
     });
 
-    it('should deny when monthly cost limit exceeded', () => {
+    it('should deny when custom monthly cost limit exceeded', () => {
       setTenantLimits('test-tenant', { monthly_cost: 10 });
       recordUsage('test-tenant', 100, 15);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(false);
-      expect(result.reason).toBe('Monthly cost limit exceeded');
+      expect(result.reason).toBe('Monthly budget exceeded');
     });
 
     it('should return remaining requests when limit set', () => {

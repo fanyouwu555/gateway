@@ -59,6 +59,8 @@ jest.mock('../src/config', () => ({
     ],
   })),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 // Mock providers

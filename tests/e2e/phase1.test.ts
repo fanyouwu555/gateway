@@ -93,6 +93,8 @@ jest.mock('../../src/config', () => ({
     fallback: 'deepseek',
   }),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 const mockOpenAI = {

@@ -38,6 +38,8 @@ jest.mock('../../src/config', () => ({
   getProviderForModel: () => 'openai',
   getRoutingStrategy: () => ({ name: 'default', rules: [{ model: 'gpt-4o', provider: 'openai' }], fallback: 'deepseek' }),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 const mockOpenAI = {

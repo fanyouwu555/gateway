@@ -86,6 +86,8 @@ jest.mock('../../src/config', () => ({
     fallback: 'openai',
   }),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 const mockOpenAI = {
