@@ -128,8 +128,9 @@ export abstract class BaseProvider implements IProvider {
           try {
             const parsed = JSON.parse(data);
             const chunk = {
+              ...parsed,
               id: parsed.id || '',
-              object: 'chat.completion.chunk',
+              object: parsed.object || 'chat.completion.chunk',
               created: parsed.created || Date.now(),
               model: parsed.model || '',
               choices: parsed.choices || [],

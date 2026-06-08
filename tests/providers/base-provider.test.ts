@@ -170,5 +170,100 @@ describe('BaseProvider', () => {
       await reader.cancel();
       expect(cancelled).toBe(true);
     });
+
+    it('should pass through extra fields in stream chunks', async () => {
+      const provider = new TestProvider();
+      const encoder = new TextEncoder();
+      const source = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","system_fingerprint":"fp-test","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning_content":"Let me think"},"finish_reason":null}]}\n\n'
+          ));
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      const stream = (provider as any).parseStream(source);
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(decoder.decode(value));
+      }
+
+      expect(chunks.length).toBeGreaterThan(0);
+      const firstChunk = chunks[0];
+      expect(firstChunk).toContain('system_fingerprint');
+      expect(firstChunk).toContain('fp-test');
+      expect(firstChunk).toContain('reasoning_content');
+      expect(firstChunk).toContain('Let me think');
+      expect(firstChunk).toContain('"object":"chat.completion.chunk"');
+    });
+
+    it('should pass through tool_calls delta in stream chunks', async () => {
+      const provider = new TestProvider();
+      const encoder = new TextEncoder();
+      const source = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"id":"2","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather"}}]},"finish_reason":null}]}\n\n'
+          ));
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      const stream = (provider as any).parseStream(source);
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(decoder.decode(value));
+      }
+
+      expect(chunks.length).toBeGreaterThan(0);
+      const firstChunk = chunks[0];
+      expect(firstChunk).toContain('tool_calls');
+      expect(firstChunk).toContain('get_weather');
+    });
+
+    it('should preserve fallback values when fields are missing', async () => {
+      const provider = new TestProvider();
+      const encoder = new TextEncoder();
+      const source = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"custom_field":"value"}\n\n'
+          ));
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      const stream = (provider as any).parseStream(source);
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(decoder.decode(value));
+      }
+
+      expect(chunks.length).toBeGreaterThan(0);
+      const firstChunk = chunks[0];
+      const parsedChunk = JSON.parse(firstChunk.replace(/^data: /, ''));
+      expect(parsedChunk.id).toBe('');
+      expect(parsedChunk.object).toBe('chat.completion.chunk');
+      expect(parsedChunk.created).toBeGreaterThan(0);
+      expect(parsedChunk.model).toBe('');
+      expect(parsedChunk.choices).toEqual([]);
+      expect(parsedChunk.custom_field).toBe('value');
+    });
   });
 });
