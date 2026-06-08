@@ -3,7 +3,7 @@
  * 根据请求特征自动选择最优Provider
  */
 import type { ChatCompletionRequest, IRoutingStrategy, IConditionalRoutingRule } from '../types';
-import { getRoutingStrategy, getConfig } from '../config';
+import { getRoutingStrategy, getConfig, getModelPool, isModelPool } from '../config';
 import { failoverManager } from './failover';
 import { contentToString } from '../utils';
 
@@ -49,6 +49,14 @@ class SmartRouter {
    * 根据请求特征选择Provider
    */
   route(request: ChatCompletionRequest, strategy: RouterStrategy = 'balance'): RoutingDecision {
+    // 1. 优先检查模型能力池
+    if (request.model && isModelPool(request.model)) {
+      const poolDecision = this.routeByModelPool(request);
+      if (poolDecision) {
+        return poolDecision;
+      }
+    }
+
     const strategyConfig = getRoutingStrategy();
 
     if (!strategyConfig || strategyConfig.rules.length === 0) {
@@ -72,6 +80,48 @@ class SmartRouter {
       default:
         return this.routeByBalance(request, strategyConfig.rules);
     }
+  }
+
+  /**
+   * 按模型能力池路由
+   * 在池内按 priority 排序，结合健康状态选择第一个可用的 candidate
+   */
+  private routeByModelPool(request: ChatCompletionRequest): RoutingDecision | null {
+    if (!request.model) return null;
+
+    const pool = getModelPool(request.model);
+    if (!pool || !pool.candidates || pool.candidates.length === 0) {
+      return null;
+    }
+
+    // 按 priority 排序（数字越小优先级越高），过滤掉 disabled 的 candidate
+    const enabledCandidates = pool.candidates
+      .filter((c) => c.enabled !== false)
+      .sort((a, b) => a.priority - b.priority);
+
+    if (enabledCandidates.length === 0) {
+      return null;
+    }
+
+    // 选择第一个健康的 candidate
+    for (const candidate of enabledCandidates) {
+      if (failoverManager.isProviderHealthy(candidate.provider)) {
+        return {
+          provider: candidate.provider,
+          model: candidate.model,
+          reason: `model_pool:${pool.name}`,
+          confidence: 1.0,
+        };
+      }
+    }
+
+    // 如果所有 candidate 都不健康，返回第一个（让 Failover 后续处理）
+    return {
+      provider: enabledCandidates[0].provider,
+      model: enabledCandidates[0].model,
+      reason: `model_pool:${pool.name}:unhealthy_fallback`,
+      confidence: 0.5,
+    };
   }
 
   /**

@@ -12,7 +12,7 @@ import type {
   EmbeddingResponse,
 } from '../types';
 import { getProviderApiKeys } from '../types';
-import { getConfig, getProviderConfig, getRoutingStrategy } from '../config';
+import { getConfig, getProviderConfig, getRoutingStrategy, getModelPool } from '../config';
 import { failoverManager as defaultFailover } from '../services/failover';
 import { loadBalanceManager as defaultLoadBalancer } from '../services/loadbalancer';
 
@@ -84,17 +84,30 @@ export function hasProvider(name: string): boolean {
 
 /**
  * Get fallback providers for a given primary provider
- * 1. Use explicit failover chain from config if available
- * 2. Fall back to routing strategy rules
+ * 1. If the request model is a model pool, use pool candidates as fallback
+ * 2. Use explicit failover chain from config if available
+ * 3. Fall back to routing strategy rules
  */
-function getFallbackProviders(excludeProvider: string, _requestModel: string): string[] {
-  // 1. Use explicit failover chain
+function getFallbackProviders(excludeProvider: string, requestModel: string): string[] {
+  // 1. Check if request model is a model pool
+  const pool = getModelPool(requestModel);
+  if (pool && pool.candidates && pool.candidates.length > 0) {
+    const poolProviders = pool.candidates
+      .filter((c) => c.enabled !== false && c.provider !== excludeProvider)
+      .sort((a, b) => a.priority - b.priority)
+      .map((c) => c.provider);
+    if (poolProviders.length > 0) {
+      return [...new Set(poolProviders)];
+    }
+  }
+
+  // 2. Use explicit failover chain
   const chain = activeFailover.getFailoverChain(excludeProvider);
   if (chain.length > 0) {
     return chain.filter((p) => p !== excludeProvider);
   }
 
-  // 2. Fallback: derive from routing strategy
+  // 3. Fallback: derive from routing strategy
   const result: string[] = [];
   const strategy = getRoutingStrategy();
   if (strategy?.rules) {
@@ -171,10 +184,12 @@ export function resolveModelForProvider(model: string, provider: string): string
 /**
  * 通用聊天完成请求（带 Failover）
  * 主 Provider 失败后自动切换到其他可用 Provider
+ * @param originalModel - 原始请求的模型名（用于模型池 Failover）
  */
 export async function chatComplete(
   providerName: string,
-  request: ChatCompletionRequest
+  request: ChatCompletionRequest,
+  originalModel?: string
 ): Promise<ChatCompletionResponse> {
   const errors: Array<{ provider: string; error: string }> = [];
   const attemptedProviders = new Set<string>();
@@ -185,7 +200,8 @@ export async function chatComplete(
   // 检查 failover 配置
   const failoverConfig = getConfig().failover;
   if (failoverConfig?.enabled) {
-    const fallbacks = getFallbackProviders(providerName, request.model);
+    // 优先使用原始模型名（可能是模型池名称）查找 fallback
+    const fallbacks = getFallbackProviders(providerName, originalModel || request.model);
     providersToTry.push(...fallbacks);
   }
 
@@ -210,8 +226,18 @@ export async function chatComplete(
       continue;
     }
 
-    // 根据 model_equivalents 重映射 model 名称
-    const mappedModel = resolveModelForProvider(request.model, currentProvider);
+    // 根据 model_equivalents 或模型池重映射 model 名称
+    let mappedModel = resolveModelForProvider(request.model, currentProvider);
+
+    // 如果原始请求是模型池，查找当前 provider 在池中的对应模型
+    const pool = getModelPool(request.model);
+    if (pool) {
+      const poolCandidate = pool.candidates.find((c) => c.provider === currentProvider);
+      if (poolCandidate) {
+        mappedModel = poolCandidate.model;
+      }
+    }
+
     const providerRequest = mappedModel !== request.model
       ? { ...request, model: mappedModel }
       : request;

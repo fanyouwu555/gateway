@@ -7,7 +7,7 @@
  */
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { getProviderForModel, resolveModelAlias } from '../config';
+import { getProviderForModel, resolveModelAlias, isModelPool, getModelPool } from '../config';
 import { chatComplete, chatCompleteStream } from '../providers';
 import { chatCompletionRequestSchema } from '../validation';
 import { writeLog } from '../utils/logger';
@@ -229,9 +229,29 @@ function resolveProvider(
   c: Context,
   processedReq: ChatCompletionRequest,
   tenantId: string | undefined,
-): string | Response {
+): { provider: string; actualModel: string } | Response {
   const model = processedReq.model;
   const strategyHeader = c.req.header('x-routing-strategy') as RouterStrategy | undefined;
+
+  // 1. 优先检查模型能力池
+  if (model && isModelPool(model)) {
+    const pool = getModelPool(model);
+    if (pool && pool.candidates && pool.candidates.length > 0) {
+      const enabledCandidates = pool.candidates
+        .filter((c) => c.enabled !== false)
+        .sort((a, b) => a.priority - b.priority);
+
+      if (enabledCandidates.length > 0) {
+        const selected = enabledCandidates[0];
+        writeLog('info', 'Model pool resolved', {
+          pool: model,
+          provider: selected.provider,
+          actualModel: selected.model,
+        });
+        return { provider: selected.provider, actualModel: selected.model };
+      }
+    }
+  }
 
   const contentLength = processedReq.messages.reduce(
     (sum: number, m: { content: string | unknown[] }) => sum + (m.content?.length || 0),
@@ -248,8 +268,13 @@ function resolveProvider(
   });
 
   let providerName: string | undefined;
+  let resolvedModel = model;
+
   if (conditionalDecision) {
     providerName = conditionalDecision.provider;
+    if (conditionalDecision.model) {
+      resolvedModel = conditionalDecision.model;
+    }
     writeLog('info', 'Conditional rule matched', {
       model,
       provider: providerName,
@@ -258,6 +283,9 @@ function resolveProvider(
   } else if (strategyHeader && ['cost', 'latency', 'quality', 'balance'].includes(strategyHeader)) {
     const decision = smartRoute(processedReq, strategyHeader);
     providerName = decision.provider;
+    if (decision.model) {
+      resolvedModel = decision.model;
+    }
     writeLog('info', 'SmartRouter selected provider', {
       model,
       provider: providerName,
@@ -292,7 +320,7 @@ function resolveProvider(
     );
   }
 
-  return providerName;
+  return { provider: providerName, actualModel: resolvedModel };
 }
 
 async function handleStreamingResponse(
@@ -492,6 +520,12 @@ async function handleStreamingResponse(
   endSpan(providerSpan);
 
   c.header('X-Session-Id', sessionId);
+  c.header('X-Actual-Provider', providerName);
+  c.header('X-Actual-Model', processedReq.model);
+  const poolModelStream = c.get('pool_model') as string | undefined;
+  if (poolModelStream) {
+    c.header('X-Model-Pool', poolModelStream);
+  }
   return new Response(wrappedStream, {
     headers: {
       'Content-Type': 'text/event-stream',
@@ -515,8 +549,9 @@ async function handleNonStreamingResponse(
   const model = processedReq.model;
   const tenantId = c.get('tenant_id');
   const providerSpan = createChildSpan(rootSpan, 'provider_call');
+  const poolModel = c.get('pool_model') as string | undefined;
 
-  let response = await chatComplete(providerName, processedReq);
+  let response = await chatComplete(providerName, processedReq, poolModel);
   const providerCallEnd = Date.now();
   const ttfbMs = providerCallEnd - providerCallStart;
   endSpan(providerSpan);
@@ -645,6 +680,12 @@ async function handleNonStreamingResponse(
 
   c.header('X-Gateway-Cost', totalCost.toFixed(6));
   c.header('X-Session-Id', sessionId);
+  c.header('X-Actual-Provider', providerName);
+  c.header('X-Actual-Model', processedReq.model);
+  const poolModelNonStream = c.get('pool_model') as string | undefined;
+  if (poolModelNonStream) {
+    c.header('X-Model-Pool', poolModelNonStream);
+  }
   return c.json(response, 200);
 }
 
@@ -813,17 +854,23 @@ async function handleChatCompletion(c: Context): Promise<Response> {
 
     const providerResult = resolveProvider(c, processedReq, tenantId);
     if (providerResult instanceof Response) return providerResult;
-    const providerName = providerResult;
+    const { provider: providerName, actualModel } = providerResult;
+
+    // 如果模型池解析出了不同的实际模型，更新请求
+    const providerReq = actualModel !== processedReq.model
+      ? { ...processedReq, model: actualModel }
+      : processedReq;
 
     c.set('provider', providerName);
-    c.set('model', processedReq.model);
+    c.set('model', providerReq.model);
+    c.set('pool_model', processedReq.model); // 保存原始模型池名称
     providerCallStart = Date.now();
 
-    if (processedReq.stream) {
-      return await handleStreamingResponse(c, processedReq, providerName, rootSpan, sessionId, sessionSource);
+    if (providerReq.stream) {
+      return await handleStreamingResponse(c, providerReq, providerName, rootSpan, sessionId, sessionSource);
     }
 
-    return await handleNonStreamingResponse(c, processedReq, providerName, providerCallStart, rootSpan, sessionId, sessionSource, config, req);
+    return await handleNonStreamingResponse(c, providerReq, providerName, providerCallStart, rootSpan, sessionId, sessionSource, config, req);
   } catch (error) {
     return handleError(c, error, sessionId, sessionSource, providerCallStart);
   }

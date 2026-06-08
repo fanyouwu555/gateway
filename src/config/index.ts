@@ -94,6 +94,7 @@ const DEFAULT_CONFIG: IGatewayConfig = {
   pricing: {},
   model_aliases: {},
   model_equivalents: {},
+  model_pools: {},
 };
 
 /**
@@ -164,6 +165,16 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
     }
   }
 
+  // 从环境变量读取模型能力池配置（JSON 格式）
+  const modelPoolsEnv = getEnv('MODEL_POOLS');
+  if (modelPoolsEnv) {
+    try {
+      config.model_pools = JSON.parse(modelPoolsEnv);
+    } catch {
+      writeLog('warn', 'Failed to parse MODEL_POOLS env var, skipping');
+    }
+  }
+
   const deepseekKey = getEnv('DEEPSEEK_API_KEY');
   if (deepseekKey) {
     config.providers.deepseek = {
@@ -228,6 +239,12 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
     config.providers.volcano = {
       provider: 'volcano',
       base_url: getEnv('VOLCANO_BASE_URL', 'https://ark.cn-beijing.volces.com/api/coding/v3'),
+      api_key: volcanoKey,
+    };
+    // 通用 Chat 端点共用同一个 API Key
+    config.providers['volcano-chat'] = {
+      provider: 'volcano',
+      base_url: getEnv('VOLCANO_CHAT_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3'),
       api_key: volcanoKey,
     };
   }
@@ -403,6 +420,22 @@ export function getProviderForModel(model: string): string | undefined {
 
   // 默认返回第一个规则的provider
   return strategy.rules[0]?.provider;
+}
+
+/**
+ * 获取模型能力池
+ */
+export function getModelPool(poolName: string): import('../types').IModelPool | undefined {
+  const config = getConfig();
+  return config.model_pools?.[poolName];
+}
+
+/**
+ * 检查模型名是否是模型池名称
+ */
+export function isModelPool(model: string): boolean {
+  const config = getConfig();
+  return !!config.model_pools && model in config.model_pools;
 }
 
 /**

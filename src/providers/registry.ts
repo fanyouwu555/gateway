@@ -165,6 +165,7 @@ export function initProviders(): void {
   registerProvider('google', googleProvider);
   registerProvider('moonshot', moonshotProvider);
   registerProvider('volcano', volcanoProvider);
+  registerProvider('volcano-chat', volcanoProvider);
   registerProvider('kimi-code', kimiCodeProvider);
   registerProvider('cohere', cohereProvider);
   registerProvider('together', togetherProvider);
