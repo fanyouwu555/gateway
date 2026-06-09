@@ -100,7 +100,7 @@ function estimateTokens(text: string): number {
  */
 const mockProvider: IProvider = {
   name: 'mock',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   async chat(request) {
     // 1. 计算 prompt_tokens：所有历史消息累计
     const allText = request.messages.map((m) => `${m.role}: ${contentToString(m.content)}`).join('\n');

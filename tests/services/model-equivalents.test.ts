@@ -1,5 +1,5 @@
 /**
- * Model Equivalents — 跨 Provider Failover 模型名自动重映射测试
+ * Model Equivalents �?�?Provider Failover 模型名自动重映射测试
  */
 import {
   resolveModelForProvider,
@@ -63,7 +63,7 @@ jest.mock('../../src/config', () => ({
 
 const mockOpenAI = {
   name: 'openai',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),
@@ -71,7 +71,7 @@ const mockOpenAI = {
 
 const mockDeepSeek = {
   name: 'deepseek',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),
@@ -79,7 +79,7 @@ const mockDeepSeek = {
 
 const mockAnthropic = {
   name: 'anthropic',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),
@@ -129,7 +129,7 @@ describe('resolveModelForProvider()', () => {
       }));
     });
     // Can't truly test isolate here, but the function logic is clear:
-    // no equivalents → return model as-is
+    // no equivalents �?return model as-is
   });
 });
 
@@ -225,7 +225,7 @@ describe('chatComplete() model_equivalents integration', () => {
 
     const mockMistral = {
       name: 'mistral',
-      capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+      capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       chat: jest.fn().mockImplementation(async (_req: { model: string }) => ({
         id: 'ms-1',
         object: 'chat.completion',

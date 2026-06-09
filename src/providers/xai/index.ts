@@ -8,5 +8,6 @@ export const xaiProvider = new OpenAICompatibleProvider({
     streaming: true,
     vision: true,
     function_call: true,
+    reasoning: false,
   },
 });

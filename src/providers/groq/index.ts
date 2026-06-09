@@ -12,6 +12,7 @@ export const groqProvider = new OpenAICompatibleProvider({
     streaming: true,
     vision: true,
     function_call: true,
+    reasoning: false,
   },
   fields: {
     // Groq 支持基础参数

@@ -36,6 +36,11 @@ describe('AnthropicProvider', () => {
       const provider = new AnthropicProvider();
       expect(provider.capabilities.embed).toBe(false);
     });
+
+    it('should support reasoning', () => {
+      const provider = new AnthropicProvider();
+      expect(provider.capabilities.reasoning).toBe(true);
+    });
   });
 
   describe('convertMessages', () => {
@@ -417,6 +422,38 @@ describe('AnthropicProvider', () => {
       expect(result.choices[0].finish_reason).toBe('tool_calls');
     });
 
+    it('should extract thinking blocks to reasoning_content', async () => {
+      const provider = new AnthropicProvider();
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 'msg_think',
+          type: 'message',
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'Let me analyze this step by step.' },
+            { type: 'text', text: 'The answer is 42.' },
+          ],
+          model: 'claude-3-opus',
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 15 },
+        }),
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'claude-3-opus',
+        messages: [{ role: 'user', content: 'What is the answer?' }],
+      };
+
+      const result = await provider.chat(request, providerConfig);
+
+      expect(result.choices[0].message.content).toBe('The answer is 42.');
+      expect(result.choices[0].message.reasoning_content).toBe('Let me analyze this step by step.');
+      expect(result.choices[0].finish_reason).toBe('stop');
+    });
+
     it('should throw on error response', async () => {
       const provider = new AnthropicProvider();
 
@@ -627,6 +664,56 @@ describe('AnthropicProvider', () => {
       expect(chunks[1]).toContain('Beijing');
       // finish_reason
       expect(chunks[2]).toContain('"finish_reason":"tool_calls"');
+    });
+
+    it('should parse thinking_delta to reasoning_content in stream', async () => {
+      const provider = new AnthropicProvider();
+
+      const encoder = new TextEncoder();
+      const source = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"type":"message_start","message":{"id":"msg_01","model":"claude-3-opus"}}\n\n'
+          ));
+          controller.enqueue(encoder.encode(
+            'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me think"}}\n\n'
+          ));
+          controller.enqueue(encoder.encode(
+            'data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The answer is 42."}}\n\n'
+          ));
+          controller.enqueue(encoder.encode(
+            'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n'
+          ));
+          controller.close();
+        },
+      });
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        body: source,
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'claude-3-opus',
+        messages: [{ role: 'user', content: 'What is the answer?' }],
+      };
+
+      const result = await provider.chatStream(request, providerConfig);
+      const reader = result.getReader();
+      const chunks: string[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(new TextDecoder().decode(value));
+      }
+
+      // thinking_delta → reasoning_content
+      expect(chunks[0]).toContain('reasoning_content');
+      expect(chunks[0]).toContain('Let me think');
+      // text_delta → content
+      expect(chunks[1]).toContain('The answer is 42.');
+      // finish_reason
+      expect(chunks[2]).toContain('"finish_reason":"stop"');
     });
   });
 

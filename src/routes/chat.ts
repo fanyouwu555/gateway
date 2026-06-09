@@ -244,7 +244,7 @@ async function handleStreamingResponse(
           return;
         }
 
-        const completionTokens = await countCompletionTokens(accumulatedContent, model);
+        const completionTokens = await countCompletionTokens(accumulatedContent + accumulatedReasoning, model);
         const totalTokens = promptTokens + completionTokens;
         c.set('completion_tokens', completionTokens);
         c.set('total_tokens', totalTokens);

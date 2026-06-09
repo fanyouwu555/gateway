@@ -31,6 +31,7 @@ export class DynamicProvider extends BaseProvider {
       streaming: !!ep.chat_stream,
       vision: dynamicConfig.capabilities?.vision ?? false,
       function_call: dynamicConfig.capabilities?.function_call ?? false,
+      reasoning: dynamicConfig.capabilities?.reasoning ?? false,
     };
   }
 

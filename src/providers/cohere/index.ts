@@ -8,5 +8,6 @@ export const cohereProvider = new OpenAICompatibleProvider({
     streaming: true,
     vision: false,
     function_call: true,
+    reasoning: false,
   },
 });

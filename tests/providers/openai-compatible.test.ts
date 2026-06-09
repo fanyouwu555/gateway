@@ -18,7 +18,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should create provider with minimal config', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test-provider',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       expect(provider.name).toBe('test-provider');
@@ -29,7 +29,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should create provider with fields config', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'full-provider',
-        capabilities: { chat: true, embed: true, streaming: true, vision: true, function_call: true },
+        capabilities: { chat: true, embed: true, streaming: true, vision: true, function_call: true, reasoning: false },
         fields: {
           presencePenalty: true,
           frequencyPenalty: true,
@@ -46,7 +46,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should create provider with extraHeaders', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'header-provider',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
         extraHeaders: { 'X-Custom': 'value' },
       });
 
@@ -57,7 +57,7 @@ describe('OpenAICompatibleProvider', () => {
       const customParse = jest.fn().mockReturnValue('custom error');
       const provider = new OpenAICompatibleProvider({
         name: 'error-provider',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
         parseError: customParse,
       });
 
@@ -69,7 +69,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should include basic fields', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const request: ChatCompletionRequest = {
@@ -87,7 +87,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should include optional fields when provided', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const request: ChatCompletionRequest = {
@@ -111,7 +111,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should include presence_penalty when field is enabled and provided', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
         fields: { presencePenalty: true },
       });
 
@@ -129,7 +129,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should not include presence_penalty when field is disabled', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const request: ChatCompletionRequest = {
@@ -146,7 +146,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should include frequency_penalty when field is enabled and provided', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
         fields: { frequencyPenalty: true },
       });
 
@@ -164,7 +164,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should not include frequency_penalty when field is disabled', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const request: ChatCompletionRequest = {
@@ -181,7 +181,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should include user when field is enabled and provided', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
         fields: { user: true },
       });
 
@@ -199,7 +199,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should not include user when field is disabled', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const request: ChatCompletionRequest = {
@@ -216,7 +216,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should include tools and tool_choice when field is enabled and provided', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: true },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: true, reasoning: false },
         fields: { tools: true },
       });
 
@@ -236,7 +236,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should not include tools when field is disabled', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const request: ChatCompletionRequest = {
@@ -255,7 +255,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should not include tools when tools array is empty', () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: true },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: true, reasoning: false },
         fields: { tools: true },
       });
 
@@ -281,7 +281,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should return chat completion on success', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const mockResponse = {
@@ -321,7 +321,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should throw on error response', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       mockFetchWithAgent.mockResolvedValue({
@@ -342,7 +342,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should throw default HTTP error when no message in body', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       mockFetchWithAgent.mockResolvedValue({
@@ -363,7 +363,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should include extraHeaders in request', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
         extraHeaders: { 'X-Custom': 'value' },
       });
 
@@ -409,7 +409,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should return parsed stream on success', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false, reasoning: false },
       });
 
       const encoder = new TextEncoder();
@@ -438,7 +438,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should throw on error response', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false, reasoning: false },
       });
 
       mockFetchWithAgent.mockResolvedValue({
@@ -460,7 +460,7 @@ describe('OpenAICompatibleProvider', () => {
       const customParse = jest.fn().mockReturnValue('stream error');
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false, reasoning: false },
         parseError: customParse,
       });
 
@@ -483,7 +483,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should pass through reasoning_content in stream chunks', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false, reasoning: false },
       });
 
       const encoder = new TextEncoder();
@@ -530,7 +530,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should pass through tool_calls delta in stream chunks', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: true },
+        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: true, reasoning: false },
         fields: { tools: true },
       });
 
@@ -588,7 +588,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should throw when embed is not supported', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const request: EmbeddingRequest = {
@@ -602,7 +602,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should return embedding response when supported', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: true, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: true, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       const mockResponse = {
@@ -637,7 +637,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should include dimensions when provided', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: true, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: true, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       mockFetchWithAgent.mockResolvedValue({
@@ -665,7 +665,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should not include dimensions when undefined', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: true, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: true, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       mockFetchWithAgent.mockResolvedValue({
@@ -692,7 +692,7 @@ describe('OpenAICompatibleProvider', () => {
     it('should use custom encoding_format when provided', async () => {
       const provider = new OpenAICompatibleProvider({
         name: 'test',
-        capabilities: { chat: true, embed: true, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: true, streaming: false, vision: false, function_call: false, reasoning: false },
       });
 
       mockFetchWithAgent.mockResolvedValue({

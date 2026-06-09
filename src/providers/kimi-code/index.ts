@@ -13,6 +13,7 @@ export const kimiCodeProvider = new OpenAICompatibleProvider({
     streaming: true,
     vision: true,
     function_call: true,
+    reasoning: true,
   },
   fields: {
     presencePenalty: true,

@@ -13,6 +13,7 @@ export const volcanoProvider = new OpenAICompatibleProvider({
     streaming: true,
     vision: true,
     function_call: true,
+    reasoning: false,
   },
   fields: {
     presencePenalty: true,

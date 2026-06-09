@@ -12,7 +12,7 @@ jest.mock('../../src/utils/http-client', () => ({
 
 class TestProvider extends BaseProvider {
   name = 'test';
-  capabilities = { chat: true, embed: true, streaming: true, vision: false, function_call: false };
+  capabilities = { chat: true, embed: true, streaming: true, vision: false, function_call: false, reasoning: false };
 
   async chat(): Promise<ChatCompletionResponse> {
     return { id: '1', object: 'chat.completion', created: 1, model: 'test', choices: [], usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } };

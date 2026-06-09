@@ -74,6 +74,7 @@ export class GoogleProvider extends BaseProvider {
     streaming: true,
     vision: true,
     function_call: true,
+    reasoning: false,
   };
 
   /**

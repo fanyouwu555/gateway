@@ -16,7 +16,7 @@ jest.mock('../src/providers', () => ({
     if (['openai', 'deepseek', 'anthropic'].includes(name)) {
       return {
         name,
-        capabilities: { chat: true, embed: true, streaming: true, vision: false, function_call: false },
+        capabilities: { chat: true, embed: true, streaming: true, vision: false, function_call: false, reasoning: false },
         chat: jest.fn().mockResolvedValue({ id: 'test', choices: [] }),
         chatStream: jest.fn().mockResolvedValue(new ReadableStream()),
         embed: jest.fn().mockResolvedValue({ data: [] }),

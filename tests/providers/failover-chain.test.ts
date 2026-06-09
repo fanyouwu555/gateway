@@ -49,7 +49,7 @@ jest.mock('../../src/config', () => ({
 
 const mockOpenAI = {
   name: 'openai',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),
@@ -57,7 +57,7 @@ const mockOpenAI = {
 
 const mockDeepSeek = {
   name: 'deepseek',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),

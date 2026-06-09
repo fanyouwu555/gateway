@@ -12,6 +12,7 @@ export const mistralProvider = new OpenAICompatibleProvider({
     streaming: true,
     vision: true,
     function_call: true,
+    reasoning: false,
   },
   fields: {
     presencePenalty: true,

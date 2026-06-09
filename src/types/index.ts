@@ -162,6 +162,7 @@ export interface IProviderCapabilities {
   streaming: boolean;
   vision: boolean;
   function_call: boolean;
+  reasoning: boolean;
 }
 
 /** Provider 模型信息（由 listModels 返回） */

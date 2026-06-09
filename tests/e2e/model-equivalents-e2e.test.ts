@@ -111,7 +111,7 @@ jest.mock('../../src/config', () => ({
 
 const mockOpenAI = {
   name: 'openai',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),
@@ -119,7 +119,7 @@ const mockOpenAI = {
 
 const mockDeepSeek = {
   name: 'deepseek',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),
@@ -127,7 +127,7 @@ const mockDeepSeek = {
 
 const mockAnthropic = {
   name: 'anthropic',
-  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),
@@ -246,7 +246,7 @@ describe('Model Equivalents E2E', () => {
       // Add a 4th provider with no model_equivalent mapping
       const mockMistral = {
         name: 'mistral',
-        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false },
+        capabilities: { chat: true, embed: false, streaming: false, vision: false, function_call: false, reasoning: false },
         chat: jest.fn().mockImplementation(async (req: { model: string }) => ({
           id: 'ms-1',
           object: 'chat.completion',

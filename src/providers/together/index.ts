@@ -8,5 +8,6 @@ export const togetherProvider = new OpenAICompatibleProvider({
     streaming: true,
     vision: false,
     function_call: true,
+    reasoning: false,
   },
 });

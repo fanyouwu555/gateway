@@ -115,7 +115,7 @@ jest.mock('../src/config', () => ({
 
 const mockOpenAI = {
   name: 'openai',
-  capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false },
+  capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false, reasoning: false },
   chat: jest.fn(),
   chatStream: jest.fn(),
   embed: jest.fn(),

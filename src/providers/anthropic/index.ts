@@ -19,7 +19,8 @@ type AnthropicContentBlock =
   | { type: 'text'; text: string }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-  | { type: 'tool_result'; tool_use_id: string; content: string };
+  | { type: 'tool_result'; tool_use_id: string; content: string }
+  | { type: 'thinking'; thinking: string };
 
 export class AnthropicProvider extends BaseProvider {
   name = 'anthropic';
@@ -30,6 +31,7 @@ export class AnthropicProvider extends BaseProvider {
     streaming: true,
     vision: true,
     function_call: true,
+    reasoning: true,
   };
 
   private static KNOWN_MODELS: IModelInfo[] = [
@@ -195,14 +197,19 @@ export class AnthropicProvider extends BaseProvider {
       body: JSON.stringify(body),
     }, config.timeout);
 
-    // 从 Anthropic content blocks 中提取 text 和 tool_use
+    // 从 Anthropic content blocks 中提取 text、thinking 和 tool_use
     const textBlocks = response.content.filter((c): c is { type: 'text'; text: string } => c.type === 'text');
+    const thinkingBlocks = response.content.filter((c): c is { type: 'thinking'; thinking: string } => c.type === 'thinking');
     const toolUseBlocks = response.content.filter((c): c is { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } => c.type === 'tool_use');
 
-    const message: { role: 'assistant'; content: string; tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> } = {
+    const message: { role: 'assistant'; content: string; reasoning_content?: string; tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> } = {
       role: 'assistant',
       content: textBlocks.map((b) => b.text).join('') || '',
     };
+
+    if (thinkingBlocks.length > 0) {
+      message.reasoning_content = thinkingBlocks.map((b) => b.thinking).join('');
+    }
 
     if (toolUseBlocks.length > 0) {
       message.tool_calls = toolUseBlocks.map((b) => ({
@@ -382,7 +389,7 @@ export class AnthropicProvider extends BaseProvider {
                 continue;
               }
 
-              // content_block_delta: text 或 input_json_delta
+              // content_block_delta: text、thinking 或 input_json_delta
               if (parsed.type === 'content_block_delta') {
                 const delta = parsed.delta;
                 // 兼容新旧格式：有 type 字段或只有 text 字段
@@ -393,6 +400,19 @@ export class AnthropicProvider extends BaseProvider {
                       delta: {
                         role: 'assistant',
                         content: delta.text || '',
+                      },
+                      finish_reason: null,
+                    },
+                  ]);
+                  controller.enqueue(
+                    new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`)
+                  );
+                } else if (delta?.type === 'thinking_delta') {
+                  const chunk = buildChunk([
+                    {
+                      index: parsed.index ?? 0,
+                      delta: {
+                        reasoning_content: delta.thinking || '',
                       },
                       finish_reason: null,
                     },

@@ -59,7 +59,7 @@ describe('Stream Failover', () => {
   it('should failover to fallback provider when primary stream connection fails', async () => {
     const openaiProvider: IProvider = {
       name: 'openai',
-      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false },
+      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false, reasoning: false },
       chat: jest.fn(),
       chatStream: jest.fn().mockRejectedValue(new Error('Connection timeout')),
       embed: jest.fn(),
@@ -67,7 +67,7 @@ describe('Stream Failover', () => {
 
     const deepseekProvider: IProvider = {
       name: 'deepseek',
-      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false },
+      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false, reasoning: false },
       chat: jest.fn(),
       chatStream: jest.fn().mockResolvedValue(new ReadableStream()),
       embed: jest.fn(),
@@ -90,7 +90,7 @@ describe('Stream Failover', () => {
   it('should throw when all providers fail for stream', async () => {
     const openaiProvider: IProvider = {
       name: 'openai',
-      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false },
+      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false, reasoning: false },
       chat: jest.fn(),
       chatStream: jest.fn().mockRejectedValue(new Error('Connection timeout')),
       embed: jest.fn(),
@@ -98,7 +98,7 @@ describe('Stream Failover', () => {
 
     const deepseekProvider: IProvider = {
       name: 'deepseek',
-      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false },
+      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false, reasoning: false },
       chat: jest.fn(),
       chatStream: jest.fn().mockRejectedValue(new Error('Connection timeout')),
       embed: jest.fn(),

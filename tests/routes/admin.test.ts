@@ -38,7 +38,7 @@ jest.mock('../../src/providers', () => ({
     if (name === 'openai') {
       return {
         name: 'openai',
-        capabilities: { chat: true, embed: true, streaming: true, vision: true, function_call: true },
+        capabilities: { chat: true, embed: true, streaming: true, vision: true, function_call: true, reasoning: false },
         listModels: jest.fn(() => Promise.resolve([
           { id: 'gpt-4o', owned_by: 'openai', context_window: 128000 },
           { id: 'gpt-4o-mini', owned_by: 'openai', context_window: 128000 },

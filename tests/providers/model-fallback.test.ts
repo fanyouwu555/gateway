@@ -57,7 +57,7 @@ describe('Model-level Fallback', () => {
   it('should fallback to next model when primary returns 429', async () => {
     const mockProvider: IProvider = {
       name: 'openai',
-      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false },
+      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false, reasoning: false },
       chat: jest.fn()
         .mockRejectedValueOnce(Object.assign(new Error('Rate limit exceeded'), { status: 429 }))
         .mockResolvedValueOnce({
@@ -91,7 +91,7 @@ describe('Model-level Fallback', () => {
   it('should try all fallback models before giving up', async () => {
     const mockProvider: IProvider = {
       name: 'openai',
-      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false },
+      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false, reasoning: false },
       chat: jest.fn().mockRejectedValue(Object.assign(new Error('Rate limit'), { status: 429 })),
       chatStream: jest.fn(),
       embed: jest.fn(),
@@ -112,7 +112,7 @@ describe('Model-level Fallback', () => {
   it('should not fallback on non-retryable errors (like 400)', async () => {
     const mockProvider: IProvider = {
       name: 'openai',
-      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false },
+      capabilities: { chat: true, streaming: true, embed: false, vision: false, function_call: false, reasoning: false },
       chat: jest.fn().mockRejectedValue(Object.assign(new Error('Bad request'), { status: 400 })),
       chatStream: jest.fn(),
       embed: jest.fn(),
