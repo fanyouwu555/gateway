@@ -1,6 +1,7 @@
 import type { ChatCompletionRequest } from '../types';
 import type { IVectorStore } from '../stores/vector-interface';
 import { MemoryVectorStore } from '../stores/vector-memory';
+import { RedisVectorStore } from '../stores/redis-vector';
 import { getEmbedding } from './embedding';
 import { writeLog } from '../utils/logger';
 
@@ -96,10 +97,19 @@ export class SemanticCacheService {
 let globalSemanticCache: SemanticCacheService | null = null;
 
 export function initSemanticCache(config?: { enabled?: boolean; threshold?: number; backend?: string; max_entries?: number }): void {
+  const maxEntries = config?.max_entries ?? 10000;
+  let vectorStore: IVectorStore;
+
+  if (config?.backend === 'redis_vector') {
+    vectorStore = new RedisVectorStore({ maxEntries });
+  } else {
+    vectorStore = new MemoryVectorStore({ maxEntries });
+  }
+
   globalSemanticCache = new SemanticCacheService({
     enabled: config?.enabled ?? false,
     threshold: config?.threshold ?? 0.85,
-    vectorStore: new MemoryVectorStore({ maxEntries: config?.max_entries ?? 10000 }),
+    vectorStore,
   });
 }
 
