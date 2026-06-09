@@ -11,12 +11,13 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../../types';
-import { contentToString, safeJsonParse } from '../../utils';
+import { contentToString, safeJsonParse, fetchImageAsBase64 } from '../../utils';
 import { fetchWithAgent } from '../../utils/http-client';
 
 /** Anthropic content block */
 type AnthropicContentBlock =
   | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; tool_use_id: string; content: string };
 
@@ -56,51 +57,77 @@ export class AnthropicProvider extends BaseProvider {
    * 转换消息格式（OpenAI -> Anthropic），跳过 system 消息
    * 支持 tool_calls / tool_result / image_url 转换
    */
-  private convertMessages(messages: ChatCompletionRequest['messages']): {
+  private async convertMessages(messages: ChatCompletionRequest['messages']): Promise<{
     role: 'user' | 'assistant';
     content: string | AnthropicContentBlock[];
-  }[] {
-    return messages
-      .filter((msg) => msg.role !== 'system')
-      .map((msg) => {
-        // tool 角色 → user 角色 + tool_result block
-        if (msg.role === 'tool') {
-          return {
-            role: 'user' as const,
-            content: [{
-              type: 'tool_result' as const,
-              tool_use_id: msg.tool_call_id || '',
-              content: contentToString(msg.content),
-            }],
-          };
-        }
-
-        // assistant 角色含 tool_calls → tool_use blocks + text
-        if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-          const blocks: AnthropicContentBlock[] = [];
-          const text = contentToString(msg.content);
-          if (text) {
-            blocks.push({ type: 'text', text });
+  }[]> {
+    return Promise.all(
+      messages
+        .filter((msg) => msg.role !== 'system')
+        .map(async (msg) => {
+          // tool 角色 → user 角色 + tool_result block
+          if (msg.role === 'tool') {
+            return {
+              role: 'user' as const,
+              content: [{
+                type: 'tool_result' as const,
+                tool_use_id: msg.tool_call_id || '',
+                content: contentToString(msg.content),
+              }],
+            };
           }
-          for (const tc of msg.tool_calls) {
-            blocks.push({
-              type: 'tool_use',
-              id: tc.id,
-              name: tc.function.name,
-              input: safeJsonParse(tc.function.arguments, {}),
-            });
-          }
-          return {
-            role: 'assistant' as const,
-            content: blocks,
-          };
-        }
 
-        return {
-          role: msg.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-          content: contentToString(msg.content),
-        };
-      });
+          // assistant 角色含 tool_calls → tool_use blocks + text
+          if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+            const blocks: AnthropicContentBlock[] = [];
+            const text = contentToString(msg.content);
+            if (text) {
+              blocks.push({ type: 'text', text });
+            }
+            for (const tc of msg.tool_calls) {
+              blocks.push({
+                type: 'tool_use',
+                id: tc.id,
+                name: tc.function.name,
+                input: safeJsonParse(tc.function.arguments, {}),
+              });
+            }
+            return {
+              role: 'assistant' as const,
+              content: blocks,
+            };
+          }
+
+          // 多模态 content（image_url）
+          if (Array.isArray(msg.content)) {
+            const blocks: AnthropicContentBlock[] = [];
+            for (const part of msg.content) {
+              if (part.type === 'text' && part.text) {
+                blocks.push({ type: 'text', text: part.text });
+              } else if (part.type === 'image_url' && part.image_url?.url) {
+                const imageData = await fetchImageAsBase64(part.image_url.url);
+                blocks.push({
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: imageData.mimeType,
+                    data: imageData.data,
+                  },
+                });
+              }
+            }
+            return {
+              role: msg.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+              content: blocks,
+            };
+          }
+
+          return {
+            role: msg.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+            content: contentToString(msg.content),
+          };
+        })
+    );
   }
 
   async chat(
@@ -110,7 +137,7 @@ export class AnthropicProvider extends BaseProvider {
     const url = `${config.base_url}/messages`;
 
     const systemPrompt = this.extractSystemPrompt(request.messages);
-    const messages = this.convertMessages(request.messages);
+    const messages = await this.convertMessages(request.messages);
 
     const body: Record<string, unknown> = {
       model: request.model,

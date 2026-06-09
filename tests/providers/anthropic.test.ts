@@ -39,7 +39,7 @@ describe('AnthropicProvider', () => {
   });
 
   describe('convertMessages', () => {
-    it('should skip system messages (they are handled via system parameter)', () => {
+    it('should skip system messages (they are handled via system parameter)', async () => {
       const provider = new AnthropicProvider();
       const request: ChatCompletionRequest = {
         model: 'claude-3-opus',
@@ -50,7 +50,7 @@ describe('AnthropicProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => { role: string; content: string }[] }).convertMessages(request.messages);
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; content: unknown }>> }).convertMessages(request.messages);
 
       // System messages are skipped and sent via the 'system' parameter instead
       expect(result).toEqual([
@@ -59,7 +59,7 @@ describe('AnthropicProvider', () => {
       ]);
     });
 
-    it('should keep user and assistant roles', () => {
+    it('should keep user and assistant roles', async () => {
       const provider = new AnthropicProvider();
       const request: ChatCompletionRequest = {
         model: 'claude-3-opus',
@@ -69,7 +69,7 @@ describe('AnthropicProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => { role: string; content: string }[] }).convertMessages(request.messages);
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; content: unknown }>> }).convertMessages(request.messages);
 
       expect(result).toEqual([
         { role: 'user', content: 'hello' },
@@ -77,7 +77,7 @@ describe('AnthropicProvider', () => {
       ]);
     });
 
-    it('should convert tool role messages to tool_result blocks', () => {
+    it('should convert tool role messages to tool_result blocks', async () => {
       const provider = new AnthropicProvider();
       const request: ChatCompletionRequest = {
         model: 'claude-3-opus',
@@ -92,7 +92,7 @@ describe('AnthropicProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Array<{ role: string; content: unknown }> }).convertMessages(request.messages);
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; content: unknown }>> }).convertMessages(request.messages);
 
       expect(result).toEqual([
         { role: 'user', content: 'What is the weather?' },
@@ -107,7 +107,35 @@ describe('AnthropicProvider', () => {
       ]);
     });
 
-    it('should convert assistant tool_calls to tool_use blocks with text', () => {
+    it('should convert image_url parts to image blocks', async () => {
+      const provider = new AnthropicProvider();
+      const request: ChatCompletionRequest = {
+        model: 'claude-3-opus',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'What is in this image?' },
+              { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/4AAQ' } },
+            ],
+          },
+        ],
+      };
+
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; content: unknown }>> }).convertMessages(request.messages);
+
+      expect(result).toEqual([
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'What is in this image?' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQ' } },
+          ],
+        },
+      ]);
+    });
+
+    it('should convert assistant tool_calls to tool_use blocks with text', async () => {
       const provider = new AnthropicProvider();
       const request: ChatCompletionRequest = {
         model: 'claude-3-opus',
@@ -122,7 +150,7 @@ describe('AnthropicProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Array<{ role: string; content: unknown }> }).convertMessages(request.messages);
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; content: unknown }>> }).convertMessages(request.messages);
 
       expect(result).toEqual([
         {

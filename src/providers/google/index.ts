@@ -12,7 +12,7 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../../types';
-import { contentToString, safeJsonParse } from '../../utils';
+import { contentToString, safeJsonParse, fetchImageAsBase64 } from '../../utils';
 import { fetchWithAgent } from '../../utils/http-client';
 
 interface GeminiPart {
@@ -89,9 +89,9 @@ export class GoogleProvider extends BaseProvider {
 
   /**
    * 转换 OpenAI 消息格式到 Gemini 格式，跳过 system 消息
-   * 支持 tool_calls / function_call / function_response 转换
+   * 支持 tool_calls / function_call / function_response / image_url 转换
    */
-  private convertMessages(messages: ChatCompletionRequest['messages']): GeminiContent[] {
+  private async convertMessages(messages: ChatCompletionRequest['messages']): Promise<GeminiContent[]> {
     // 构建 tool_call_id → name 映射，用于 tool 角色消息转换
     const toolCallIdToName = new Map<string, string>();
     for (const msg of messages) {
@@ -140,6 +140,27 @@ export class GoogleProvider extends BaseProvider {
           });
         }
         contents.push({ role: 'model', parts });
+        continue;
+      }
+
+      // 多模态 content（image_url）
+      if (Array.isArray(msg.content)) {
+        const parts: GeminiPart[] = [];
+        for (const part of msg.content) {
+          if (part.type === 'text' && part.text) {
+            parts.push({ text: part.text });
+          } else if (part.type === 'image_url' && part.image_url?.url) {
+            const imageData = await fetchImageAsBase64(part.image_url.url);
+            parts.push({
+              inlineData: {
+                mimeType: imageData.mimeType,
+                data: imageData.data,
+              },
+            });
+          }
+        }
+        const role: 'user' | 'model' = msg.role === 'assistant' ? 'model' : 'user';
+        contents.push({ role, parts });
         continue;
       }
 
@@ -221,7 +242,7 @@ export class GoogleProvider extends BaseProvider {
     const systemInstruction = this.extractSystemInstruction(request.messages);
 
     const geminiRequest: GeminiRequest = {
-      contents: this.convertMessages(request.messages),
+      contents: await this.convertMessages(request.messages),
       ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
       generationConfig: {
         temperature: request.temperature,
@@ -283,7 +304,7 @@ export class GoogleProvider extends BaseProvider {
     const systemInstruction = this.extractSystemInstruction(request.messages);
 
     const geminiRequest: GeminiRequest = {
-      contents: this.convertMessages(request.messages),
+      contents: await this.convertMessages(request.messages),
       ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
       generationConfig: {
         temperature: request.temperature,

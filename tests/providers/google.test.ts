@@ -39,7 +39,7 @@ describe('GoogleProvider', () => {
   });
 
   describe('convertMessages', () => {
-    it('should skip system messages (they are handled via systemInstruction parameter)', () => {
+    it('should skip system messages (they are handled via systemInstruction parameter)', async () => {
       const provider = new GoogleProvider();
       const request: ChatCompletionRequest = {
         model: 'gemini-2.0-flash',
@@ -50,7 +50,7 @@ describe('GoogleProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => { role: string; parts: { text: string }[] }[] }).convertMessages(request.messages);
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; parts: unknown[] }>> }).convertMessages(request.messages);
 
       // System messages are skipped and sent via the 'systemInstruction' parameter instead
       expect(result).toEqual([
@@ -59,7 +59,7 @@ describe('GoogleProvider', () => {
       ]);
     });
 
-    it('should convert assistant to model role', () => {
+    it('should convert assistant to model role', async () => {
       const provider = new GoogleProvider();
       const request: ChatCompletionRequest = {
         model: 'gemini-2.0-flash',
@@ -69,7 +69,7 @@ describe('GoogleProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Array<{ role: string; parts: unknown[] }> }).convertMessages(request.messages);
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; parts: unknown[] }>> }).convertMessages(request.messages);
 
       expect(result).toEqual([
         { role: 'user', parts: [{ text: 'hello' }] },
@@ -77,7 +77,7 @@ describe('GoogleProvider', () => {
       ]);
     });
 
-    it('should convert tool role to functionResponse', () => {
+    it('should convert tool role to functionResponse', async () => {
       const provider = new GoogleProvider();
       const request: ChatCompletionRequest = {
         model: 'gemini-2.0-flash',
@@ -92,7 +92,7 @@ describe('GoogleProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Array<{ role: string; parts: unknown[] }> }).convertMessages(request.messages);
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; parts: unknown[] }>> }).convertMessages(request.messages);
 
       expect(result).toEqual([
         { role: 'user', parts: [{ text: 'Weather?' }] },
@@ -101,7 +101,35 @@ describe('GoogleProvider', () => {
       ]);
     });
 
-    it('should convert assistant tool_calls with text to functionCall + text', () => {
+    it('should convert image_url parts to inlineData', async () => {
+      const provider = new GoogleProvider();
+      const request: ChatCompletionRequest = {
+        model: 'gemini-2.0-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'What is in this image?' },
+              { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0K' } },
+            ],
+          },
+        ],
+      };
+
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; parts: unknown[] }>> }).convertMessages(request.messages);
+
+      expect(result).toEqual([
+        {
+          role: 'user',
+          parts: [
+            { text: 'What is in this image?' },
+            { inlineData: { mimeType: 'image/png', data: 'iVBORw0K' } },
+          ],
+        },
+      ]);
+    });
+
+    it('should convert assistant tool_calls with text to functionCall + text', async () => {
       const provider = new GoogleProvider();
       const request: ChatCompletionRequest = {
         model: 'gemini-2.0-flash',
@@ -116,7 +144,7 @@ describe('GoogleProvider', () => {
         ],
       };
 
-      const result = (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Array<{ role: string; parts: unknown[] }> }).convertMessages(request.messages);
+      const result = await (provider as unknown as { convertMessages: (messages: ChatCompletionRequest['messages']) => Promise<Array<{ role: string; parts: unknown[] }>> }).convertMessages(request.messages);
 
       expect(result).toEqual([
         {
