@@ -7,12 +7,12 @@
  */
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { getProviderForModel, resolveModelAlias, isModelPool, getModelPool } from '../config';
 import { chatComplete, chatCompleteStream } from '../providers';
 import { chatCompletionRequestSchema } from '../validation';
 import { writeLog } from '../utils/logger';
-import { smartRoute, evaluateConditionalRules, recordLatency, recordError, type RouterStrategy } from '../services/router';
+import { recordLatency, recordError } from '../services/router';
 import { runGuardrailPlugins, runRequestPlugins, runResponsePlugins, runTransformPlugins } from '../plugins';
+import { resolveRequestModel, resolveProviderForRequest } from '../services/chat-pipeline';
 import { getCache, setCache, getLastCacheHitType } from '../services/cache';
 import { getConfig } from '../config';
 import { templateToMessages } from '../services/prompt';
@@ -30,27 +30,6 @@ import type { Span } from '@opentelemetry/api';
 import { extractClientInfo } from '../utils/client-info';
 
 const chatRouter = new Hono();
-
-type ParsedRequest = ReturnType<typeof chatCompletionRequestSchema.parse>;
-
-function resolveRequestModel(c: Context, request: ParsedRequest): ParsedRequest {
-  let resolved = request;
-  if (!resolved.model) {
-    const apiKeyMeta = c.get('api_key_meta') as { default_model?: string } | undefined;
-    if (apiKeyMeta?.default_model) {
-      resolved = { ...resolved, model: resolveModelAlias(apiKeyMeta.default_model) };
-    } else {
-      const firstRule = getConfig().routing[0]?.rules[0];
-      if (firstRule) {
-        resolved = { ...resolved, model: firstRule.model };
-      }
-    }
-  }
-  if (resolved.model) {
-    resolved = { ...resolved, model: resolveModelAlias(resolved.model) };
-  }
-  return resolved;
-}
 
 function checkKeyPolicies(c: Context, req: ChatCompletionRequest, tenantId: string | undefined): Response | null {
   const keyAllowedModels = c.get('key_allowed_models') as string[] | undefined;
@@ -223,104 +202,6 @@ async function runPreProviderPipeline(
   }
 
   return await runRequestPlugins(c, transformedReq);
-}
-
-function resolveProvider(
-  c: Context,
-  processedReq: ChatCompletionRequest,
-  tenantId: string | undefined,
-): { provider: string; actualModel: string } | Response {
-  const model = processedReq.model;
-  const strategyHeader = c.req.header('x-routing-strategy') as RouterStrategy | undefined;
-
-  // 1. 优先检查模型能力池
-  if (model && isModelPool(model)) {
-    const pool = getModelPool(model);
-    if (pool && pool.candidates && pool.candidates.length > 0) {
-      const enabledCandidates = pool.candidates
-        .filter((c) => c.enabled !== false)
-        .sort((a, b) => a.priority - b.priority);
-
-      if (enabledCandidates.length > 0) {
-        const selected = enabledCandidates[0];
-        writeLog('info', 'Model pool resolved', {
-          pool: model,
-          provider: selected.provider,
-          actualModel: selected.model,
-        });
-        return { provider: selected.provider, actualModel: selected.model };
-      }
-    }
-  }
-
-  const contentLength = processedReq.messages.reduce(
-    (sum: number, m: { content: string | unknown[] }) => sum + (m.content?.length || 0),
-    0
-  );
-  const conditionalDecision = evaluateConditionalRules({
-    model,
-    tenant_id: tenantId,
-    content_length: contentLength,
-    has_tools: !!(processedReq.tools && processedReq.tools.length > 0),
-    headers: Object.fromEntries(
-      Object.entries(c.req.header() || {}).map(([k, v]) => [k.toLowerCase(), v || ''])
-    ),
-  });
-
-  let providerName: string | undefined;
-  let resolvedModel = model;
-
-  if (conditionalDecision) {
-    providerName = conditionalDecision.provider;
-    if (conditionalDecision.model) {
-      resolvedModel = conditionalDecision.model;
-    }
-    writeLog('info', 'Conditional rule matched', {
-      model,
-      provider: providerName,
-      reason: conditionalDecision.reason,
-    });
-  } else if (strategyHeader && ['cost', 'latency', 'quality', 'balance'].includes(strategyHeader)) {
-    const decision = smartRoute(processedReq, strategyHeader);
-    providerName = decision.provider;
-    if (decision.model) {
-      resolvedModel = decision.model;
-    }
-    writeLog('info', 'SmartRouter selected provider', {
-      model,
-      provider: providerName,
-      strategy: strategyHeader,
-      reason: decision.reason,
-    });
-  } else {
-    providerName = getProviderForModel(model);
-  }
-
-  if (!providerName) {
-    recordMetric(
-      c.get('request_id') as string,
-      tenantId,
-      'gateway',
-      model,
-      0,
-      400,
-      { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-      c.get('key_hash'),
-      c.get('key_metadata'),
-    );
-    return c.json(
-      {
-        error: {
-          message: `No provider configured for model: ${model}`,
-          type: 'invalid_request_error',
-          code: 'unknown_model',
-        },
-      },
-      400
-    );
-  }
-
-  return { provider: providerName, actualModel: resolvedModel };
 }
 
 async function handleStreamingResponse(
@@ -835,7 +716,8 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       request = { ...request, messages: templateMessages };
     }
 
-    request = resolveRequestModel(c, request);
+    const apiKeyMeta = c.get('api_key_meta') as { default_model?: string } | undefined;
+    request = resolveRequestModel(request as unknown as import('../types').ChatCompletionRequest, apiKeyMeta, getConfig().routing[0]?.rules[0]?.model);
     const req = request as unknown as ChatCompletionRequest;
     const tenantId = c.get('tenant_id');
 
@@ -852,8 +734,25 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     if (pipelineResult instanceof Response) return pipelineResult;
     const processedReq = pipelineResult;
 
-    const providerResult = resolveProvider(c, processedReq, tenantId);
-    if (providerResult instanceof Response) return providerResult;
+    const strategyHeader = c.req.header('x-routing-strategy') as import('../services/router').RouterStrategy | undefined;
+    const requestHeaders = Object.fromEntries(
+      Object.entries(c.req.header() || {}).map(([k, v]) => [k.toLowerCase(), v || ''])
+    );
+    const providerResult = resolveProviderForRequest(processedReq, strategyHeader, tenantId, requestHeaders);
+    if ('error' in providerResult) {
+      recordMetric(
+        c.get('request_id') as string,
+        tenantId,
+        'gateway',
+        processedReq.model,
+        0,
+        400,
+        { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        c.get('key_hash'),
+        c.get('key_metadata'),
+      );
+      return c.json({ error: providerResult.error }, 400);
+    }
     const { provider: providerName, actualModel } = providerResult;
 
     // 如果模型池解析出了不同的实际模型，更新请求
