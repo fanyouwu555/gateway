@@ -1,141 +1,86 @@
 /**
  * Prometheus 监控指标中间件
- * 收集 HTTP 请求指标并暴露 /metrics 端点
+ * 使用 prom-client 收集 HTTP 请求指标并暴露 /metrics 端点
  */
 import type { Context, Next } from 'hono';
+import { Registry, Counter, Histogram } from 'prom-client';
 
-// ===== 指标存储 =====
+// ===== 私有注册表（隔离于 prom-client 全局默认注册表） =====
+const register = new Registry();
 
-interface Counter {
-  name: string;
-  help: string;
-  labels: Record<string, string>;
-  value: number;
-}
+// ----- 计数器 -----
+const gatewayRequestsTotal = new Counter({
+  name: 'gateway_requests_total',
+  help: 'Total HTTP requests',
+  labelNames: ['method', 'path'],
+  registers: [register],
+});
 
-interface Histogram {
-  name: string;
-  help: string;
-  labels: Record<string, string>;
-  buckets: number[];
-  counts: Record<string, number>;
-  sums: Record<string, number>;
-}
+const gatewayResponsesTotal = new Counter({
+  name: 'gateway_responses_total',
+  help: 'Total HTTP responses by status code',
+  labelNames: ['method', 'path', 'status'],
+  registers: [register],
+});
 
-class MetricsRegistry {
-  private counters = new Map<string, Counter>();
-  private histograms = new Map<string, Histogram>();
+const gatewayCacheHitsTotal = new Counter({
+  name: 'gateway_cache_hits_total',
+  help: 'Cache hit count',
+  labelNames: ['type'],
+  registers: [register],
+});
 
-  /**
-   * 创建或获取计数器
-   */
-  counter(name: string, help: string, labels: Record<string, string> = {}): Counter {
-    const key = `${name}:${JSON.stringify(labels)}`;
-    let counter = this.counters.get(key);
-    if (!counter) {
-      counter = { name, help, labels, value: 0 };
-      this.counters.set(key, counter);
-    }
-    return counter;
-  }
+const gatewayCacheMissesTotal = new Counter({
+  name: 'gateway_cache_misses_total',
+  help: 'Cache miss count',
+  labelNames: [],
+  registers: [register],
+});
 
-  /**
-   * 递增计数器
-   */
-  inc(name: string, labels: Record<string, string> = {}, value = 1): void {
-    const counter = this.counter(name, '', labels);
-    counter.value += value;
-  }
+const gatewayAiCostUsd = new Counter({
+  name: 'gateway_ai_cost_usd',
+  help: 'AI call cost in USD',
+  labelNames: ['provider', 'model'],
+  registers: [register],
+});
 
-  /**
-   * 记录直方图观测值
-   */
-  observe(name: string, value: number, labels: Record<string, string> = {}): void {
-    const key = `${name}:${JSON.stringify(labels)}`;
-    let hist = this.histograms.get(key);
-    if (!hist) {
-      hist = {
-        name,
-        help: '',
-        labels,
-        buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
-        counts: {},
-        sums: {},
-      };
-      this.histograms.set(key, hist);
-    }
-    // 记录到桶
-    for (const bucket of hist.buckets) {
-      if (value <= bucket) {
-        const bucketKey = bucket.toString();
-        hist.counts[bucketKey] = (hist.counts[bucketKey] || 0) + 1;
-      }
-    }
-    // 记录总和
-    const sumKey = '_sum';
-    hist.sums[sumKey] = (hist.sums[sumKey] || 0) + value;
-  }
+const gatewayAiTokensTotal = new Counter({
+  name: 'gateway_ai_tokens_total',
+  help: 'AI token usage',
+  labelNames: ['provider', 'model', 'type'],
+  registers: [register],
+});
 
-  /**
-   * 序列化为 Prometheus 文本格式
-   */
-  serialize(): string {
-    const lines: string[] = [];
+// ----- 直方图 -----
+const gatewayRequestDurationSeconds = new Histogram({
+  name: 'gateway_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
+  labelNames: ['method', 'path'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  registers: [register],
+});
 
-    // 输出计数器
-    for (const [, counter] of this.counters) {
-      lines.push(`# HELP ${counter.name} ${counter.help}`);
-      lines.push(`# TYPE ${counter.name} counter`);
-      const labelStr = this.formatLabels(counter.labels);
-      lines.push(`${counter.name}${labelStr} ${counter.value}`);
-    }
+const gatewayAiTtfbMs = new Histogram({
+  name: 'gateway_ai_ttfb_ms',
+  help: 'AI time to first byte in milliseconds',
+  labelNames: ['provider', 'model'],
+  buckets: [50, 100, 250, 500, 1000, 2500, 5000, 10000],
+  registers: [register],
+});
 
-    // 输出直方图
-    for (const [, hist] of this.histograms) {
-      lines.push(`# HELP ${hist.name} ${hist.help}`);
-      lines.push(`# TYPE ${hist.name} histogram`);
-      let totalCount = 0;
-      for (const bucket of hist.buckets) {
-        const bucketKey = bucket.toString();
-        const count = hist.counts[bucketKey] || 0;
-        totalCount += count;
-        const labels = { ...hist.labels, le: bucketKey };
-        lines.push(`${hist.name}_bucket${this.formatLabels(labels)} ${totalCount}`);
-      }
-      // +Inf bucket
-      const infLabels = { ...hist.labels, le: '+Inf' };
-      lines.push(`${hist.name}_bucket${this.formatLabels(infLabels)} ${totalCount}`);
-      // sum and count
-      lines.push(`${hist.name}_sum${this.formatLabels(hist.labels)} ${hist.sums['_sum'] || 0}`);
-      lines.push(`${hist.name}_count${this.formatLabels(hist.labels)} ${totalCount}`);
-    }
-
-    return lines.join('\n');
-  }
-
-  /**
-   * 重置所有指标
-   */
-  reset(): void {
-    this.counters.clear();
-    this.histograms.clear();
-  }
-
-  private formatLabels(labels: Record<string, string>): string {
-    const entries = Object.entries(labels).filter(([_, v]) => v);
-    if (entries.length === 0) return '';
-    return `{${entries.map(([k, v]) => `${k}="${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`).join(',')}}`;
-  }
-}
-
-// 全局注册表
-const registry = new MetricsRegistry();
+const gatewayAiTpotMs = new Histogram({
+  name: 'gateway_ai_tpot_ms',
+  help: 'AI time per output token in milliseconds',
+  labelNames: ['provider', 'model'],
+  buckets: [10, 25, 50, 100, 250, 500, 1000],
+  registers: [register],
+});
 
 /**
- * 重置所有指标（用于测试）
+ * 重置所有指标（用于测试隔离）
  */
 export function resetMetrics(): void {
-  registry.reset();
+  register.resetMetrics();
 }
 
 /**
@@ -144,7 +89,6 @@ export function resetMetrics(): void {
  * 例: /v1/tenants/abc-123/stats → /v1/tenants/:id/stats
  */
 function normalizePath(path: string): string {
-  // 已知的静态段，不应被替换
   const knownWords = new Set([
     'tenants', 'keys', 'usage', 'stats', 'config', 'plugins',
     'prompts', 'cache', 'sessions', 'alerts', 'router', 'status',
@@ -152,13 +96,10 @@ function normalizePath(path: string): string {
   ]);
   const segments = path.split('/');
   return segments.map((seg) => {
-    // 空段或已知静态词
     if (!seg || knownWords.has(seg)) return seg;
-    // 看起来像 id 的段: UUID / hash / tenant_xxx 或 8+ 字母数字混合
     if (/^[0-9a-f]{8,}(-[0-9a-f]{4,}){2,}$/i.test(seg)) return ':id';
     if (seg.startsWith('tenant_') || seg.startsWith('sk-') || seg.startsWith('key-')) return ':id';
     if (/^\d+$/.test(seg) && seg.length >= 3) return ':id';
-    // 8+ 字符且非已知词 → 可能是 id
     if (seg.length >= 8 && !knownWords.has(seg)) return ':id';
     return seg;
   }).join('/');
@@ -172,70 +113,62 @@ export async function metricsMiddleware(c: Context, next: Next): Promise<void> {
   const path = normalizePath(c.req.path);
   const method = c.req.method;
 
-  // 排除 /metrics 自身的监控
   if (path === '/metrics') {
     await next();
     return;
   }
 
-  // 记录请求总数
-  registry.inc('gateway_requests_total', { method, path });
+  gatewayRequestsTotal.inc({ method, path });
 
   await next();
 
-  // 记录响应状态码
-  const status = c.res.status;
-  registry.inc('gateway_responses_total', { method, path, status: String(status) });
+  const status = String(c.res.status);
+  gatewayResponsesTotal.inc({ method, path, status });
 
-  // 记录延迟
   const duration = (Date.now() - start) / 1000;
-  registry.observe('gateway_request_duration_seconds', duration, { method, path });
-
-  // 记录延迟摘要
-  registry.inc('gateway_request_duration_ms', { method, path }, duration * 1000);
+  gatewayRequestDurationSeconds.observe({ method, path }, duration);
 }
 
 /**
  * 获取 Prometheus 格式的指标
  */
-export function getMetrics(): string {
-  return registry.serialize();
+export function getMetrics(): Promise<string> {
+  return register.metrics();
 }
 
 /**
  * Record cache hit
  */
 export function recordCacheHit(type: 'exact' | 'semantic'): void {
-  registry.inc('gateway_cache_hits_total', { type });
+  gatewayCacheHitsTotal.inc({ type });
 }
 
 /**
  * Record cache miss
  */
 export function recordCacheMiss(): void {
-  registry.inc('gateway_cache_misses_total', {});
+  gatewayCacheMissesTotal.inc();
 }
 
 /**
  * 记录 AI 首字节/首 token 延迟 (TTFT)
  */
 export function recordAiTtfb(ms: number, provider: string, model: string): void {
-  registry.observe('gateway_ai_ttfb_ms', ms, { provider, model });
+  gatewayAiTtfbMs.observe({ provider, model }, ms);
 }
 
 /**
  * 记录 AI 每输出 token 耗时 (TPOT)
  */
 export function recordAiTpot(ms: number, provider: string, model: string): void {
-  registry.observe('gateway_ai_tpot_ms', ms, { provider, model });
+  gatewayAiTpotMs.observe({ provider, model }, ms);
 }
 
 /**
  * 记录 AI 调用成本 (USD)
- * tenant_id 不作为 label（防止高基数），仅在成本追踪服务中记录
  */
 export function recordAiCost(cost: number, provider: string, model: string): void {
-  registry.inc('gateway_ai_cost_usd', { provider, model }, cost);
+  gatewayAiCostUsd.inc({ provider, model }, cost);
 }
 
 /**
@@ -247,13 +180,16 @@ export function recordAiTokens(
   provider: string,
   model: string
 ): void {
-  registry.inc('gateway_ai_tokens_total', { provider, model, type: 'prompt' }, promptTokens);
-  registry.inc('gateway_ai_tokens_total', { provider, model, type: 'completion' }, completionTokens);
+  gatewayAiTokensTotal.inc({ provider, model, type: 'prompt' }, promptTokens);
+  gatewayAiTokensTotal.inc({ provider, model, type: 'completion' }, completionTokens);
 }
 
-// 为 Hono 应用提供 /metrics 路由处理函数
-export function metricsHandler(c: Context): Response {
-  return c.text(getMetrics(), 200, {
-    'Content-Type': 'text/plain; charset=utf-8',
+/**
+ * /metrics 路由处理函数
+ */
+export async function metricsHandler(c: Context): Promise<Response> {
+  const metrics = await getMetrics();
+  return c.text(metrics, 200, {
+    'Content-Type': register.contentType,
   });
 }
