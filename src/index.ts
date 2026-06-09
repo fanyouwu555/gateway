@@ -17,6 +17,7 @@ import { initSemanticCache } from './services/semantic-cache';
 import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
 import { createPiiPlugin, createPiiBlockGuardrail, createPromptInjectionGuardrail } from './plugins/guardrails';
+import { loadPluginInSandbox } from './plugins/loader';
 import { getPluginStore } from './services/plugin-store';
 import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
