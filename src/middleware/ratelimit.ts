@@ -9,10 +9,15 @@ import {
   MemoryRateLimitStore,
   RedisRateLimitStore,
 } from '../stores/ratelimit';
+import { ConcurrencyLimiter } from '../services/concurrency-limiter';
+import { getTenant } from '../services/tenant';
 
 // 限流存储实例
 let rateLimitStore: IRateLimitStore | null = null;
 let adminRateLimitStore: IRateLimitStore | null = null;
+
+// 并发限制器
+const concurrencyLimiter = new ConcurrencyLimiter();
 
 /**
  * 重置限流存储（用于测试隔离）
@@ -100,6 +105,33 @@ export async function rateLimitMiddleware(
     c.req.path.startsWith('/v1/sessions') ||
     c.req.path.startsWith('/v1/auth/verify');
 
+  // Check concurrent request limit
+  const tenantId = c.get('tenant_id') as string | undefined;
+  const keyHash = c.get('key_hash') as string | undefined;
+  const concurrencyKey = keyHash || tenantId || 'global';
+  let concurrencyLimit = 0;
+
+  if (tenantId) {
+    const tenant = getTenant(tenantId);
+    if (tenant?.limits?.concurrent_requests) {
+      concurrencyLimit = tenant.limits.concurrent_requests;
+    }
+  }
+
+  let acquired = false;
+  if (concurrencyLimit > 0) {
+    acquired = concurrencyLimiter.acquire(concurrencyKey, concurrencyLimit);
+    if (!acquired) {
+      return c.json({
+        error: {
+          message: 'Concurrent request limit exceeded. Please try again later.',
+          type: 'rate_limit_error',
+          code: 'concurrent_limit_exceeded',
+        },
+      }, 429);
+    }
+  }
+
   const store = await getRateLimitStore(isAdminPath);
   const limit = isAdminPath ? (config.rate_limit.burst ?? 20) * 2 : (config.rate_limit.burst ?? 20);
 
@@ -109,8 +141,19 @@ export async function rateLimitMiddleware(
   if (allowed) {
     c.res.headers.set('X-RateLimit-Remaining', String(remaining));
     c.res.headers.set('X-RateLimit-Limit', String(limit));
-    await next();
+    if (acquired) {
+      try {
+        await next();
+      } finally {
+        concurrencyLimiter.release(concurrencyKey);
+      }
+    } else {
+      await next();
+    }
   } else {
+    if (acquired) {
+      concurrencyLimiter.release(concurrencyKey);
+    }
     // Calculate Retry-After based on rate limit config
     const qps = config.rate_limit.qps ?? 10;
     const retryAfter = Math.max(1, Math.ceil(1000 / qps / 1000));
