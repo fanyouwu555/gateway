@@ -111,6 +111,10 @@ export async function rateLimitMiddleware(
     c.res.headers.set('X-RateLimit-Limit', String(limit));
     await next();
   } else {
+    // Calculate Retry-After based on rate limit config
+    const qps = config.rate_limit.qps ?? 10;
+    const retryAfter = Math.max(1, Math.ceil(1000 / qps / 1000));
+    c.res.headers.set('Retry-After', String(retryAfter));
     return c.json({
       error: {
         message: 'Rate limit exceeded. Please try again later.',
