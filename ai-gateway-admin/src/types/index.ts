@@ -62,6 +62,7 @@ export interface ApiKey {
   expires_at?: number
   is_admin?: boolean
   allowed_models?: string[]
+  default_model?: string
   rate_limit_qps?: number
   rate_limit_burst?: number
   monthly_budget?: number
