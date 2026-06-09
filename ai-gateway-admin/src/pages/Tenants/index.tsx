@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, Select, Drawer, Descriptions, message, Popconfirm, Typography } from 'antd'
-import { PlusOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CopyOutlined } from '@ant-design/icons'
+import { PlusOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CopyOutlined, WarningOutlined } from '@ant-design/icons'
 import { getTenants, getTenantStats, getTenantKeys, createTenant, createTenantKey, updateKeyPolicy, deleteTenant, deleteApiKey } from '@/services/api'
 import type { Tenant, TenantStats, ApiKey } from '@/types'
 
@@ -41,7 +41,7 @@ const Tenants: React.FC = () => {
   const fetchTenants = async () => {
     setLoading(true)
     try {
-      const data = await getTenants() as unknown as { tenants?: Tenant[] }
+      const data = await getTenants()
       setTenants(data.tenants || [])
     } catch (error) {
       message.error('获取租户失败，请检查网络连接')
@@ -57,8 +57,8 @@ const Tenants: React.FC = () => {
   const handleViewDetail = async (tenant: Tenant) => {
     setCurrentTenant(tenant)
     try {
-      const statsData = await getTenantStats(tenant.tenant_id) as unknown as TenantStats
-      const keysData = await getTenantKeys(tenant.tenant_id) as unknown as { keys?: ApiKey[] }
+      const statsData = await getTenantStats(tenant.tenant_id)
+      const keysData = await getTenantKeys(tenant.tenant_id)
       setTenantStats(statsData)
       setApiKeys(keysData.keys || [])
     } catch (error) {
@@ -131,6 +131,7 @@ const Tenants: React.FC = () => {
       const payload: Record<string, unknown> = { name: values.name }
       if (values.expires_at) payload.expires_at = values.expires_at
       if (values.allowed_models) payload.allowed_models = values.allowed_models.split(',').map((s: string) => s.trim()).filter(Boolean)
+      if (values.default_model) payload.default_model = values.default_model
       if (values.rate_limit_qps) payload.rate_limit_qps = values.rate_limit_qps
       if (values.rate_limit_burst) payload.rate_limit_burst = values.rate_limit_burst
       if (values.monthly_budget) payload.monthly_budget = values.monthly_budget
@@ -138,13 +139,13 @@ const Tenants: React.FC = () => {
       if (values.metadata_key) {
         payload.metadata = { [values.metadata_key]: values.metadata_value || '' }
       }
-      const result = await createTenantKey(currentTenant.tenant_id, payload as Parameters<typeof createTenantKey>[1]) as unknown as { key?: string }
+      const result = await createTenantKey(currentTenant.tenant_id, payload as Parameters<typeof createTenantKey>[1])
       setNewKeyData({ key: result.key || '', name: values.name || '未命名' })
       message.success('Key 创建成功')
       setCreateKeyModalVisible(false)
       createKeyForm.resetFields()
       // Refresh keys
-      const keysData = await getTenantKeys(currentTenant.tenant_id) as unknown as { keys?: ApiKey[] }
+      const keysData = await getTenantKeys(currentTenant.tenant_id)
       setApiKeys(keysData.keys || [])
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
@@ -158,6 +159,7 @@ const Tenants: React.FC = () => {
     editPolicyForm.setFieldsValue({
       name: key.name,
       allowed_models: key.allowed_models?.join(', ') || '',
+      default_model: key.default_model,
       rate_limit_qps: key.rate_limit_qps,
       rate_limit_burst: key.rate_limit_burst,
       monthly_budget: key.monthly_budget,
@@ -177,6 +179,7 @@ const Tenants: React.FC = () => {
       if (values.allowed_models) {
         payload.allowed_models = values.allowed_models.split(',').map((s: string) => s.trim()).filter(Boolean)
       }
+      if (values.default_model !== undefined) payload.default_model = values.default_model
       if (values.rate_limit_qps) payload.rate_limit_qps = values.rate_limit_qps
       if (values.rate_limit_burst) payload.rate_limit_burst = values.rate_limit_burst
       if (values.monthly_budget) payload.monthly_budget = values.monthly_budget
@@ -190,7 +193,7 @@ const Tenants: React.FC = () => {
       setEditingKey(null)
       editPolicyForm.resetFields()
       // Refresh keys
-      const keysData = await getTenantKeys(currentTenant.tenant_id) as unknown as { keys?: ApiKey[] }
+      const keysData = await getTenantKeys(currentTenant.tenant_id)
       setApiKeys(keysData.keys || [])
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
@@ -204,7 +207,7 @@ const Tenants: React.FC = () => {
       await deleteApiKey(key.key)
       message.success('Key 已删除')
       if (currentTenant) {
-        const keysData = await getTenantKeys(currentTenant.tenant_id) as unknown as { keys?: ApiKey[] }
+        const keysData = await getTenantKeys(currentTenant.tenant_id)
         setApiKeys(keysData.keys || [])
       }
     } catch (error) {
@@ -262,6 +265,12 @@ const Tenants: React.FC = () => {
   const keyColumns = [
     { title: '名称', dataIndex: 'name', key: 'name', width: 120 },
     { title: 'Key', dataIndex: 'key', key: 'key', width: 180, render: (v: string) => `${v.slice(0, 16)}...` },
+    {
+      title: '默认模型',
+      key: 'default_model',
+      width: 140,
+      render: (_value: unknown, record: ApiKey) => record.default_model ? <Tag color="green">{record.default_model}</Tag> : '-',
+    },
     {
       title: '模型限制',
       key: 'allowed_models',
@@ -404,6 +413,9 @@ const Tenants: React.FC = () => {
           <Form.Item label="允许的模型（逗号分隔，留空=不限制）" name="allowed_models">
             <Input placeholder="gpt-4o-mini, deepseek-chat" />
           </Form.Item>
+          <Form.Item label="默认模型" name="default_model">
+            <Input placeholder="例如：gpt-4o-mini" />
+          </Form.Item>
           <Form.Item label="QPS 限制" name="rate_limit_qps">
             <InputNumber min={1} style={{ width: '100%' }} placeholder="每秒请求数" />
           </Form.Item>
@@ -448,6 +460,9 @@ const Tenants: React.FC = () => {
           </Form.Item>
           <Form.Item label="允许的模型（逗号分隔，空=不限制）" name="allowed_models">
             <Input placeholder="gpt-4o-mini, deepseek-chat" />
+          </Form.Item>
+          <Form.Item label="默认模型" name="default_model">
+            <Input placeholder="例如：gpt-4o-mini" />
           </Form.Item>
           <Form.Item label="QPS 限制" name="rate_limit_qps">
             <InputNumber min={1} style={{ width: '100%' }} />
@@ -545,7 +560,7 @@ const Tenants: React.FC = () => {
         width={520}
       >
         <div style={{ marginBottom: 12, color: '#ff4d4f', fontWeight: 500 }}>
-          ⚠ 关闭后将无法再次查看，请立即保存
+          <WarningOutlined /> 关闭后将无法再次查看，请立即保存
         </div>
         <div style={{ marginBottom: 4, fontSize: 13, color: '#666' }}>名称: {newKeyData?.name}</div>
         <Typography.Paragraph

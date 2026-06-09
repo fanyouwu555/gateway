@@ -25,10 +25,11 @@ class WebSocketService {
       console.warn('[WebSocket] No API key available')
       return
     }
-    this.url = `${baseUrl}/v1/ws?tenant_id=${encodeURIComponent(tenantId)}&api_key=${encodeURIComponent(apiKey)}`
+    this.url = `${baseUrl}/v1/ws?tenant_id=${encodeURIComponent(tenantId)}`
 
     try {
-      this.ws = new WebSocket(this.url)
+      const protocols = [`gateway-token-${apiKey}`]
+      this.ws = new WebSocket(this.url, protocols)
 
       this.ws.onopen = () => {
         console.log('[WebSocket] Connected')

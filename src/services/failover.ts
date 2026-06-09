@@ -74,9 +74,9 @@ class FailoverManager {
   private providerCheckTimers = new Map<string, NodeJS.Timeout>();
   private store: IKVStore | null = null;
   private useStorage = false;
+  private _configSynced = false;
 
   constructor() {
-    const appConfig = getConfig();
     this.config = {
       enabled: false,
       failureThreshold: 3,
@@ -84,14 +84,24 @@ class FailoverManager {
       healthCheckInterval: 60000,
       healthCheckTimeout: 5000,
       healthCheckModel: 'gpt-4o-mini',
-      ...appConfig.failover,
     };
-
-    // 初始化存储
     this.useStorage = process.env.FAILOVER_STORAGE === 'redis';
-    if (this.useStorage) {
-      this.store = createKVStore('failover');
+  }
+
+  private ensureConfig(): void {
+    if (!this._configSynced) {
+      const appConfig = getConfig();
+      this.config = { ...this.config, ...appConfig.failover };
+      this._configSynced = true;
+      if (this.useStorage) {
+        this.store = createKVStore('failover');
+      }
     }
+  }
+
+  async init(): Promise<void> {
+    this.ensureConfig();
+    await this.initStorage();
   }
 
   async initStorage(): Promise<void> {
@@ -168,9 +178,41 @@ class FailoverManager {
   }
 
   /**
+   * 从给定的 Key 列表中过滤出健康的 Key
+   * 供 LoadBalanceManager 在选择前调用，实现健康状态与负载均衡的协作
+   */
+  getHealthyKeys(provider: string, keys: string[]): string[] {
+    this.ensureConfig();
+    if (!this.config.enabled) {
+      return keys;
+    }
+
+    const healthyKeys: string[] = [];
+    for (const key of keys) {
+      const keyId = `${provider}:${key.substring(0, 8)}`;
+      const health = this.tokenHealth.get(keyId);
+      if (!health || health.isHealthy) {
+        healthyKeys.push(key);
+      }
+    }
+
+    if (healthyKeys.length === 0 && keys.length > 0) {
+      writeLog('warn', 'All keys unhealthy, falling back to all keys', {
+        provider,
+        keyCount: keys.length,
+      });
+      return keys;
+    }
+
+    return healthyKeys;
+  }
+
+  /**
    * 获取可用 Token
+   * @deprecated 使用 getHealthyKeys() 配合 LoadBalanceManager.selectToken() 替代
    */
   getAvailableToken(provider: string): { apiKey: string; index: number } | null {
+    this.ensureConfig();
     if (!this.config.enabled) {
       const config = getProviderConfig(provider);
       if (config?.api_key) {
@@ -179,7 +221,6 @@ class FailoverManager {
       return null;
     }
 
-    // 多 API Key 场景 (future: 从配置读取多个 key)
     const config = getProviderConfig(provider);
     if (!config?.api_key) return null;
 
@@ -190,13 +231,14 @@ class FailoverManager {
       return { apiKey: config.api_key, index: 0 };
     }
 
-    return null; // 当前 key 不健康
+    return null;
   }
 
   /**
    * 记录请求失败
    */
   recordFailure(provider: string, apiKey: string): void {
+    this.ensureConfig();
     const key = `${provider}:${apiKey.substring(0, 8)}`;
     let health = this.tokenHealth.get(key);
 
@@ -229,6 +271,7 @@ class FailoverManager {
    * 记录请求成功
    */
   recordSuccess(provider: string, apiKey: string): void {
+    this.ensureConfig();
     const key = `${provider}:${apiKey.substring(0, 8)}`;
     const health = this.tokenHealth.get(key);
 
@@ -252,6 +295,7 @@ class FailoverManager {
    * Record a provider-level request result
    */
   recordProviderRequest(provider: string, success: boolean, latencyMs: number): void {
+    this.ensureConfig();
     let health = this.providerHealth.get(provider);
     if (!health) {
       health = {
@@ -317,6 +361,7 @@ class FailoverManager {
    * Check if a provider is healthy at the provider level
    */
   isProviderHealthy(provider: string): boolean {
+    this.ensureConfig();
     if (!this.config.enabled) return true;
     const health = this.providerHealth.get(provider);
     if (!health) return true;
@@ -325,25 +370,24 @@ class FailoverManager {
 
   /**
    * Get provider-level health status summary
+   * 始终返回所有已配置 provider，有实际记录的用真实数据，无记录的用默认零值
    */
   getProviderHealthStatus(): Record<string, { isHealthy: boolean; totalRequests: number; errorRate: number; avgLatencyMs: number }> {
+    this.ensureConfig();
     const status: Record<string, { isHealthy: boolean; totalRequests: number; errorRate: number; avgLatencyMs: number }> = {};
 
-    // When failover is disabled, assume all configured providers are healthy.
-    // This prevents stale failure records from showing providers as offline.
-    if (!this.config.enabled) {
-      const appConfig = getConfig();
-      for (const name of Object.keys(appConfig.providers || {})) {
-        status[name] = {
-          isHealthy: true,
-          totalRequests: 0,
-          errorRate: 0,
-          avgLatencyMs: 0,
-        };
-      }
-      return status;
+    // 先为所有已配置 provider 填充默认状态
+    const appConfig = getConfig();
+    for (const name of Object.keys(appConfig.providers || {})) {
+      status[name] = {
+        isHealthy: true,
+        totalRequests: 0,
+        errorRate: 0,
+        avgLatencyMs: 0,
+      };
     }
 
+    // 再用实际健康记录覆盖（无论 failover 是否启用）
     this.providerHealth.forEach((health, key) => {
       const errorRate = health.total_requests > 0 ? health.error_count / health.total_requests : 0;
       const avgLatency = health.total_requests > 0 ? health.total_latency_ms / health.total_requests : 0;
@@ -354,6 +398,7 @@ class FailoverManager {
         avgLatencyMs: Math.round(avgLatency),
       };
     });
+
     return status;
   }
 
@@ -361,6 +406,7 @@ class FailoverManager {
    * Get the explicit failover chain for a provider
    */
   getFailoverChain(provider: string): string[] {
+    this.ensureConfig();
     const chains = this.config.chains;
     if (chains && chains[provider]) {
       return chains[provider];

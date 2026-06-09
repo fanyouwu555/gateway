@@ -33,6 +33,8 @@ jest.mock('../src/config', () => ({
     name: 'default',
     rules: [{ model: 'gpt-4o', provider: 'openai' }],
   })),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 // Mock providers — 避免真正调用
@@ -49,11 +51,6 @@ jest.mock('../src/providers', () => ({
 jest.mock('../src/services/cache', () => ({
   getCacheStats: jest.fn(() => ({ size: 0, hit_rate: 0 })),
   initCache: jest.fn(),
-}));
-
-jest.mock('../src/services/history', () => ({
-  getSessionStats: jest.fn(() => ({ total_sessions: 0 })),
-  initSessionStore: jest.fn(),
 }));
 
 // Mock guardrail plugins

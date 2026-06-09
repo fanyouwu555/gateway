@@ -8,9 +8,14 @@
       "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3",
       "timeout": 30000
     },
+    "volcano-chat": {
+      "provider": "volcano",
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "timeout": 30000
+    },
     "kimi-code": {
       "provider": "kimi-code",
-      "base_url": "https://api.kimi.com/coding/v1",
+      "base_url": "https://api.moonshot.cn/v1",
       "timeout": 30000
     }
   },
@@ -19,11 +24,23 @@
       "name": "default",
       "rules": [
         { "model": "ark-code-latest", "provider": "volcano", "max_tokens": 128000 },
-        { "model": "kimi-for-coding", "provider": "kimi-code", "max_tokens": 128000 }
+        { "model": "kimi-for-coding", "provider": "kimi-code", "max_tokens": 128000 },
+        { "model": "kimi-k2.6", "provider": "moonshot", "max_tokens": 128000 }
       ],
       "fallback": "volcano"
     }
   ],
+  "model_pools": {
+    "smart-chat": {
+      "name": "smart-chat",
+      "description": "通用对话，自动选择最优供应商",
+      "capabilities": ["chat"],
+      "candidates": [
+        { "provider": "volcano-chat", "model": "doubao-pro-128k-240515", "priority": 1, "enabled": false },
+        { "provider": "moonshot", "model": "kimi-k2.6", "priority": 2 }
+      ]
+    }
+  },
   "auth": {
     "enabled": true,
     "api_keys": [
@@ -66,8 +83,7 @@
     "latencyThresholdMs": 30000
   },
   "loadBalance": {
-    "strategy": "roundRobin",
-    "providers": {}
+    "strategy": "roundRobin"
   },
   "cache": {
     "enabled": true,
@@ -75,9 +91,15 @@
     "max_size": 1000
   },
   "request_logging": {
-    "enabled": false,
+    "enabled": true,
     "max_body_size": 4096,
     "sample_rate": 1.0
+  },
+  "conversation_logging": {
+    "enabled": true,
+    "max_memory_sessions": 100,
+    "redis_ttl_days": 7,
+    "max_turns_per_session": 500
   },
   "model_equivalents": {
     "ark-code-latest": {
@@ -87,13 +109,16 @@
       "volcano": "ark-code-latest"
     }
   },
-  "session": {
-    "max_sessions": 1000,
-    "max_messages_per_session": 100,
-    "ttl": 3600000
-  },
   "rate_limit_clean_interval": 60000,
   "pricing": {
-    "ark-code-latest": { "input": 0.5, "output": 2.0 }
+    "ark-code-latest": { "input": 0.5, "output": 2.0 },
+    "kimi-for-coding": { "input": 0.5, "output": 2.0 },
+    "kimi-k2.6": { "input": 0.5, "output": 2.0 },
+    "gpt-4o": { "input": 2.5, "output": 10.0 },
+    "gpt-4o-mini": { "input": 0.15, "output": 0.6 },
+    "claude-3-opus": { "input": 15.0, "output": 75.0 },
+    "claude-3-sonnet": { "input": 3.0, "output": 15.0 },
+    "claude-3-haiku": { "input": 0.25, "output": 1.25 },
+    "deepseek-chat": { "input": 0.14, "output": 0.28 }
   }
 }

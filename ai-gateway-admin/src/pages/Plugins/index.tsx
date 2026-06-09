@@ -1,16 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Card, Table, Tag, Button, Space, Switch, Modal, Input, message } from 'antd'
 import { ReloadOutlined, PlusOutlined, DeleteOutlined, CodeOutlined } from '@ant-design/icons'
-import { getPlugins } from '@/services/api'
-
-interface PluginItem {
-  id: string
-  name: string
-  type: 'request' | 'response' | 'transform' | 'guardrail' | 'custom'
-  enabled: boolean
-  priority: number
-  settings?: Record<string, unknown>
-}
+import { getPlugins, togglePlugin, deletePlugin, registerPlugin } from '@/services/api'
+import type { PluginItem } from '@/types'
 
 const typeColors: Record<string, string> = {
   request: 'orange',
@@ -37,7 +29,7 @@ const Plugins: React.FC = () => {
   const fetchPlugins = async () => {
     setLoading(true)
     try {
-      const data = await getPlugins() as unknown as { plugins?: PluginItem[] }
+      const data = await getPlugins()
       setPlugins(data.plugins || [])
     } catch {
       message.error('获取插件列表失败')
@@ -52,13 +44,7 @@ const Plugins: React.FC = () => {
 
   const handleToggle = async (plugin: PluginItem, enabled: boolean) => {
     try {
-      const endpoint = enabled ? `/v1/plugins/${plugin.id}/enable` : `/v1/plugins/${plugin.id}/disable`
-      const token = localStorage.getItem('api_token')
-      const resp = await fetch(endpoint, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!resp.ok) throw new Error('Toggle failed')
+      await togglePlugin(plugin.id, enabled)
       message.success(`${enabled ? '启用' : '禁用'}成功`)
       fetchPlugins()
     } catch {
@@ -68,12 +54,7 @@ const Plugins: React.FC = () => {
 
   const handleDelete = async (plugin: PluginItem) => {
     try {
-      const token = localStorage.getItem('api_token')
-      const resp = await fetch(`/v1/plugins/${plugin.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!resp.ok) throw new Error('Delete failed')
+      await deletePlugin(plugin.id)
       message.success('删除成功')
       fetchPlugins()
     } catch {
@@ -87,17 +68,7 @@ const Plugins: React.FC = () => {
       return
     }
     try {
-      const token = localStorage.getItem('api_token')
-      const resp = await fetch('/v1/plugins/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ code: codeText }),
-      })
-      const result = await resp.json()
-      if (!resp.ok) {
-        message.error(result?.error?.message || '注册失败')
-        return
-      }
+      await registerPlugin(codeText)
       message.success('插件注册成功')
       setRegisterModalOpen(false)
       setCodeText('')

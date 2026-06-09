@@ -9,6 +9,8 @@ jest.mock('../../src/utils/logger', () => ({
 const mockGetConfig = jest.fn();
 jest.mock('../../src/config', () => ({
   getConfig: (...args: unknown[]) => mockGetConfig(...args),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 async function importRegistry() {

@@ -119,15 +119,14 @@ export interface FailoverConfig {
 
 export interface LoadBalanceConfig {
   strategy: string
-  providers: Record<string, unknown>
 }
 
 // ============ 缓存 ============
 export interface CacheStats {
   size: number
   hit_rate: number
-  hits: number
-  misses: number
+  hits?: number
+  misses?: number
 }
 
 // ============ 图表数据 ============
@@ -197,4 +196,220 @@ export interface DashboardOverview {
 // ============ 状态码统计 ============
 export interface StatusCodeStats {
   [code: string]: number
+}
+
+// ============ 请求日志 ============
+export interface RequestLogItem {
+  request_id: string
+  tenant_id?: string
+  timestamp: number
+  method: string
+  path: string
+  provider?: string
+  model?: string
+  status_code: number
+  duration_ms: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  cost?: number
+  error?: string
+}
+
+// ============ 对话日志 ============
+export interface ConversationSession {
+  session_id: string
+  created_at: number
+  updated_at: number
+  turn_count: number
+  total_prompt_tokens: number
+  total_completion_tokens: number
+  total_tokens: number
+  total_cost: number
+  tenant_id?: string
+  last_model?: string
+  /** 客户端信息 */
+  client_info?: {
+    name: string
+    version?: string
+    inferredFrom: 'header' | 'user-agent' | 'unknown'
+  }
+  /** 原始 User-Agent */
+  user_agent?: string
+}
+
+export interface ConversationTurn {
+  turn_id: string
+  session_id: string
+  timestamp: number
+  request: {
+    messages: Array<{
+      role: string
+      content?: string
+    }>
+    tools?: unknown[]
+    model: string
+  }
+  response: {
+    content: string
+    reasoning_content?: string
+    tool_calls?: Array<{
+      id: string
+      type: string
+      function: {
+        name: string
+        arguments: string
+      }
+    }>
+    usage: {
+      prompt_tokens: number
+      completion_tokens: number
+      total_tokens: number
+    }
+  }
+  metadata: {
+    provider: string
+    duration_ms: number
+    cost: number
+    status_code: number
+    tenant_id?: string
+    error?: string
+    /** 客户端信息 */
+    client_info?: {
+      name: string
+      version?: string
+      inferredFrom: 'header' | 'user-agent' | 'unknown'
+    }
+    /** 会话标识来源 */
+    session_source?: {
+      id: string
+      provided_by_header?: string
+    }
+    /** 原始 User-Agent */
+    user_agent?: string
+  }
+}
+
+export interface TenantUpdateData {
+  name?: string
+  status?: 'active' | 'suspended' | 'trial'
+  plan?: 'free' | 'pro' | 'enterprise'
+  settings?: TenantSettings
+  limits?: Partial<TenantLimits>
+}
+
+export interface ConfigUpdateData {
+  port?: number
+  host?: string
+  log_level?: 'debug' | 'info' | 'warn' | 'error'
+  providers?: Record<string, unknown>
+  routing?: RoutingRule[]
+  auth?: { enabled?: boolean; api_keys?: ApiKey[] }
+  rate_limit?: Partial<RateLimitConfig>
+  failover?: Partial<FailoverConfig>
+  cache?: { enabled?: boolean; ttl?: number; max_size?: number }
+  pricing?: Record<string, { input: number; output: number }>
+  model_aliases?: Record<string, string>
+}
+
+export interface ConversationDetail {
+  session: ConversationSession
+  turns: ConversationTurn[]
+}
+
+export interface HealthData {
+  status: string
+  version?: string
+  uptime?: number
+  services?: {
+    providers?: Array<{
+      name: string
+      status: string
+      has_api_key?: boolean
+      base_url?: string
+    }>
+  }
+}
+
+export interface PluginItem {
+  id: string
+  name: string
+  type: 'request' | 'response' | 'transform' | 'guardrail' | 'custom'
+  enabled: boolean
+  priority: number
+  settings?: Record<string, unknown>
+}
+
+export interface AlertRuleItem {
+  id: string
+  name: string
+  metric: 'error_rate' | 'avg_latency_ms' | 'total_requests'
+  threshold: number
+  condition: 'gt' | 'lt'
+  webhook_url: string
+  enabled: boolean
+  cooldown_seconds: number
+}
+
+export interface PromptItem {
+  id: string
+  name: string
+  description?: string
+  template: string
+  variables: string[]
+  default_values?: Record<string, string>
+  created_at: number
+  updated_at: number
+}
+
+export interface RouterStatusData {
+  providers: Record<string, {
+    isHealthy?: boolean
+    totalRequests?: number
+    errorRate?: number
+    avgLatencyMs?: number
+  }>
+}
+
+export interface AuthVerifyResponse {
+  is_admin: boolean
+}
+
+export interface ModelInfo {
+  id: string
+  owned_by?: string
+  context_window?: number
+  max_output_tokens?: number
+  capabilities?: {
+    chat?: boolean
+    embed?: boolean
+    streaming?: boolean
+    vision?: boolean
+    function_call?: boolean
+  }
+  pricing?: { input: number; output: number }
+  created?: number
+}
+
+export interface DiscoverModelsResponse {
+  provider?: string
+  models?: ModelInfo[]
+  error?: string
+  cached?: boolean
+}
+
+export interface DiscoverAllResponse {
+  [providerName: string]: {
+    models?: ModelInfo[]
+    error?: string
+    cached?: boolean
+  }
+}
+
+export interface ModelListItem {
+  id: string
+  object: string
+  owned_by: string
+  context_window?: number
+  pricing?: { input: number; output: number }
 }

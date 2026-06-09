@@ -11,7 +11,7 @@ export const deepseekProvider = new OpenAICompatibleProvider({
     embed: true,
     streaming: true,
     vision: false,
-    function_call: false,
+    function_call: true,
   },
   fields: {
     // DeepSeek 支持基础参数，无需特殊字段

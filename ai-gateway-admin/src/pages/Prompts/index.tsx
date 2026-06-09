@@ -2,17 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, Table, Tag, Button, Space, Modal, Form, Input, message, Empty, Typography } from 'antd'
 import { ReloadOutlined, PlusOutlined, DeleteOutlined, EditOutlined, EyeOutlined, FileTextOutlined } from '@ant-design/icons'
 import { getPrompts, createPrompt, updatePrompt, deletePrompt, renderPrompt } from '@/services/api'
-
-interface PromptItem {
-  id: string
-  name: string
-  description?: string
-  template: string
-  variables: string[]
-  default_values?: Record<string, string>
-  created_at: number
-  updated_at: number
-}
+import type { PromptItem } from '@/types'
 
 const Prompts: React.FC = () => {
   const [loading, setLoading] = useState(false)
@@ -28,7 +18,7 @@ const Prompts: React.FC = () => {
   const fetchPrompts = async () => {
     setLoading(true)
     try {
-      const data = await getPrompts() as unknown as { templates?: PromptItem[] }
+      const data = await getPrompts()
       setPrompts(data.templates || [])
     } catch {
       message.error('获取模板失败')
@@ -91,7 +81,7 @@ const Prompts: React.FC = () => {
       for (const v of prompt.variables) {
         testVars[v] = prompt.default_values?.[v] || `{{${v}}}`
       }
-      const result = await renderPrompt(prompt.id, testVars) as unknown as { rendered?: string }
+      const result = await renderPrompt(prompt.id, testVars)
       setPreviewResult(result?.rendered || '渲染失败')
       setPreviewModalOpen(true)
     } catch {

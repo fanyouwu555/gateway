@@ -46,6 +46,8 @@ jest.mock('../src/config', () => ({
     }
     return undefined;
   }),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 // Mock metrics

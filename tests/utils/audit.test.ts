@@ -65,11 +65,12 @@ describe('Audit Log Utility', () => {
   });
 
   it('should write admin audit event via convenience function', () => {
+    const uniqueKeyName = `test-key-${Date.now()}`;
     auditAdmin({
       tenantId: 'tenant-xyz',
       ruleId: 'admin.key_created',
       action: 'allow',
-      metadata: { key_name: 'test-key' },
+      metadata: { key_name: uniqueKeyName },
       severity: 'low',
     });
 
@@ -77,8 +78,11 @@ describe('Audit Log Utility', () => {
     const auditFile = pathJoin(LOG_DIR, `audit-${date}.log`);
     const content = readFileSync(auditFile, 'utf-8');
     const events = content.trim().split('\n').map((l) => JSON.parse(l));
-    const event = events.reverse().find((e: Record<string, unknown>) => e.event_type === 'admin.key_created');
+    const event = events.reverse().find((e: Record<string, unknown>) =>
+      e.event_type === 'admin.key_created' &&
+      (e.metadata as Record<string, unknown>)?.key_name === uniqueKeyName
+    );
     expect(event).toBeDefined();
-    expect(event!.metadata).toEqual({ key_name: 'test-key' });
+    expect((event!.metadata as Record<string, unknown>)).toEqual({ key_name: uniqueKeyName });
   });
 });

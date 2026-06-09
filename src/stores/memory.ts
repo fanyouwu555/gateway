@@ -222,11 +222,35 @@ export class MemoryKVStore implements IKVStore {
   }
 
   async delByPattern(pattern: string): Promise<number> {
-    const keysToDelete = await this.keys(pattern);
+    const regex = new RegExp('^' + this.prefix + ':' + pattern.replace('*', '.*'));
     let count = 0;
 
-    for (const key of keysToDelete) {
-      if (await this.delete(key)) count++;
+    for (const key of this.cache.keys()) {
+      if (regex.test(key)) {
+        this.cache.delete(key);
+        count++;
+      }
+    }
+
+    for (const key of this.hashes.keys()) {
+      if (regex.test(key)) {
+        this.hashes.delete(key);
+        count++;
+      }
+    }
+
+    for (const key of this.lists.keys()) {
+      if (regex.test(key)) {
+        this.lists.delete(key);
+        count++;
+      }
+    }
+
+    for (const key of this.counters.keys()) {
+      if (regex.test(key)) {
+        this.counters.delete(key);
+        count++;
+      }
     }
 
     return count;

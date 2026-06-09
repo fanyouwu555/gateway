@@ -1,9 +1,12 @@
 /**
  * 多租户管理服务
  * 租户配置、API Key管理、配额控制
+ * 支持内存存储（默认）和 Redis 持久化（可选）
  */
 import type { TenantId, IApiKeyMeta } from '../types';
 import { generateRequestId, hashApiKey, verifyApiKey, generateSecureRandomString } from '../utils';
+import { writeLog } from '../utils/logger';
+import { createKVStore } from '../stores/factory';
 
 /**
  * 租户配置
@@ -43,6 +46,7 @@ export interface TenantLimits {
 
 /**
  * 租户存储
+ * 支持内存存储 + 可选 Redis 持久化
  */
 class TenantStore {
   private tenants = new Map<TenantId, TenantConfig>();
@@ -50,9 +54,151 @@ class TenantStore {
   // 前缀索引：plaintext key 前 10 字符 → hashed key 列表，加速 verifyApiKey
   private keyPrefixIndex = new Map<string, string[]>();
 
+  private useRedis = false;
+  private store: ReturnType<typeof createKVStore> | null = null;
+
   constructor() {
-    // 创建默认租户
+    this.useRedis = process.env.TENANT_STORAGE === 'redis';
+    if (this.useRedis) {
+      this.store = createKVStore('tenant');
+    }
     this.createDefaultTenant();
+  }
+
+  private async getStore(): Promise<ReturnType<typeof createKVStore>> {
+    if (!this.store) {
+      this.store = createKVStore('tenant');
+    }
+    if (!this.store.isConnected()) {
+      await this.store.connect();
+    }
+    return this.store;
+  }
+
+  private async persistTenant(tenantId: TenantId): Promise<void> {
+    if (!this.useRedis) return;
+    try {
+      const store = await this.getStore();
+      const tenant = this.tenants.get(tenantId);
+      if (tenant && tenantId !== 'default') {
+        await store.set(`tenant:data:${tenantId}`, JSON.stringify(tenant));
+      }
+    } catch {
+      // 持久化失败不影响主流程
+    }
+  }
+
+  private async persistApiKey(hashedKey: string): Promise<void> {
+    if (!this.useRedis) return;
+    try {
+      const store = await this.getStore();
+      const record = this.apiKeys.get(hashedKey);
+      if (record) {
+        const prefix = this.findPrefixForHash(hashedKey);
+        await store.set(`tenant:keys:${hashedKey}`, JSON.stringify({ ...record, _key_prefix: prefix }));
+      }
+    } catch {
+      // 持久化失败不影响主流程
+    }
+  }
+
+  private async removeTenantFromStorage(tenantId: TenantId): Promise<void> {
+    if (!this.useRedis) return;
+    try {
+      const store = await this.getStore();
+      await store.delete(`tenant:data:${tenantId}`);
+    } catch {
+      // 删除失败不影响主流程
+    }
+  }
+
+  private async removeApiKeyFromStorage(hashedKey: string): Promise<void> {
+    if (!this.useRedis) return;
+    try {
+      const store = await this.getStore();
+      await store.delete(`tenant:keys:${hashedKey}`);
+    } catch {
+      // 删除失败不影响主流程
+    }
+  }
+
+  private findPrefixForHash(hashedKey: string): string {
+    for (const [prefix, keys] of this.keyPrefixIndex.entries()) {
+      if (keys.includes(hashedKey)) {
+        return prefix;
+      }
+    }
+    return '';
+  }
+
+  async loadFromStorage(): Promise<void> {
+    if (!this.useRedis) return;
+    try {
+      const store = await this.getStore();
+
+      const tenantKeys = await store.keys('tenant:data:*');
+      for (const key of tenantKeys) {
+        const tenantId = key.replace('tenant:data:', '');
+        if (tenantId === 'default') continue;
+        const data = await store.get(key);
+        if (data) {
+          try {
+            const tenant = JSON.parse(data) as TenantConfig;
+            this.tenants.set(tenantId, tenant);
+          } catch {
+            // 忽略解析失败的条目
+          }
+        }
+      }
+
+      const apiKeyKeys = await store.keys('tenant:keys:*');
+      for (const key of apiKeyKeys) {
+        const data = await store.get(key);
+        if (data) {
+          try {
+            const parsed = JSON.parse(data) as { key: string; tenant_id: TenantId; meta: IApiKeyMeta; _key_prefix?: string };
+            this.apiKeys.set(parsed.key, { key: parsed.key, tenant_id: parsed.tenant_id, meta: parsed.meta });
+            if (parsed._key_prefix) {
+              const list = this.keyPrefixIndex.get(parsed._key_prefix) || [];
+              if (!list.includes(parsed.key)) {
+                list.push(parsed.key);
+                this.keyPrefixIndex.set(parsed._key_prefix, list);
+              }
+            }
+          } catch {
+            // 忽略解析失败的条目
+          }
+        }
+      }
+
+      writeLog('info', 'Tenant data loaded from Redis', {
+        tenants: tenantKeys.length,
+        api_keys: apiKeyKeys.length,
+      });
+    } catch (err) {
+      writeLog('warn', 'Failed to load tenant data from Redis', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async flushToStorage(): Promise<void> {
+    if (!this.useRedis) return;
+    try {
+      const store = await this.getStore();
+      for (const [tenantId, tenant] of this.tenants.entries()) {
+        if (tenantId === 'default') continue;
+        await store.set(`tenant:data:${tenantId}`, JSON.stringify(tenant));
+      }
+      for (const [hashedKey, record] of this.apiKeys.entries()) {
+        const prefix = this.findPrefixForHash(hashedKey);
+        await store.set(`tenant:keys:${hashedKey}`, JSON.stringify({ ...record, _key_prefix: prefix }));
+      }
+    } catch (err) {
+      writeLog('warn', 'Failed to flush tenant data to Redis', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -96,6 +242,7 @@ class TenantStore {
     };
 
     this.tenants.set(tenantId, newTenant);
+    this.persistTenant(tenantId).catch(() => {});
     return newTenant;
   }
 
@@ -119,6 +266,7 @@ class TenantStore {
       updated_at: Date.now(),
     };
     this.tenants.set(tenantId, updated);
+    this.persistTenant(tenantId).catch(() => {});
     return updated;
   }
 
@@ -126,8 +274,12 @@ class TenantStore {
    * 删除租户
    */
   delete(tenantId: TenantId): boolean {
-    if (tenantId === 'default') return false; // 不能删除默认租户
-    return this.tenants.delete(tenantId);
+    if (tenantId === 'default') return false;
+    const deleted = this.tenants.delete(tenantId);
+    if (deleted) {
+      this.removeTenantFromStorage(tenantId).catch(() => {});
+    }
+    return deleted;
   }
 
   /**
@@ -146,7 +298,7 @@ class TenantStore {
     tenantId: TenantId,
     name: string,
     expiresAt?: number,
-    policy?: Pick<IApiKeyMeta, 'allowed_models' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
+    policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
   ): IApiKeyMeta | null {
     const tenant = this.tenants.get(tenantId);
     if (!tenant) return null;
@@ -175,6 +327,7 @@ class TenantStore {
     const list = this.keyPrefixIndex.get(prefix) || [];
     list.push(hashedKey);
     this.keyPrefixIndex.set(prefix, list);
+    this.persistApiKey(hashedKey).catch(() => {});
     // 返回明文 key（调用方需在创建时保存，之后无法再次获取）
     return { ...meta, key: plaintextKey };
   }
@@ -265,7 +418,7 @@ class TenantStore {
    */
   updateApiKeyPolicy(
     key: string,
-    updates: Partial<Pick<IApiKeyMeta, 'name' | 'expires_at' | 'allowed_models' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>>
+    updates: Partial<Pick<IApiKeyMeta, 'name' | 'expires_at' | 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>>
   ): IApiKeyMeta | null {
     // 先尝试直接按哈希值查找
     let record = this.apiKeys.get(key);
@@ -280,6 +433,7 @@ class TenantStore {
       ...updates,
     };
     this.apiKeys.set(record.key, { ...record, meta: newMeta });
+    this.persistApiKey(record.key).catch(() => {});
     return newMeta;
   }
 
@@ -287,15 +441,15 @@ class TenantStore {
    * 删除API Key（支持明文输入）
    */
   deleteApiKey(key: string): boolean {
-    // 先尝试直接删除（如果 key 已经是哈希值）
     if (this.apiKeys.delete(key)) {
       this.removeFromPrefixIndex(key);
+      this.removeApiKeyFromStorage(key).catch(() => {});
       return true;
     }
-    // 否则通过 verifyApiKey 查找并删除
     const record = this.findApiKeyByPlaintext(key);
     if (record) {
       this.removeFromPrefixIndex(record.key);
+      this.removeApiKeyFromStorage(record.key).catch(() => {});
       return this.apiKeys.delete(record.key);
     }
     return false;
@@ -348,10 +502,24 @@ class TenantStore {
 let tenantStore = new TenantStore();
 
 /**
+ * 初始化租户存储（可选从 Redis 加载）
+ */
+export async function initTenantStore(): Promise<void> {
+  await tenantStore.loadFromStorage();
+}
+
+/**
  * 重置租户存储（用于测试隔离）
  */
 export function resetTenantStore(): void {
   tenantStore = new TenantStore();
+}
+
+/**
+ * 将租户数据 flush 到存储
+ */
+export async function flushTenantStore(): Promise<void> {
+  await tenantStore.flushToStorage();
 }
 
 /**
@@ -414,7 +582,7 @@ export function createTenantApiKey(
   tenantId: TenantId,
   name: string,
   expiresAt?: number,
-  policy?: Pick<IApiKeyMeta, 'allowed_models' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
+  policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
 ): IApiKeyMeta | null {
   return tenantStore.createApiKey(tenantId, name, expiresAt, policy);
 }

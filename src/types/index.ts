@@ -121,7 +121,7 @@ export interface ChatCompletionChunk {
   choices: Array<{
     index: number;
     delta: ChatMessage;
-    finish_reason: 'stop' | 'length' | null;
+    finish_reason: 'stop' | 'length' | 'tool_calls' | null;
   }>;
 }
 
@@ -175,13 +175,25 @@ export interface IProviderCapabilities {
   function_call: boolean;
 }
 
+/** Provider 模型信息（由 listModels 返回） */
+export interface IModelInfo {
+  id: string;
+  owned_by?: string;
+  context_window?: number;
+  max_output_tokens?: number;
+  capabilities?: Partial<IProviderCapabilities>;
+  pricing?: { input: number; output: number };
+  created?: number;
+}
+
 /** Provider 接口 */
 export interface IProvider {
   name: string;
   capabilities: IProviderCapabilities;
   chat(request: ChatCompletionRequest, config: IProviderConfig): Promise<ChatCompletionResponse>;
-  chatStream(request: ChatCompletionRequest, config: IProviderConfig): Promise<ReadableStream>;
+  chatStream(request: ChatCompletionRequest, config: IProviderConfig, options?: { signal?: AbortSignal }): Promise<ReadableStream>;
   embed(request: EmbeddingRequest, config: IProviderConfig): Promise<EmbeddingResponse>;
+  listModels?(config: IProviderConfig): Promise<IModelInfo[]>;
 }
 
 // ===== 路由类型 =====
@@ -220,6 +232,24 @@ export interface IConditionalRoutingRule {
   };
 }
 
+// ===== 模型能力池类型 =====
+
+/** 模型池候选 */
+export interface IModelPoolCandidate {
+  provider: string;
+  model: string;
+  priority: number;
+  enabled?: boolean;
+}
+
+/** 模型能力池 */
+export interface IModelPool {
+  name: string;
+  description?: string;
+  capabilities?: string[];
+  candidates: IModelPoolCandidate[];
+}
+
 // ===== 鉴权类型 =====
 
 /** API Key 元数据 */
@@ -237,6 +267,7 @@ export interface IApiKeyMeta {
 
   // 虚拟 Key 策略（可选 — 现有 Key 不受影响）
   allowed_models?: string[];             // 允许的模型列表，空/不设 = 不限制
+  default_model?: string;                // 该 Key 的默认模型
   rate_limit_qps?: number;               // 该 Key 独立的 QPS
   rate_limit_burst?: number;             // 该 Key 独立的突发容量
   monthly_budget?: number;               // 月度预算上限（USD）
@@ -278,6 +309,88 @@ export interface IRequestLogDetail extends IRequestLog {
   cost?: number;
 }
 
+// ===== 会话日志类型 =====
+
+/** 一轮对话的完整记录 */
+export interface IConversationTurn {
+  turn_id: string;
+  session_id: string;
+  timestamp: number;
+  request: {
+    messages: ChatMessage[];
+    tools?: ChatTool[];
+    model: string;
+  };
+  response: {
+    content: string;
+    reasoning_content?: string;
+    tool_calls?: ChatToolCall[];
+    tool_results?: ChatMessage[];
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
+  };
+  metadata: {
+    provider: string;
+    duration_ms: number;
+    cost?: number;
+    status_code: number;
+    tenant_id?: TenantId;
+    error?: string;
+    /** 客户端信息（通用，不绑定特定客户端） */
+    client_info?: {
+      name: string;
+      version?: string;
+      inferred_from: 'header' | 'user-agent' | 'unknown';
+    };
+    /** 会话标识来源 */
+    session_source?: {
+      id: string;
+      provided_by_header?: string;
+    };
+    /** 原始 User-Agent 字符串 */
+    user_agent?: string;
+  };
+}
+
+/** 会话元数据 */
+export interface ISessionMeta {
+  session_id: string;
+  created_at: number;
+  updated_at: number;
+  turn_count: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  total_cost: number;
+  tenant_id?: TenantId;
+  last_model?: string;
+  /** 客户端信息 */
+  client_info?: {
+    name: string;
+    version?: string;
+    inferred_from: 'header' | 'user-agent' | 'unknown';
+  };
+  /** 原始 User-Agent 字符串 */
+  user_agent?: string;
+}
+
+/** 会话查询过滤条件 */
+export interface IConversationFilter {
+  start?: number;
+  end?: number;
+  tenant_id?: string;
+  model?: string;
+  /** 按客户端名称筛选（如 'opencode', 'cursor', 'vscode'） */
+  client?: string;
+  /** 按会话 ID 精确筛选 */
+  session_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
 // ===== 配置类型 =====
 
 /** 网关配置 */
@@ -315,8 +428,7 @@ export interface IGatewayConfig {
     latencyThresholdMs?: number;
   };
   loadBalance?: {
-    strategy: 'roundRobin' | 'random' | 'weighted' | 'leastRequest';
-    providers: Record<string, { weight: number; maxRps?: number }>;
+    strategy: 'roundRobin' | 'random';
   };
   /** 缓存配置 */
   cache?: {
@@ -336,6 +448,13 @@ export interface IGatewayConfig {
     enabled?: boolean;
     max_body_size?: number;
     sample_rate?: number;
+  };
+  /** 会话日志配置 */
+  conversation_logging?: {
+    enabled?: boolean;
+    max_memory_sessions?: number;
+    redis_ttl_days?: number;
+    max_turns_per_session?: number;
   };
   /** 会话历史配置 */
   session?: {
@@ -358,6 +477,8 @@ export interface IGatewayConfig {
    *  例: { "gpt-4o": { "deepseek": "deepseek-chat", "anthropic": "claude-3-5-sonnet-20241022" } }
    */
   model_equivalents?: Record<string, Record<string, string>>;
+  /** 模型能力池：用户请求抽象模型名，网关自动选择具体 Provider 和模型 */
+  model_pools?: Record<string, IModelPool>;
   /** 动态 Provider 配置 */
   dynamicProviders?: DynamicProviderConfig[];
 }

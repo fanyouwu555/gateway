@@ -92,13 +92,21 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     return;
   }
 
-  // 从Header或Query参数获取API Key (WebSocket使用query参数)
+  // 从Header获取API Key（WebSocket优先使用Sec-WebSocket-Protocol）
   let apiKey = c.req.header('x-api-key') || c.req.header('Authorization')?.replace('Bearer ', '');
   if (!apiKey) {
+    const wsProtocol = c.req.header('sec-websocket-protocol');
+    if (wsProtocol) {
+      const tokenProtocol = wsProtocol.split(',').map(p => p.trim()).find(p => p.startsWith('gateway-token-'));
+      if (tokenProtocol) {
+        apiKey = tokenProtocol.replace('gateway-token-', '');
+      }
+    }
+  }
+  if (!apiKey) {
     apiKey = c.req.query('api_key') || '';
-    // 非 WebSocket 请求通过 query param 传递 API key 不安全（会记录在 URL / access logs 中）
-    if (apiKey && !c.req.path.startsWith('/v1/ws')) {
-      writeLog('warn', 'API key passed via query parameter — consider using x-api-key header or Authorization header instead', {
+    if (apiKey) {
+      writeLog('warn', 'API key passed via query parameter — use Sec-WebSocket-Protocol header for WebSocket or x-api-key header for HTTP', {
         request_id: c.get('request_id') || 'unknown',
         path: c.req.path,
       });

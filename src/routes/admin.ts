@@ -4,7 +4,7 @@
  */
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { getConfig, setConfig } from '../config';
+import { getConfig, setConfig, getProviderConfig } from '../config';
 import {
   getTenantUsage,
   getUsageByTimeRange,
@@ -17,7 +17,6 @@ import {
 } from '../services/metrics';
 import { getQuotaStatus } from '../services/quota';
 import { getCacheStats, cleanCache } from '../services/cache';
-import { getSessionStats, cleanSessions } from '../services/history';
 import {
   listTemplates,
   getTemplate,
@@ -43,6 +42,8 @@ import {
   updateTenantApiKeyPolicy,
 } from '../services/tenant';
 import { getWebSocketStats, cleanWebSocketConnections } from '../middleware/websocket';
+import { getProvider, getProviderNames } from '../providers';
+import type { IModelInfo } from '../types';
 import {
   listAlertRules,
   addAlertRule,
@@ -66,6 +67,9 @@ import {
 import { requireAdmin } from '../middleware/auth';
 import { auditAdmin } from '../utils/audit';
 import { getKeyUsage } from '../services/metrics';
+import { getPricingService } from '../services/pricing';
+import { getConversationLogService } from '../services/conversation-log';
+import type { IConversationFilter } from '../types';
 
 const adminRouter = new Hono();
 adminRouter.use('*', requireAdmin);
@@ -175,17 +179,6 @@ adminRouter.get('/v1/cache', (c: Context) => {
 adminRouter.post('/v1/cache/clean', (c: Context) => {
   cleanCache();
   return c.json({ cleaned: true });
-});
-
-// === 会话管理 ===
-adminRouter.get('/v1/sessions', (c: Context) => {
-  const stats = getSessionStats();
-  return c.json(stats);
-});
-
-adminRouter.post('/v1/sessions/clean', (c: Context) => {
-  const cleaned = cleanSessions();
-  return c.json({ cleaned });
 });
 
 // === 路由状态 ===
@@ -369,9 +362,10 @@ adminRouter.post('/v1/tenants/:id/keys', async (c: Context) => {
       },
     }, 400);
   }
-  const { name, expires_at, allowed_models, rate_limit_qps, rate_limit_burst, monthly_budget, max_tokens_per_request, metadata } = parsed.data;
+  const { name, expires_at, allowed_models, default_model, rate_limit_qps, rate_limit_burst, monthly_budget, max_tokens_per_request, metadata } = parsed.data;
   const key = createTenantApiKey(tenantId, name, expires_at, {
     allowed_models,
+    default_model,
     rate_limit_qps,
     rate_limit_burst,
     monthly_budget,
@@ -728,6 +722,58 @@ adminRouter.post('/v1/alerts/evaluate', (c: Context) => {
   return c.json({ evaluated: true });
 });
 
+// === 模型定价 ===
+adminRouter.get('/v1/pricing', (c: Context) => {
+  const prices = getPricingService().getAllPrices();
+  const overrides = getPricingService().getOverrides();
+  return c.json({ prices, overrides });
+});
+
+adminRouter.put('/v1/pricing/:model', async (c: Context) => {
+  const model = c.req.param('model')!;
+  let body: { input?: number; output?: number };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({
+      error: { message: 'Invalid JSON body', type: 'invalid_request_error', code: 'parse_error' },
+    }, 400);
+  }
+  const input = body.input;
+  const output = body.output;
+  if (typeof input !== 'number' || !Number.isFinite(input) || input < 0 ||
+      typeof output !== 'number' || !Number.isFinite(output) || output < 0) {
+    return c.json({
+      error: { message: 'input and output must be non-negative numbers', type: 'invalid_request_error', code: 'validation_error' },
+    }, 400);
+  }
+  getPricingService().setPrice(model, input, output);
+  auditAdmin({
+    ruleId: 'admin.pricing_set',
+    action: 'allow',
+    metadata: { model, input, output },
+    severity: 'low',
+  });
+  return c.json({ model, input, output });
+});
+
+adminRouter.delete('/v1/pricing/:model', (c: Context) => {
+  const model = c.req.param('model')!;
+  const deleted = getPricingService().deletePrice(model);
+  if (!deleted) {
+    return c.json({
+      error: { message: `No runtime override found for model: ${model}`, type: 'invalid_request_error', code: 'not_found' },
+    }, 404);
+  }
+  auditAdmin({
+    ruleId: 'admin.pricing_delete',
+    action: 'allow',
+    metadata: { model },
+    severity: 'low',
+  });
+  return c.json({ deleted: true, model });
+});
+
 // === 请求日志 ===
 adminRouter.get('/v1/request-logs', (c: Context) => {
   const store = getRequestLogStore();
@@ -748,6 +794,147 @@ adminRouter.get('/v1/request-logs', (c: Context) => {
     offset: offset ? parseInt(offset, 10) : 0,
   });
   return c.json({ logs, total: store.getTotalCount() });
+});
+
+// ===== 会话日志管理 API =====
+
+/** GET /v1/conversations — 列出会话 */
+adminRouter.get('/v1/conversations', async (c: Context) => {
+  const query = c.req.query();
+  const parseNum = (v: string | undefined): number | undefined => {
+    if (!v) return undefined;
+    const n = parseInt(v, 10);
+    return Number.isNaN(n) ? undefined : n;
+  };
+
+  const filter: IConversationFilter = {
+    start: parseNum(query.start),
+    end: parseNum(query.end),
+    tenant_id: query.tenant_id || undefined,
+    model: query.model || undefined,
+    client: query.client || undefined,
+    session_id: query.session_id || undefined,
+    limit: parseNum(query.limit),
+    offset: parseNum(query.offset),
+  };
+
+  const service = getConversationLogService();
+  const result = await service.listSessions(filter);
+
+  return c.json({
+    sessions: result.sessions,
+    total: result.total,
+    limit: filter.limit ?? 50,
+    offset: filter.offset ?? 0,
+  }, 200);
+});
+
+/** GET /v1/conversations/:session_id — 获取会话完整轮次 */
+adminRouter.get('/v1/conversations/:session_id', async (c: Context) => {
+  const sessionId = c.req.param('session_id')!;
+  const service = getConversationLogService();
+
+  const [meta, turns] = await Promise.all([
+    service.getSessionMeta(sessionId),
+    service.getSessionTurns(sessionId),
+  ]);
+
+  if (!meta) {
+    return c.json({ error: { message: 'Session not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+
+  return c.json({ session: meta, turns }, 200);
+});
+
+/** GET /v1/conversations/:session_id/stats — 获取会话统计 */
+adminRouter.get('/v1/conversations/:session_id/stats', async (c: Context) => {
+  const sessionId = c.req.param('session_id')!;
+  const service = getConversationLogService();
+
+  const meta = await service.getSessionMeta(sessionId);
+  if (!meta) {
+    return c.json({ error: { message: 'Session not found', type: 'not_found' } }, 404);
+  }
+
+  return c.json(meta, 200);
+});
+
+/** DELETE /v1/conversations/:session_id — 删除会话 */
+adminRouter.delete('/v1/conversations/:session_id', async (c: Context) => {
+  const sessionId = c.req.param('session_id')!;
+  const service = getConversationLogService();
+
+  const meta = await service.getSessionMeta(sessionId);
+  if (!meta) {
+    return c.json({ error: { message: 'Session not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+
+  await service.deleteSession(sessionId);
+  return c.json({ success: true }, 200);
+});
+
+// ===== 模型发现 API =====
+
+const discoverCache = new Map<string, { data: IModelInfo[]; expiresAt: number }>();
+const DISCOVER_CACHE_TTL = 5 * 60 * 1000;
+
+adminRouter.get('/v1/admin/discover-models', async (c: Context) => {
+  const providerName = c.req.query('provider');
+
+  if (providerName) {
+    const cached = discoverCache.get(providerName);
+    if (cached && cached.expiresAt > Date.now()) {
+      return c.json({ provider: providerName, models: cached.data, cached: true });
+    }
+
+    const provider = getProvider(providerName);
+    if (!provider) {
+      return c.json({ error: { message: `Provider "${providerName}" not registered`, type: 'not_found', code: 'provider_not_found' } }, 404);
+    }
+    if (!provider.listModels) {
+      return c.json({ error: { message: `Provider "${providerName}" does not support model discovery`, type: 'not_supported', code: 'discovery_not_supported' } }, 501);
+    }
+
+    const providerConfig = getProviderConfig(providerName) || { provider: providerName, base_url: '' };
+
+    try {
+      const models = await provider.listModels(providerConfig);
+      discoverCache.set(providerName, { data: models, expiresAt: Date.now() + DISCOVER_CACHE_TTL });
+      return c.json({ provider: providerName, models });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      return c.json({ error: { message, type: 'provider_error', code: 'discovery_failed' } }, 502);
+    }
+  }
+
+  const results: Record<string, { models?: IModelInfo[]; error?: string; cached?: boolean }> = {};
+  const config = getConfig();
+
+  for (const name of getProviderNames()) {
+    const cached = discoverCache.get(name);
+    if (cached && cached.expiresAt > Date.now()) {
+      results[name] = { models: cached.data, cached: true };
+      continue;
+    }
+
+    const provider = getProvider(name);
+    if (!provider?.listModels) {
+      results[name] = { error: 'Discovery not supported' };
+      continue;
+    }
+
+    const providerConfig = config.providers[name] || { provider: name, base_url: '' };
+
+    try {
+      const models = await provider.listModels(providerConfig);
+      discoverCache.set(name, { data: models, expiresAt: Date.now() + DISCOVER_CACHE_TTL });
+      results[name] = { models };
+    } catch (err) {
+      results[name] = { error: err instanceof Error ? err.message : 'Unknown error' };
+    }
+  }
+
+  return c.json(results);
 });
 
 export default adminRouter;

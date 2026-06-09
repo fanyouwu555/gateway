@@ -50,7 +50,7 @@ const chatToolChoiceSchema = z.union([
 // ===== Chat Completion Request =====
 
 export const chatCompletionRequestSchema = z.object({
-  model: z.string().min(1, 'Missing required field: model'),
+  model: z.string().optional(),
   messages: z.array(chatMessageSchema).min(1, 'messages must contain at least 1 message').optional(),
   template_id: z.string().optional(),
   template_variables: z.record(z.string()).optional(),
@@ -130,6 +130,7 @@ export const createApiKeySchema = z.object({
   name: z.string().min(1, 'API key name is required'),
   expires_at: z.number().int().positive().optional(),
   allowed_models: z.array(z.string()).optional(),
+  default_model: z.string().optional(),
   rate_limit_qps: z.number().positive().optional(),
   rate_limit_burst: z.number().positive().optional(),
   monthly_budget: z.number().positive().optional(),
@@ -141,6 +142,7 @@ export const updateKeyPolicySchema = z.object({
   name: z.string().min(1).optional(),
   expires_at: z.number().int().positive().optional(),
   allowed_models: z.array(z.string()).optional(),
+  default_model: z.string().optional(),
   rate_limit_qps: z.number().positive().optional(),
   rate_limit_burst: z.number().positive().optional(),
   monthly_budget: z.number().positive().optional(),

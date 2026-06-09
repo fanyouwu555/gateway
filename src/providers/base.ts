@@ -6,6 +6,7 @@ import type {
   IProvider,
   IProviderConfig,
   IProviderCapabilities,
+  IModelInfo,
   ChatCompletionRequest,
   ChatCompletionResponse,
   EmbeddingRequest,
@@ -25,13 +26,18 @@ export abstract class BaseProvider implements IProvider {
 
   abstract chatStream(
     request: ChatCompletionRequest,
-    config: IProviderConfig
+    config: IProviderConfig,
+    options?: { signal?: AbortSignal }
   ): Promise<ReadableStream>;
 
   abstract embed(
     request: EmbeddingRequest,
     config: IProviderConfig
   ): Promise<EmbeddingResponse>;
+
+  async listModels(_config: IProviderConfig): Promise<IModelInfo[]> {
+    return [];
+  }
 
   /**
    * 通用fetch方法
@@ -122,8 +128,9 @@ export abstract class BaseProvider implements IProvider {
           try {
             const parsed = JSON.parse(data);
             const chunk = {
+              ...parsed,
               id: parsed.id || '',
-              object: 'chat.completion.chunk',
+              object: parsed.object || 'chat.completion.chunk',
               created: parsed.created || Date.now(),
               model: parsed.model || '',
               choices: parsed.choices || [],

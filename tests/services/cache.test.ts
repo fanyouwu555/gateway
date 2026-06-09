@@ -8,10 +8,15 @@ import {
   deleteCache,
   getCacheStats,
   createCacheStore,
+  resetCache,
 } from '../../src/services/cache';
 import type { ChatCompletionRequest } from '../../src/types';
 
 describe('Cache Service', () => {
+  beforeEach(() => {
+    resetCache();
+  });
+
   describe('generateCacheKey', () => {
     it('should generate consistent keys for same request', () => {
       const request: ChatCompletionRequest = {
@@ -89,10 +94,35 @@ describe('Cache Service', () => {
   });
 
   describe('getCacheStats', () => {
-    it('should return cache statistics', () => {
+    it('should return cache statistics with hits/misses and real hit rate', () => {
       const stats = getCacheStats();
       expect(stats).toHaveProperty('size');
       expect(stats).toHaveProperty('hit_rate');
+      expect(stats).toHaveProperty('hits');
+      expect(stats).toHaveProperty('misses');
+    });
+
+    it('should calculate real hit rate after cache hits and misses', async () => {
+      const request1: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Hit me' }],
+      };
+      const request2: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Miss me' }],
+      };
+
+      await setCache(request1, '{"result": "cached"}');
+
+      // 1 hit + 1 miss
+      await getCache(request1);
+      await getCache(request2);
+
+      const stats = getCacheStats();
+      expect(stats.hits).toBe(1);
+      expect(stats.misses).toBe(1);
+      expect(stats.hit_rate).toBe(0.5);
+      expect(stats.size).toBe(1);
     });
   });
 

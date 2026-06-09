@@ -46,6 +46,8 @@ jest.mock('../../src/config', () => ({
     return configs[name];
   },
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 import type { IProviderConfig } from '../../src/types';
@@ -60,36 +62,78 @@ describe('FailoverManager', () => {
 
   describe('getAvailableToken', () => {
     it('should return token when failover is disabled', () => {
-      // 通过 config mock 禁用 failover
       const result = failoverManager.getAvailableToken('openai');
       expect(result).not.toBeNull();
       expect(result?.apiKey).toBe('sk-test-key-12345678');
     });
 
     it('should return null when token is unhealthy', () => {
-      // 模拟 token 变不健康
       for (let i = 0; i < 2; i++) {
         failoverManager.recordFailure('openai', openaiKey);
       }
 
-      // 现在应该返回 null，因为 token 不健康
       const result = failoverManager.getAvailableToken('openai');
-      // 由于我们的实现，unhealthy 时返回 null
       expect(result).toBeNull();
     });
 
     it('should return token after recovery', () => {
-      // 先失败
       failoverManager.recordFailure('openai', openaiKey);
       failoverManager.recordFailure('openai', openaiKey);
 
-      // 再成功
       failoverManager.recordSuccess('openai', openaiKey);
 
-      // 应该恢复健康
       const status = failoverManager.getHealthStatus();
       const keys = Object.keys(status);
       expect(keys.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('getHealthyKeys', () => {
+    it('should return all keys when failover is enabled but no failures recorded', () => {
+      const keys = ['sk-key-a-12345678', 'sk-key-b-12345678'];
+      const result = failoverManager.getHealthyKeys('openai', keys);
+      expect(result).toEqual(keys);
+    });
+
+    it('should filter out unhealthy keys', () => {
+      const keyA = 'sk-key-a-12345678';
+      const keyB = 'sk-key-b-12345678';
+      const keys = [keyA, keyB];
+
+      for (let i = 0; i < 2; i++) {
+        failoverManager.recordFailure('openai', keyA);
+      }
+
+      const result = failoverManager.getHealthyKeys('openai', keys);
+      expect(result).toEqual([keyB]);
+    });
+
+    it('should return all keys as fallback when all are unhealthy', () => {
+      const keyA = 'sk-key-a-12345678';
+      const keyB = 'sk-key-b-12345678';
+      const keys = [keyA, keyB];
+
+      for (let i = 0; i < 2; i++) {
+        failoverManager.recordFailure('openai', keyA);
+        failoverManager.recordFailure('openai', keyB);
+      }
+
+      const result = failoverManager.getHealthyKeys('openai', keys);
+      expect(result).toEqual(keys);
+    });
+
+    it('should preserve original key order', () => {
+      const keyA = 'sk-key-a-12345678';
+      const keyB = 'sk-key-b-12345678';
+      const keyC = 'sk-key-c-12345678';
+      const keys = [keyA, keyB, keyC];
+
+      for (let i = 0; i < 2; i++) {
+        failoverManager.recordFailure('openai', keyB);
+      }
+
+      const result = failoverManager.getHealthyKeys('openai', keys);
+      expect(result).toEqual([keyA, keyC]);
     });
   });
 

@@ -3,7 +3,6 @@ import type { IVectorStore } from '../stores/vector-interface';
 import { MemoryVectorStore } from '../stores/vector-memory';
 import { getEmbedding } from './embedding';
 import { writeLog } from '../utils/logger';
-import { recordCacheHit } from '../middleware/metrics';
 
 interface SemanticCacheOptions {
   vectorStore?: IVectorStore;
@@ -33,7 +32,11 @@ export class SemanticCacheService {
     this.maxMessages = options.maxMessages ?? 3;
   }
 
-  async get(request: ChatCompletionRequest, tenantId?: string): Promise<string | null> {
+  isInitialized(): boolean {
+    return this.enabled;
+  }
+
+  async findSimilar(request: ChatCompletionRequest, tenantId?: string): Promise<string | null> {
     if (!this.enabled) return null;
     if (request.stream) return null;
     if (request.messages.length > this.maxMessages) return null;
@@ -49,7 +52,6 @@ export class SemanticCacheService {
       writeLog('debug', 'Vector semantic cache hit', { score: results[0].score, namespace });
       const response = results[0].metadata?.['response'] as string | undefined;
       if (response) {
-        recordCacheHit('semantic');
         return response;
       }
     }
@@ -57,7 +59,7 @@ export class SemanticCacheService {
     return null;
   }
 
-  async set(request: ChatCompletionRequest, response: string, tenantId?: string): Promise<void> {
+  async storeEmbedding(request: ChatCompletionRequest, response: string, tenantId?: string): Promise<void> {
     if (!this.enabled) return;
     if (request.stream) return;
     if (request.messages.length > this.maxMessages) return;

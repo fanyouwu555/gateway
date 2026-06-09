@@ -2,17 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, Table, Tag, Button, Space, Switch, Modal, Form, Input, InputNumber, Select, message } from 'antd'
 import { ReloadOutlined, PlusOutlined, DeleteOutlined, BellOutlined } from '@ant-design/icons'
 import { getAlerts, createAlert, deleteAlert, toggleAlert } from '@/services/api'
-
-interface AlertRuleItem {
-  id: string
-  name: string
-  metric: 'error_rate' | 'avg_latency_ms' | 'total_requests'
-  threshold: number
-  condition: 'gt' | 'lt'
-  webhook_url: string
-  enabled: boolean
-  cooldown_seconds: number
-}
+import type { AlertRuleItem } from '@/types'
 
 const metricLabels: Record<string, string> = {
   error_rate: '错误率',
@@ -34,7 +24,7 @@ const Alerts: React.FC = () => {
   const fetchRules = async () => {
     setLoading(true)
     try {
-      const data = await getAlerts() as unknown as { rules?: AlertRuleItem[] }
+      const data = await getAlerts()
       setRules(data.rules || [])
     } catch {
       message.error('获取告警规则失败')

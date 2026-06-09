@@ -12,6 +12,7 @@ const mockFailover: any = {
   recordSuccess: jest.fn(),
   recordFailure: jest.fn(),
   getAvailableToken: jest.fn().mockReturnValue(null),
+  getHealthyKeys: jest.fn().mockImplementation((_provider: string, keys: string[]) => keys),
   isHealthy: jest.fn().mockReturnValue(false),
 };
 

@@ -701,9 +701,7 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     // 强制流式
     request.stream = true;
 
-    // 调用 Provider 流式 API
-    // TODO: 将 abortController.signal 传递给 provider 实现流式取消
-    const stream = await chatCompleteStream(providerName, request);
+    const stream = await chatCompleteStream(providerName, request, { signal: abortController.signal });
 
     // 流式转发到 WebSocket
     const reader = stream.getReader();
@@ -773,32 +771,32 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
       reader.releaseLock();
       wsManager.setAbortController(connectionId, null);
 
-      // 客户端已断连，跳过费用记录
-      if (wsClientDisconnected) return;
+      // 客户端未断连时，记录费用
+      if (!wsClientDisconnected) {
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let totalTokens = 0;
 
-      let promptTokens = 0;
-      let completionTokens = 0;
-      let totalTokens = 0;
+        if (usage) {
+          // Provider 返回了 usage，优先使用
+          promptTokens = usage.prompt_tokens || 0;
+          completionTokens = usage.completion_tokens || 0;
+          totalTokens = usage.total_tokens || promptTokens + completionTokens;
+        } else {
+          // Provider 未返回 usage，使用本地计数
+          promptTokens = await countPromptTokens(processedReq.messages as ChatMessage[], model);
+          completionTokens = await countCompletionTokens(accumulatedContent, model);
+          totalTokens = promptTokens + completionTokens;
+        }
 
-      if (usage) {
-        // Provider 返回了 usage，优先使用
-        promptTokens = usage.prompt_tokens || 0;
-        completionTokens = usage.completion_tokens || 0;
-        totalTokens = usage.total_tokens || promptTokens + completionTokens;
-      } else {
-        // Provider 未返回 usage，使用本地计数
-        promptTokens = await countPromptTokens(processedReq.messages as ChatMessage[], model);
-        completionTokens = await countCompletionTokens(accumulatedContent, model);
-        totalTokens = promptTokens + completionTokens;
+        const config = getConfig();
+        const pricing = config.pricing?.[model];
+        let cost = 0;
+        if (pricing) {
+          cost = (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000;
+        }
+        recordUsage(conn.tenant_id, totalTokens, cost);
       }
-
-      const config = getConfig();
-      const pricing = config.pricing?.[model];
-      let cost = 0;
-      if (pricing) {
-        cost = (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000;
-      }
-      recordUsage(conn.tenant_id, totalTokens, cost);
     }
 
   } catch (e) {

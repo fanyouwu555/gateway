@@ -49,8 +49,7 @@ const Settings: React.FC = () => {
   const fetchConfig = async () => {
     setLoading(true)
     try {
-      const raw = await fetchGatewayConfig()
-      const data = raw as unknown as ConfigData
+      const data = await fetchGatewayConfig()
       if (data && data.port) {
         form.setFieldsValue({
           port: data.port,

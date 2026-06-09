@@ -19,7 +19,6 @@ import { GatewayError } from './middleware/error';
 import { writeLog } from './utils/logger';
 import { getProviderNames } from './providers';
 import { getCacheStats } from './services/cache';
-import { getSessionStats } from './services/history';
 import { getConfig } from './config';
 import { failoverManager } from './services/failover';
 
@@ -39,7 +38,11 @@ export function createApp(): Hono {
   app.use('*', cors({
     origin: corsOrigin || '*',
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
+    allowHeaders: [
+      'Content-Type', 'Authorization', 'x-api-key',
+      'x-session-id', 'x-session-affinity',
+      'x-client-name', 'x-client-version',
+    ],
   }));
   app.use('*', loggerMiddleware);
   app.use('*', metricsMiddleware);
@@ -56,7 +59,6 @@ export function createApp(): Hono {
   app.get('/health', (c) => {
     const providers = getProviderNames();
     const cacheStats = getCacheStats();
-    const sessionStats = getSessionStats();
     const config = getConfig();
     const providerHealth = failoverManager.getProviderHealthStatus();
 
@@ -87,7 +89,6 @@ export function createApp(): Hono {
           };
         }),
         cache: { size: cacheStats.size, hit_rate: cacheStats.hit_rate },
-        sessions: { total: sessionStats.total_sessions },
       },
     });
   });

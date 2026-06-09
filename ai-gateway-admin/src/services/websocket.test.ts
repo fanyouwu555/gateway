@@ -24,11 +24,12 @@ describe('WebSocketService', () => {
     vi.useRealTimers()
   })
 
-  it('connect builds correct URL with tenantId and api_key', () => {
+  it('connect builds correct URL with tenantId and passes API key via protocol', () => {
     wsService.connect('tenant-1')
     expect(MockWebSocket.instances.length).toBe(1)
     const ws = MockWebSocket.instances[0]
-    expect(ws.url).toBe('ws://localhost:3000/v1/ws/tenant-1?api_key=admin-dashboard-key-456')
+    expect(ws.url).toBe('ws://localhost:3000/v1/ws?tenant_id=tenant-1')
+    expect(ws.protocols).toEqual(['gateway-token-admin-dashboard-key-456'])
   })
 
   it('calls onOpen when connection opens', () => {

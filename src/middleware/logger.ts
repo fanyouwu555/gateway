@@ -70,7 +70,7 @@ export async function loggerMiddleware(c: Context, next: Next): Promise<void> {
       recordMetric(
         requestId,
         tenantId,
-        provider || 'unknown',
+        provider || 'gateway',
         model || 'unknown',
         duration,
         status,

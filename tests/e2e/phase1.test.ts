@@ -93,6 +93,8 @@ jest.mock('../../src/config', () => ({
     fallback: 'deepseek',
   }),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 const mockOpenAI = {
@@ -172,13 +174,14 @@ describe('Phase 1 End-to-End Tests', () => {
       expect(mockOpenAI.chat).toHaveBeenCalledTimes(1);
     });
 
-    it('should return 400 for missing model', async () => {
+    it('should accept request without model (uses default model fallback)', async () => {
       const res = await app.request('/v1/chat/completions', {
         method: 'POST',
         headers: userHeaders,
         body: JSON.stringify({ messages: [{ role: 'user', content: 'Hi' }] }),
       });
-      expect(res.status).toBe(400);
+      // model is now optional — falls back to key default_model or first routing model
+      expect(res.status).toBe(200);
     });
 
     it('should return 401 without API key', async () => {

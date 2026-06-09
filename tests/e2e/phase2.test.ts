@@ -87,6 +87,8 @@ jest.mock('../../src/config', () => ({
     return map[model];
   },
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 const mockOpenAI = {

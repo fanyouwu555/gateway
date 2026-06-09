@@ -12,16 +12,16 @@ import type { WebSocket } from 'ws';
 import { createApp } from './app';
 import { getConfig } from './config';
 import { initProviders } from './providers/registry';
-import { initPricing } from './services/metrics';
 import { initCache } from './services/cache';
 import { initSemanticCache } from './services/semantic-cache';
-import { initSessionStore } from './services/history';
 import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
 import { createPiiPlugin, createPiiBlockGuardrail, createPromptInjectionGuardrail } from './plugins/guardrails';
 import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
+import { initTenantStore, flushTenantStore } from './services/tenant';
+import { initMetricsStore } from './services/metrics';
 import { startAlertEngine } from './services/alert';
 import { initTracing } from './utils/tracing';
 
@@ -41,8 +41,13 @@ async function startServer() {
   initTracing();
 
   // 注册内置插件
-  const sensitiveFilter = createSensitiveWordFilterPlugin(['xxx', 'test-bad-word']);
-  registerPlugin(sensitiveFilter);
+  const sensitiveWords = process.env.SENSITIVE_WORDS
+    ? process.env.SENSITIVE_WORDS.split(',').filter(Boolean)
+    : [];
+  if (sensitiveWords.length > 0) {
+    const sensitiveFilter = createSensitiveWordFilterPlugin(sensitiveWords);
+    registerPlugin(sensitiveFilter);
+  }
 
   // 注册 PII 脱敏插件（默认 mask 模式）
   const piiPlugin = createPiiPlugin();
@@ -61,17 +66,11 @@ async function startServer() {
   // 获取配置
   const config = getConfig();
 
-  // 初始化 Token 定价（从配置文件读取）
-  initPricing(config.pricing);
-
   // 初始化缓存配置
   initCache(config.cache);
 
   // 初始化语义缓存
   initSemanticCache(config.semantic_cache);
-
-  // 初始化会话历史配置
-  initSessionStore(config.session);
 
   // 初始化限流清理间隔
   initRateLimitCleanInterval(config.rate_limit_clean_interval);
@@ -83,11 +82,16 @@ async function startServer() {
   // 初始化配额存储（从 Redis 加载历史数据）
   await initQuotaStore();
 
+  // 初始化租户存储（从 Redis 加载历史数据）
+  await initTenantStore();
+
+  // 初始化指标存储（从 Redis 加载历史数据）
+  await initMetricsStore();
+
   // 定期 flush 配额数据到 Redis（每 60 秒）
   setInterval(() => {
-    flushQuotaStore().catch(() => {
-      // 忽略 flush 失败
-    });
+    flushQuotaStore().catch(() => {});
+    flushTenantStore().catch(() => {});
   }, 60000).unref();
 
   const server = createServer();

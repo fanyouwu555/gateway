@@ -6,6 +6,7 @@ import { BaseProvider } from './base';
 import type {
   IProviderCapabilities,
   IProviderConfig,
+  IModelInfo,
   ChatCompletionRequest,
   ChatCompletionResponse,
   EmbeddingRequest,
@@ -52,6 +53,13 @@ export class DynamicProvider extends BaseProvider {
       user: request.user,
     };
 
+    if (request.tools && request.tools.length > 0) {
+      (body as Record<string, unknown>).tools = request.tools;
+    }
+    if (request.tool_choice) {
+      (body as Record<string, unknown>).tool_choice = request.tool_choice;
+    }
+
     return this.fetch<ChatCompletionResponse>(url, {
       method: 'POST',
       headers: this.buildDynamicHeaders(config),
@@ -61,7 +69,8 @@ export class DynamicProvider extends BaseProvider {
 
   async chatStream(
     request: ChatCompletionRequest,
-    config: IProviderConfig
+    config: IProviderConfig,
+    options?: { signal?: AbortSignal }
   ): Promise<ReadableStream> {
     const endpoint = this.config.endpoints.chat_stream || this.config.endpoints.chat || '/chat/completions';
     const url = `${config.base_url}${endpoint}`;
@@ -79,10 +88,18 @@ export class DynamicProvider extends BaseProvider {
       user: request.user,
     };
 
+    if (request.tools && request.tools.length > 0) {
+      (body as Record<string, unknown>).tools = request.tools;
+    }
+    if (request.tool_choice) {
+      (body as Record<string, unknown>).tool_choice = request.tool_choice;
+    }
+
     const response = await fetchWithAgent(url, {
       method: 'POST',
       headers: this.buildDynamicHeaders(config),
       body: JSON.stringify(body),
+      signal: options?.signal,
     });
 
     if (!response.ok) {
@@ -122,7 +139,6 @@ export class DynamicProvider extends BaseProvider {
       'Content-Type': 'application/json',
     };
 
-    // 自定义认证
     if (config.api_key) {
       const authHeader = this.config.auth_header || 'Authorization';
       const prefix = this.config.auth_prefix || 'Bearer';
@@ -134,5 +150,21 @@ export class DynamicProvider extends BaseProvider {
     }
 
     return headers;
+  }
+
+  async listModels(config: IProviderConfig): Promise<IModelInfo[]> {
+    const endpoint = this.config.endpoints.models;
+    if (!endpoint) return [];
+    const url = `${config.base_url}${endpoint}`;
+    const response = await this.fetch<{ data: Array<{ id: string; owned_by?: string; created?: number }> }>(
+      url,
+      { method: 'GET', headers: this.buildDynamicHeaders(config) },
+      config.timeout
+    );
+    return response.data.map((m) => ({
+      id: m.id,
+      owned_by: m.owned_by,
+      created: m.created,
+    }));
   }
 }

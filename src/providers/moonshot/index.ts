@@ -11,7 +11,7 @@ export const moonshotProvider = new OpenAICompatibleProvider({
     chat: true,
     embed: false,
     streaming: true,
-    vision: false,
+    vision: true,
     function_call: true,
   },
   fields: {

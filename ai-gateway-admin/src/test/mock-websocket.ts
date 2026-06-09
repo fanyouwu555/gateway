@@ -6,6 +6,7 @@ export class MockWebSocket {
   static CLOSED = 3
 
   url: string
+  protocols: string | string[] = []
   readyState = MockWebSocket.CONNECTING
   onopen: ((event: Event) => void) | null = null
   onclose: ((event: CloseEvent) => void) | null = null
@@ -14,8 +15,9 @@ export class MockWebSocket {
   sentMessages: unknown[] = []
   private listeners: Map<string, Set<(event: unknown) => void>> = new Map()
 
-  constructor(url: string | URL) {
+  constructor(url: string | URL, protocols?: string | string[]) {
     this.url = String(url)
+    this.protocols = protocols ?? []
     MockWebSocket.instances.push(this)
   }
 

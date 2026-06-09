@@ -28,10 +28,25 @@ jest.mock('../../src/config', () => ({
   getProviderForModel: jest.fn(() => 'openai'),
   getRoutingStrategy: jest.fn(() => ({ name: 'default', rules: [{ model: 'gpt-4o', provider: 'openai' }] })),
   setConfig: jest.fn(),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 jest.mock('../../src/providers', () => ({
   getProviderNames: jest.fn(() => ['openai']),
+  getProvider: jest.fn((name: string) => {
+    if (name === 'openai') {
+      return {
+        name: 'openai',
+        capabilities: { chat: true, embed: true, streaming: true, vision: true, function_call: true },
+        listModels: jest.fn(() => Promise.resolve([
+          { id: 'gpt-4o', owned_by: 'openai', context_window: 128000 },
+          { id: 'gpt-4o-mini', owned_by: 'openai', context_window: 128000 },
+        ])),
+      };
+    }
+    return undefined;
+  }),
   chatComplete: jest.fn(),
   chatCompleteStream: jest.fn(),
 }));
@@ -39,11 +54,6 @@ jest.mock('../../src/providers', () => ({
 jest.mock('../../src/services/cache', () => ({
   getCacheStats: jest.fn(() => ({ size: 0, hit_rate: 0 })),
   cleanCache: jest.fn(() => 0),
-}));
-
-jest.mock('../../src/services/history', () => ({
-  getSessionStats: jest.fn(() => ({ total_sessions: 0 })),
-  cleanSessions: jest.fn(() => 0),
 }));
 
 jest.mock('../../src/services/metrics', () => ({
@@ -222,18 +232,6 @@ describe('Admin API Routes', () => {
       expect(res.status).toBe(200);
       const body = await res.json() as { cleaned: boolean };
       expect(body.cleaned).toBe(true);
-    });
-  });
-
-  describe('Session management', () => {
-    it('GET /v1/sessions should return session stats', async () => {
-      const res = await app.request('/v1/sessions', { headers: adminAuth });
-      expect(res.status).toBe(200);
-    });
-
-    it('POST /v1/sessions/clean should clean sessions', async () => {
-      const res = await app.request('/v1/sessions/clean', { method: 'POST', headers: adminAuth });
-      expect(res.status).toBe(200);
     });
   });
 
@@ -889,6 +887,36 @@ describe('Admin API Routes', () => {
         headers: { Authorization: 'Bearer regular-key' },
       });
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe('Model Discovery', () => {
+    it('GET /v1/admin/discover-models should return models for all providers', async () => {
+      const res = await app.request('/v1/admin/discover-models', { headers: adminAuth });
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, { models?: Array<{ id: string }>; error?: string }>;
+      expect(body.openai).toBeDefined();
+      expect(body.openai.models).toBeDefined();
+      expect(body.openai.models!.length).toBeGreaterThan(0);
+      expect(body.openai.models!.some((m) => m.id === 'gpt-4o')).toBe(true);
+    });
+
+    it('GET /v1/admin/discover-models?provider=openai should return single provider', async () => {
+      const res = await app.request('/v1/admin/discover-models?provider=openai', { headers: adminAuth });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { provider: string; models: Array<{ id: string }> };
+      expect(body.provider).toBe('openai');
+      expect(body.models.length).toBeGreaterThan(0);
+    });
+
+    it('GET /v1/admin/discover-models?provider=unknown should return 404', async () => {
+      const res = await app.request('/v1/admin/discover-models?provider=nonexistent', { headers: adminAuth });
+      expect(res.status).toBe(404);
+    });
+
+    it('should require admin auth', async () => {
+      const res = await app.request('/v1/admin/discover-models');
+      expect(res.status).toBe(401);
     });
   });
 });

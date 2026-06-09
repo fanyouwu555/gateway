@@ -20,12 +20,16 @@ jest.mock('../src/config', () => ({
       {
         name: 'default',
         rules: [
-          { model: 'gpt-4o', provider: 'openai' },
-          { model: 'gpt-4o-mini', provider: 'openai' },
-          { model: 'deepseek-chat', provider: 'deepseek' },
+          { model: 'gpt-4o', provider: 'openai', max_tokens: 128000 },
+          { model: 'gpt-4o-mini', provider: 'openai', max_tokens: 128000 },
+          { model: 'deepseek-chat', provider: 'deepseek', max_tokens: 64000 },
         ],
       },
     ],
+    pricing: {
+      'gpt-4o': { input: 2.5, output: 10.0 },
+      'gpt-4o-mini': { input: 0.15, output: 0.6 },
+    },
     auth: { enabled: false, api_keys: [] },
     rate_limit: { enabled: false, qps: 1000, burst: 1000 },
     cost_control: { monthly_budget: 100, warn_threshold: 0.8 },
@@ -41,6 +45,8 @@ jest.mock('../src/config', () => ({
       'gpt-4o': 'openai',
       'gpt-4o-mini': 'openai',
       'deepseek-chat': 'deepseek',
+      'text-embedding-3-small': 'openai',
+      'text-embedding-3-large': 'openai',
     };
     return map[model];
   }),
@@ -53,6 +59,8 @@ jest.mock('../src/config', () => ({
     ],
   })),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 // Mock providers
@@ -117,18 +125,41 @@ describe('Routes Integration', () => {
       const ids = body.data.map((m) => m.id);
       expect(new Set(ids).size).toBe(ids.length);
     });
+
+    it('should not include default_model in response when key has no default_model', async () => {
+      const res = await app.request('/v1/models');
+      const body = await res.json() as { object: string; data: Array<{ id: string }>; default_model?: string };
+      expect(body.default_model).toBeUndefined();
+    });
+
+    it('should include context_window from routing rule max_tokens', async () => {
+      const res = await app.request('/v1/models');
+      const body = await res.json() as { data: Array<{ id: string; context_window?: number }> };
+      const gpt4o = body.data.find((m) => m.id === 'gpt-4o');
+      expect(gpt4o?.context_window).toBe(128000);
+      const deepseek = body.data.find((m) => m.id === 'deepseek-chat');
+      expect(deepseek?.context_window).toBe(64000);
+    });
+
+    it('should include pricing from config when available', async () => {
+      const res = await app.request('/v1/models');
+      const body = await res.json() as { data: Array<{ id: string; pricing?: { input: number; output: number } }> };
+      const gpt4o = body.data.find((m) => m.id === 'gpt-4o');
+      expect(gpt4o?.pricing).toEqual({ input: 2.5, output: 10.0 });
+      const deepseek = body.data.find((m) => m.id === 'deepseek-chat');
+      expect(deepseek?.pricing).toBeUndefined();
+    });
   });
 
   describe('POST /v1/chat/completions', () => {
-    it('should return 400 when model is missing', async () => {
+    it('should accept request without model (model is now optional, uses default model fallback)', async () => {
       const res = await app.request('/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: [{ role: 'user', content: 'Hi' }] }),
       });
-      expect(res.status).toBe(400);
-      const body = await res.json() as { error: { code: string } };
-      expect(body.error.code).toBe('invalid_request');
+      // model is now optional — falls back to key default_model or first routing model
+      expect(res.status).toBe(200);
     });
 
     it('should return 400 when messages is missing', async () => {

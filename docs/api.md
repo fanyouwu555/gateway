@@ -248,7 +248,20 @@ data: [DONE]
 
 ### GET /v1/models
 
-获取可用模型列表。
+获取可用模型列表。模型列表来自路由配置（`routing.rules`），并按当前 API Key 的 `allowed_models` 白名单过滤。
+
+**响应字段说明：**
+
+| 字段 | 类型 | 描述 |
+| --- | --- | --- |
+| `id` | string | 模型标识符 |
+| `object` | string | 固定为 `"model"` |
+| `owned_by` | string | 提供该模型的 Provider 名称 |
+| `context_window` | number? | 上下文窗口大小（tokens），来自路由规则的 `max_tokens` |
+| `pricing` | object? | 定价信息（每 1M tokens 美元），来自 `pricing` 配置 |
+| `pricing.input` | number | 输入价格 |
+| `pricing.output` | number | 输出价格 |
+| `default_model` | string? | 当前 Key 的默认模型（仅当 Key 设置了 `default_model` 时出现） |
 
 **响应示例：**
 
@@ -257,16 +270,21 @@ data: [DONE]
   "object": "list",
   "data": [
     {
-      "id": "gpt-4o",
+      "id": "ark-code-latest",
       "object": "model",
-      "owned_by": "openai"
+      "owned_by": "volcano",
+      "context_window": 128000,
+      "pricing": { "input": 0.5, "output": 2.0 }
     },
     {
-      "id": "claude-3-5-sonnet-20241022",
+      "id": "kimi-for-coding",
       "object": "model",
-      "owned_by": "anthropic"
+      "owned_by": "kimi-code",
+      "context_window": 128000,
+      "pricing": { "input": 0.5, "output": 2.0 }
     }
-  ]
+  ],
+  "default_model": "ark-code-latest"
 }
 ```
 
@@ -276,11 +294,33 @@ data: [DONE]
 
 所有管理 API 需要管理员 API Key。
 
+### 认证验证
+
+#### GET /v1/auth/verify
+
+验证当前 API Key 是否有效，返回 Key 信息。
+
+**响应示例：**
+
+```json
+{
+  "valid": true,
+  "is_admin": false,
+  "tenant_id": "default"
+}
+```
+
 ### 用量统计
 
 #### GET /v1/usage
 
 获取租户用量统计。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `tenant_id` | string | 租户 ID，默认 `default` |
 
 **响应示例：**
 
@@ -295,6 +335,85 @@ data: [DONE]
   }
 }
 ```
+
+#### GET /v1/usage/range
+
+获取指定时间范围的用量统计。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `start` | number | 起始时间戳（ms） |
+| `end` | number | 结束时间戳（ms） |
+
+#### GET /v1/usage/timeseries
+
+获取时间序列用量数据。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `granularity` | string | 聚合粒度：`hour`、`day`、`week`、`month` |
+| `start` | number | 起始时间戳（ms） |
+| `end` | number | 结束时间戳（ms） |
+
+#### GET /v1/usage/overview
+
+获取 Dashboard 概览数据。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `start` | number | 起始时间戳（ms） |
+| `end` | number | 结束时间戳（ms） |
+
+**响应示例：**
+
+```json
+{
+  "total_requests": 5000,
+  "total_tokens": 250000,
+  "total_cost": 125.00,
+  "avg_latency_ms": 450,
+  "success_rate": 0.98
+}
+```
+
+#### GET /v1/usage/providers
+
+获取按 Provider 分组的统计。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `start` | number | 起始时间戳（ms） |
+| `end` | number | 结束时间戳（ms） |
+
+#### GET /v1/usage/tenants
+
+获取所有租户的统计。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `start` | number | 起始时间戳（ms） |
+| `end` | number | 结束时间戳（ms） |
+
+#### GET /v1/usage/status-codes
+
+获取 HTTP 状态码分布。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `start` | number | 起始时间戳（ms） |
+| `end` | number | 结束时间戳（ms） |
 
 ### 配额状态
 
@@ -619,6 +738,28 @@ data: [DONE]
 
 删除指定 API Key。
 
+#### PUT /v1/tenants/:id/keys/:keyHash
+
+更新 API Key 策略。
+
+**请求体：**
+
+```json
+{
+  "allowed_models": ["gpt-4o", "gpt-4o-mini"],
+  "rate_limit_qps": 20,
+  "rate_limit_burst": 40,
+  "monthly_budget": 50,
+  "max_tokens_per_request": 4096,
+  "default_model": "gpt-4o-mini",
+  "metadata": { "env": "production" }
+}
+```
+
+#### GET /v1/tenants/:id/keys/:keyHash/usage
+
+获取指定 API Key 的使用统计。
+
 ### 配置管理
 
 #### GET /v1/config
@@ -671,6 +812,210 @@ data: [DONE]
 #### GET /v1/plugins
 
 获取已注册插件列表。
+
+#### POST /v1/plugins/register
+
+注册新插件（在沙箱中执行插件代码）。
+
+**请求体：**
+
+```json
+{
+  "code": "module.exports = { name: 'my-plugin', type: 'request', priority: 10, onRequest: (c, data) => data };"
+}
+```
+
+#### DELETE /v1/plugins/:id
+
+卸载插件。
+
+#### POST /v1/plugins/:id/enable
+
+启用插件。
+
+#### POST /v1/plugins/:id/disable
+
+禁用插件。
+
+### 模型定价
+
+#### GET /v1/pricing
+
+获取所有模型定价及覆盖。
+
+**响应示例：**
+
+```json
+{
+  "default": {
+    "gpt-4o": { "input": 2.5, "output": 10.0 },
+    "gpt-4o-mini": { "input": 0.15, "output": 0.6 }
+  },
+  "overrides": {}
+}
+```
+
+#### PUT /v1/pricing/:model
+
+设置模型定价覆盖。
+
+**请求体：**
+
+```json
+{
+  "input": 2.5,
+  "output": 10.0
+}
+```
+
+#### DELETE /v1/pricing/:model
+
+删除模型定价覆盖，恢复默认定价。
+
+### 请求日志
+
+#### GET /v1/request-logs
+
+查询请求日志，支持多种过滤和分页。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `provider` | string | 按 Provider 过滤 |
+| `model` | string | 按模型过滤 |
+| `status_code` | number | 按 HTTP 状态码过滤 |
+| `tenant_id` | string | 按租户过滤 |
+| `start` | number | 起始时间戳（ms） |
+| `end` | number | 结束时间戳（ms） |
+| `limit` | number | 每页条数，默认 50 |
+| `offset` | number | 偏移量，默认 0 |
+
+**响应示例：**
+
+```json
+{
+  "logs": [
+    {
+      "request_id": "req-abc123",
+      "timestamp": 1735689600000,
+      "provider": "openai",
+      "model": "gpt-4o",
+      "status_code": 200,
+      "duration_ms": 450,
+      "prompt_tokens": 20,
+      "completion_tokens": 10,
+      "total_tokens": 30,
+      "cost": 0.00125
+    }
+  ],
+  "total": 100,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### 模型发现
+
+#### GET /v1/admin/discover-models
+
+查询各 Provider 支持的模型列表（管理员工具）。结果缓存 5 分钟。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `provider` | string? | 指定 Provider 名称，不传则查询所有 Provider |
+
+**查询单个 Provider 响应示例：**
+
+```json
+{
+  "provider": "openai",
+  "models": [
+    {
+      "id": "gpt-4o",
+      "owned_by": "openai",
+      "context_window": 128000,
+      "created": 1706745938
+    },
+    {
+      "id": "gpt-4o-mini",
+      "owned_by": "openai",
+      "context_window": 128000,
+      "created": 1721172741
+    }
+  ]
+}
+```
+
+**查询所有 Provider 响应示例：**
+
+```json
+{
+  "openai": {
+    "models": [
+      { "id": "gpt-4o", "owned_by": "openai", "context_window": 128000 }
+    ]
+  },
+  "anthropic": {
+    "models": [
+      { "id": "claude-3.5-sonnet-20241022", "owned_by": "anthropic", "context_window": 200000, "max_output_tokens": 8192 }
+    ]
+  },
+  "volcano": {
+    "error": "Discovery not supported"
+  }
+}
+```
+
+**错误码：**
+
+| 状态码 | 错误码 | 描述 |
+| --- | --- | --- |
+| 404 | `provider_not_found` | Provider 未注册 |
+| 404 | `provider_not_configured` | Provider 未配置（缺少 base_url / api_key） |
+| 501 | `discovery_not_supported` | Provider 不支持模型发现 |
+| 502 | `discovery_failed` | Provider API 调用失败 |
+
+**Provider 发现能力支持情况：**
+
+| Provider | 支持方式 | 备注 |
+| --- | --- | --- |
+| OpenAI / DeepSeek / Groq / Mistral / Moonshot / Cohere / Together / xAI / Azure OpenAI | `GET /v1/models` API | OpenAI-compatible 自动支持 |
+| Google Gemini | `GET /v1/models` API | Gemini 格式自动转换 |
+| Anthropic | 硬编码已知模型 | Anthropic 无公开模型列表 API |
+| Volcano / Kimi-Code | 取决于 API | 可能不支持 |
+| Dynamic Provider | `endpoints.models` 配置 | 需在配置中声明端点路径 |
+
+### 会话日志
+
+#### GET /v1/conversations
+
+查询对话会话列表。
+
+**查询参数：**
+
+| 参数 | 类型 | 描述 |
+| --- | --- | --- |
+| `model` | string | 按模型过滤 |
+| `tenant_id` | string | 按租户过滤 |
+| `start` | number | 起始时间戳（ms） |
+| `end` | number | 结束时间戳（ms） |
+| `limit` | number | 每页条数 |
+| `offset` | number | 偏移量 |
+
+#### GET /v1/conversations/:session_id
+
+获取会话详情，包含元数据和对话轮次。
+
+#### GET /v1/conversations/:session_id/stats
+
+获取会话统计信息。
+
+#### DELETE /v1/conversations/:session_id
+
+删除指定会话。
 
 ---
 
@@ -732,12 +1077,24 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 
 建立 WebSocket 连接，用于实时流式通信。
 
+**认证方式：**
+
+API Key 通过 `Sec-WebSocket-Protocol` 头传递，格式为 `gateway-token-{api_key}`。
+
 **连接参数：**
 
 | 参数 | 描述 |
 |---|---|
-| `api_key` | API Key |
-| `tenant_id` | 租户 ID |
+| `tenant_id` | 租户 ID（URL 查询参数） |
+
+**示例：**
+
+```javascript
+const ws = new WebSocket(
+  'ws://localhost:3000/v1/ws/connect?tenant_id=default',
+  ['gateway-token-your-api-key']
+);
+```
 
 **消息格式：**
 

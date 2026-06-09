@@ -10,7 +10,7 @@ export const mistralProvider = new OpenAICompatibleProvider({
     chat: true,
     embed: true,
     streaming: true,
-    vision: false,
+    vision: true,
     function_call: true,
   },
   fields: {

@@ -12,7 +12,7 @@ import type {
   EmbeddingResponse,
 } from '../types';
 import { getProviderApiKeys } from '../types';
-import { getConfig, getProviderConfig, getRoutingStrategy } from '../config';
+import { getConfig, getProviderConfig, getRoutingStrategy, getModelPool } from '../config';
 import { failoverManager as defaultFailover } from '../services/failover';
 import { loadBalanceManager as defaultLoadBalancer } from '../services/loadbalancer';
 
@@ -84,17 +84,30 @@ export function hasProvider(name: string): boolean {
 
 /**
  * Get fallback providers for a given primary provider
- * 1. Use explicit failover chain from config if available
- * 2. Fall back to routing strategy rules
+ * 1. If the request model is a model pool, use pool candidates as fallback
+ * 2. Use explicit failover chain from config if available
+ * 3. Fall back to routing strategy rules
  */
-function getFallbackProviders(excludeProvider: string, _requestModel: string): string[] {
-  // 1. Use explicit failover chain
+function getFallbackProviders(excludeProvider: string, requestModel: string): string[] {
+  // 1. Check if request model is a model pool
+  const pool = getModelPool(requestModel);
+  if (pool && pool.candidates && pool.candidates.length > 0) {
+    const poolProviders = pool.candidates
+      .filter((c) => c.enabled !== false && c.provider !== excludeProvider)
+      .sort((a, b) => a.priority - b.priority)
+      .map((c) => c.provider);
+    if (poolProviders.length > 0) {
+      return [...new Set(poolProviders)];
+    }
+  }
+
+  // 2. Use explicit failover chain
   const chain = activeFailover.getFailoverChain(excludeProvider);
   if (chain.length > 0) {
     return chain.filter((p) => p !== excludeProvider);
   }
 
-  // 2. Fallback: derive from routing strategy
+  // 3. Fallback: derive from routing strategy
   const result: string[] = [];
   const strategy = getRoutingStrategy();
   if (strategy?.rules) {
@@ -117,18 +130,18 @@ async function callProviderWithRetry(
   provider: IProvider,
   config: IProviderConfig,
   request: ChatCompletionRequest,
-  stream: boolean
+  stream: boolean,
+  options?: { signal?: AbortSignal }
 ): Promise<ChatCompletionResponse | ReadableStream> {
-  // 获取该 Provider 的可用 API Keys
-  const availableKeys = getProviderApiKeys(config);
+  const allKeys = getProviderApiKeys(config);
 
-  if (availableKeys.length === 0) {
+  if (allKeys.length === 0) {
     throw new Error(`No API keys configured for provider: ${provider.name}`);
   }
 
-  // 使用 LoadBalancer 选择一个 Key（多 Key 场景）
-  const selection = activeLoadBalancer.selectToken(provider.name, availableKeys);
-  const activeKey = selection?.apiKey || availableKeys[0];
+  const healthyKeys = activeFailover.getHealthyKeys(provider.name, allKeys);
+  const selection = activeLoadBalancer.selectToken(provider.name, healthyKeys);
+  const activeKey = selection?.apiKey || healthyKeys[0];
 
   // 创建带选中 Key 的配置副本
   const callConfig: IProviderConfig = { ...config, api_key: activeKey };
@@ -136,7 +149,7 @@ async function callProviderWithRetry(
   // 使用重试机制调用（仅对 5xx/网络错误重试）
   if (stream) {
     // 流式调用不重试（流建立后无法回滚）
-    const result = await provider.chatStream(request, callConfig);
+    const result = await provider.chatStream(request, callConfig, options);
     activeFailover.recordSuccess(provider.name, activeKey);
     return result;
   }
@@ -171,10 +184,12 @@ export function resolveModelForProvider(model: string, provider: string): string
 /**
  * 通用聊天完成请求（带 Failover）
  * 主 Provider 失败后自动切换到其他可用 Provider
+ * @param originalModel - 原始请求的模型名（用于模型池 Failover）
  */
 export async function chatComplete(
   providerName: string,
-  request: ChatCompletionRequest
+  request: ChatCompletionRequest,
+  originalModel?: string
 ): Promise<ChatCompletionResponse> {
   const errors: Array<{ provider: string; error: string }> = [];
   const attemptedProviders = new Set<string>();
@@ -185,7 +200,8 @@ export async function chatComplete(
   // 检查 failover 配置
   const failoverConfig = getConfig().failover;
   if (failoverConfig?.enabled) {
-    const fallbacks = getFallbackProviders(providerName, request.model);
+    // 优先使用原始模型名（可能是模型池名称）查找 fallback
+    const fallbacks = getFallbackProviders(providerName, originalModel || request.model);
     providersToTry.push(...fallbacks);
   }
 
@@ -205,25 +221,23 @@ export async function chatComplete(
       continue;
     }
 
-    // 检查 Provider 级健康状态
-    if (failoverConfig?.enabled) {
-      if (!activeFailover.isProviderHealthy(currentProvider)) {
-        errors.push({ provider: currentProvider, error: 'Provider unhealthy' });
-        continue;
+    if (failoverConfig?.enabled && !activeFailover.isProviderHealthy(currentProvider)) {
+      errors.push({ provider: currentProvider, error: 'Provider unhealthy' });
+      continue;
+    }
+
+    // 根据 model_equivalents 或模型池重映射 model 名称
+    let mappedModel = resolveModelForProvider(request.model, currentProvider);
+
+    // 如果原始请求是模型池，查找当前 provider 在池中的对应模型
+    const pool = getModelPool(request.model);
+    if (pool) {
+      const poolCandidate = pool.candidates.find((c) => c.provider === currentProvider);
+      if (poolCandidate) {
+        mappedModel = poolCandidate.model;
       }
     }
 
-    // Token 级健康检查（fallback provider 必须有一个健康的 key）
-    if (failoverConfig?.enabled && currentProvider !== providerName) {
-      const token = activeFailover.getAvailableToken(currentProvider);
-      if (!token) {
-        errors.push({ provider: currentProvider, error: 'No healthy API key' });
-        continue;
-      }
-    }
-
-    // 根据 model_equivalents 重映射 model 名称
-    const mappedModel = resolveModelForProvider(request.model, currentProvider);
     const providerRequest = mappedModel !== request.model
       ? { ...request, model: mappedModel }
       : request;
@@ -256,7 +270,8 @@ export async function chatComplete(
  */
 export async function chatCompleteStream(
   providerName: string,
-  request: ChatCompletionRequest
+  request: ChatCompletionRequest,
+  options?: { signal?: AbortSignal }
 ): Promise<ReadableStream> {
   const config = getProviderConfig(providerName);
   if (!config) {
@@ -268,8 +283,20 @@ export async function chatCompleteStream(
     throw new Error(`Provider ${providerName} not registered`);
   }
 
-  const result = await callProviderWithRetry(provider, config, request, true);
-  return result as ReadableStream;
+  const mappedModel = resolveModelForProvider(request.model, providerName);
+  const providerRequest = mappedModel !== request.model
+    ? { ...request, model: mappedModel }
+    : request;
+
+  const startTime = Date.now();
+  try {
+    const result = await callProviderWithRetry(provider, config, providerRequest, true, options);
+    activeFailover.recordProviderRequest(providerName, true, Date.now() - startTime);
+    return result as ReadableStream;
+  } catch (error) {
+    activeFailover.recordProviderRequest(providerName, false, Date.now() - startTime);
+    throw error;
+  }
 }
 
 /**

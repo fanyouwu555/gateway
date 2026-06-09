@@ -41,10 +41,10 @@ const Metrics: React.FC = () => {
         getAllTenantsStats(start, now),
       ])
 
-      setOverviewData(overview as unknown as DashboardOverview)
-      setTimeSeriesData(timeSeries as unknown as TimeSeriesPoint[])
-      setProviderStatsData(providerStats as unknown as ProviderStats[])
-      setTenantStatsData(tenantStats as unknown as TenantStatsDetail[])
+      setOverviewData(overview)
+      setTimeSeriesData(timeSeries)
+      setProviderStatsData(providerStats)
+      setTenantStatsData(tenantStats)
     } catch (error) {
       message.error('获取统计数据失败')
     } finally {

@@ -3,7 +3,9 @@
  * 根据请求特征自动选择最优Provider
  */
 import type { ChatCompletionRequest, IRoutingStrategy, IConditionalRoutingRule } from '../types';
-import { getRoutingStrategy, getConfig } from '../config';
+import { getRoutingStrategy, getConfig, getModelPool, isModelPool } from '../config';
+import { failoverManager } from './failover';
+import { contentToString } from '../utils';
 
 /**
  * 路由决策
@@ -47,6 +49,14 @@ class SmartRouter {
    * 根据请求特征选择Provider
    */
   route(request: ChatCompletionRequest, strategy: RouterStrategy = 'balance'): RoutingDecision {
+    // 1. 优先检查模型能力池
+    if (request.model && isModelPool(request.model)) {
+      const poolDecision = this.routeByModelPool(request);
+      if (poolDecision) {
+        return poolDecision;
+      }
+    }
+
     const strategyConfig = getRoutingStrategy();
 
     if (!strategyConfig || strategyConfig.rules.length === 0) {
@@ -70,6 +80,48 @@ class SmartRouter {
       default:
         return this.routeByBalance(request, strategyConfig.rules);
     }
+  }
+
+  /**
+   * 按模型能力池路由
+   * 在池内按 priority 排序，结合健康状态选择第一个可用的 candidate
+   */
+  private routeByModelPool(request: ChatCompletionRequest): RoutingDecision | null {
+    if (!request.model) return null;
+
+    const pool = getModelPool(request.model);
+    if (!pool || !pool.candidates || pool.candidates.length === 0) {
+      return null;
+    }
+
+    // 按 priority 排序（数字越小优先级越高），过滤掉 disabled 的 candidate
+    const enabledCandidates = pool.candidates
+      .filter((c) => c.enabled !== false)
+      .sort((a, b) => a.priority - b.priority);
+
+    if (enabledCandidates.length === 0) {
+      return null;
+    }
+
+    // 选择第一个健康的 candidate
+    for (const candidate of enabledCandidates) {
+      if (failoverManager.isProviderHealthy(candidate.provider)) {
+        return {
+          provider: candidate.provider,
+          model: candidate.model,
+          reason: `model_pool:${pool.name}`,
+          confidence: 1.0,
+        };
+      }
+    }
+
+    // 如果所有 candidate 都不健康，返回第一个（让 Failover 后续处理）
+    return {
+      provider: enabledCandidates[0].provider,
+      model: enabledCandidates[0].model,
+      reason: `model_pool:${pool.name}:unhealthy_fallback`,
+      confidence: 0.5,
+    };
   }
 
   /**
@@ -141,7 +193,7 @@ class SmartRouter {
   ): RoutingDecision {
     // 检查请求长度，长请求使用更好的模型
     const totalLength = request.messages.reduce(
-      (sum, m) => sum + m.content.length,
+      (sum, m) => sum + contentToString(m.content).length,
       0
     );
 
@@ -247,19 +299,38 @@ class SmartRouter {
 
   /**
    * 获取路由器状态
+   * 整合 FailoverManager 的 Provider 健康数据与 SmartRouter 的延迟/错误率数据
    */
-  getStatus(): { providers: Record<string, { avg_latency?: number; error_rate?: number }> } {
-    const providers: Record<string, { avg_latency?: number; error_rate?: number }> = {};
+  getStatus(): { providers: Record<string, { avg_latency?: number; error_rate?: number; isHealthy?: boolean; totalRequests?: number; avgLatencyMs?: number }> } {
+    const providers: Record<string, { avg_latency?: number; error_rate?: number; isHealthy?: boolean; totalRequests?: number; avgLatencyMs?: number }> = {};
 
+    // 1. 从 FailoverManager 获取 Provider 健康状态（isHealthy / totalRequests / errorRate / avgLatencyMs）
+    const healthStatus = failoverManager.getProviderHealthStatus();
+    for (const [provider, health] of Object.entries(healthStatus)) {
+      providers[provider] = {
+        isHealthy: health.isHealthy,
+        totalRequests: health.totalRequests,
+        avgLatencyMs: health.avgLatencyMs,
+        avg_latency: health.avgLatencyMs,
+        error_rate: health.errorRate,
+      };
+    }
+
+    // 2. 叠加 SmartRouter 的 latency_history（优先使用 FailoverManager 数据，无数据时兜底）
     if (this.context.latency_history) {
       for (const [provider, history] of Object.entries(this.context.latency_history)) {
         if (history.length > 0) {
           const avg = history.reduce((a, b) => a + b, 0) / history.length;
-          providers[provider] = { avg_latency: Math.round(avg) };
+          if (!providers[provider]) providers[provider] = {};
+          providers[provider].avg_latency = Math.round(avg);
+          if (providers[provider].avgLatencyMs === undefined || providers[provider].avgLatencyMs === 0) {
+            providers[provider].avgLatencyMs = Math.round(avg);
+          }
         }
       }
     }
 
+    // 3. 叠加 SmartRouter 的 error_rate
     if (this.context.error_rate) {
       for (const [provider, rate] of Object.entries(this.context.error_rate)) {
         if (!providers[provider]) providers[provider] = {};

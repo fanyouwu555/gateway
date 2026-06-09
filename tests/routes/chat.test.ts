@@ -14,16 +14,26 @@ jest.mock('../../src/config', () => ({
     routing: [{ name: 'default', rules: [{ model: 'gpt-4o', provider: 'openai' }] }],
     auth: {
       enabled: true,
-      api_keys: [{
-        key: 'test-api-key-123',
-        tenant_id: 'default',
-        name: 'Test Key',
-        created_at: Date.now(),
-      }],
+      api_keys: [
+        {
+          key: 'test-api-key-123',
+          tenant_id: 'default',
+          name: 'Test Key',
+          created_at: Date.now(),
+        },
+        {
+          key: 'test-api-key-with-default-model',
+          tenant_id: 'default',
+          name: 'Test Key With Default Model',
+          created_at: Date.now(),
+          default_model: 'custom-default-model',
+        },
+      ],
     },
     rate_limit: { enabled: false, qps: 1000, burst: 1000 },
     cache: { enabled: false, ttl: 60000, max_size: 1000 },
     model_aliases: { fast: 'gpt-4o-mini' },
+    model_pools: {},
   })),
   getProviderConfig: jest.fn(() => ({ provider: 'openai', base_url: 'https://api.openai.com/v1', api_key: 'sk-test' })),
   getProviderForModel: jest.fn(() => 'openai'),
@@ -32,6 +42,8 @@ jest.mock('../../src/config', () => ({
     const aliases: Record<string, string> = { fast: 'gpt-4o-mini' };
     return aliases[alias] || alias;
   }),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 jest.mock('../../src/providers', () => ({
@@ -75,6 +87,8 @@ jest.mock('../../src/plugins', () => ({
 jest.mock('../../src/services/router', () => ({
   smartRoute: jest.fn(() => ({ provider: 'openai', reason: 'default' })),
   evaluateConditionalRules: jest.fn(() => null),
+  recordLatency: jest.fn(),
+  recordError: jest.fn(),
 }));
 
 jest.mock('../../src/utils', () => ({
@@ -144,5 +158,61 @@ describe('Chat Routes', () => {
     // 第一个参数是 provider 名，第二个参数是请求体
     const call = chatComplete.mock.calls[0];
     expect(call[1].model).toBe('gpt-4o-mini');
+  });
+
+  // ============================================================
+  // 默认模型 fallback 测试
+  // ============================================================
+
+  it('should fallback to routing rule model when API key has no default_model and request omits model', async () => {
+    const { chatComplete } = require('../../src/providers');
+    chatComplete.mockClear();
+
+    const res = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-api-key-123', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Hello' }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(chatComplete).toHaveBeenCalled();
+    const call = chatComplete.mock.calls[0];
+    expect(call[1].model).toBe('gpt-4o');
+  });
+
+  it('should use API key default_model when request omits model', async () => {
+    const { chatComplete } = require('../../src/providers');
+    chatComplete.mockClear();
+
+    const res = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-api-key-with-default-model', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Hello' }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(chatComplete).toHaveBeenCalled();
+    const call = chatComplete.mock.calls[0];
+    expect(call[1].model).toBe('custom-default-model');
+  });
+
+  it('should use request model over API key default_model when both present', async () => {
+    const { chatComplete } = require('../../src/providers');
+    chatComplete.mockClear();
+
+    const res = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-api-key-with-default-model', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Hello' }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(chatComplete).toHaveBeenCalled();
+    const call = chatComplete.mock.calls[0];
+    expect(call[1].model).toBe('gpt-4o');
   });
 });

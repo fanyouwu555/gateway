@@ -1,15 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, Table, Tag, message, Empty } from 'antd'
-import { getRouterStatus } from '@/services/api'
-
-interface RouterStatusData {
-  providers: Record<string, {
-    isHealthy?: boolean
-    totalRequests?: number
-    errorRate?: number
-    avgLatencyMs?: number
-  }>
-}
+import { getRouterStatus, getConfig } from '@/services/api'
+import type { RouterStatusData } from '@/types'
 
 interface RuleInfo {
   name: string
@@ -26,7 +18,7 @@ const RouterStatus: React.FC = () => {
   const fetchStatus = async () => {
     setLoading(true)
     try {
-      const data = await getRouterStatus() as unknown as RouterStatusData
+      const data = await getRouterStatus()
       setStatusData(data)
     } catch {
       message.error('获取路由状态失败')
@@ -40,13 +32,9 @@ const RouterStatus: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    // 尝试从 /health 获取路由规则
     const fetchConfig = async () => {
       try {
-        const resp = await fetch('/api/v1/config', {
-          headers: { Authorization: `Bearer ${localStorage.getItem('api_token')}` },
-        })
-        const config = await resp.json()
+        const config = await getConfig()
         if (config?.routing) {
           const rules: RuleInfo[] = []
           for (const group of config.routing) {

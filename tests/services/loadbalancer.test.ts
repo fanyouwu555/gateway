@@ -4,15 +4,10 @@
 import { loadBalanceManager } from '../../src/../src/services/loadbalancer';
 import type { IProviderConfig } from '../../src/types';
 
-// 模拟 config
 jest.mock('../../src/config', () => ({
   getConfig: () => ({
     loadBalance: {
       strategy: 'roundRobin',
-      providers: {
-        openai: { weight: 2 },
-        deepseek: { weight: 1 },
-      },
     },
   }),
   getProviderConfig: (name: string) => {
@@ -36,12 +31,14 @@ jest.mock('../../src/config', () => ({
     return config[name];
   },
   resolveModelAlias: jest.fn((alias: string) => alias),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 describe('LoadBalanceManager', () => {
   beforeEach(() => {
     loadBalanceManager.reset();
-    loadBalanceManager.setStrategy('roundRobin'); // Reset strategy
+    loadBalanceManager.setStrategy('roundRobin');
   });
 
   describe('selectToken', () => {
@@ -67,7 +64,6 @@ describe('LoadBalanceManager', () => {
         if (result) results.push(result.apiKey);
       }
 
-      // 应该均匀分布
       expect(results[0]).toBe('sk-key-1');
       expect(results[1]).toBe('sk-key-2');
       expect(results[2]).toBe('sk-key-3');
@@ -86,7 +82,6 @@ describe('LoadBalanceManager', () => {
         if (result) results.add(result.apiKey);
       }
 
-      // 随机策略应该能选到不同的 key
       expect(results.size).toBeGreaterThanOrEqual(2);
     });
   });
@@ -103,8 +98,8 @@ describe('LoadBalanceManager', () => {
       loadBalanceManager.setStrategy('random');
       expect(loadBalanceManager.getStrategy()).toBe('random');
 
-      loadBalanceManager.setStrategy('leastRequest');
-      expect(loadBalanceManager.getStrategy()).toBe('leastRequest');
+      loadBalanceManager.setStrategy('roundRobin');
+      expect(loadBalanceManager.getStrategy()).toBe('roundRobin');
     });
   });
 
@@ -120,29 +115,9 @@ describe('LoadBalanceManager', () => {
       expect(result[0].provider).toBe('openai');
     });
 
-    it('should return multiple providers sorted by weight', () => {
-      const result = loadBalanceManager.selectProviders(
-        ['openai', 'deepseek', 'anthropic'],
-        { openai: 2, deepseek: 1, anthropic: 1 }
-      );
-
-      // openai 权重最高应该在前面
-      expect(result[0].provider).toBe('openai');
-    });
-  });
-
-  describe('recordRequest', () => {
-    it('should track request count', () => {
-      loadBalanceManager.setStrategy('leastRequest');
-      const keys = ['sk-key-1', 'sk-key-2'];
-
-      // 记录请求
-      loadBalanceManager.recordRequest('openai', 'sk-key-1');
-      loadBalanceManager.recordRequest('openai', 'sk-key-1');
-
-      // leastRequest 应该选择 key-2 (请求更少)
-      const result = loadBalanceManager.selectToken('openai', keys);
-      expect(result?.apiKey).toBe('sk-key-2');
+    it('should return multiple providers', () => {
+      const result = loadBalanceManager.selectProviders(['openai', 'deepseek', 'anthropic']);
+      expect(result.length).toBe(3);
     });
   });
 
@@ -151,7 +126,6 @@ describe('LoadBalanceManager', () => {
       loadBalanceManager.selectToken('openai', ['sk-key-1', 'sk-key-2']);
       loadBalanceManager.reset();
 
-      // 重置后重新选择
       const result = loadBalanceManager.selectToken('openai', ['sk-key-1', 'sk-key-2']);
       expect(result?.keyIndex).toBe(0);
     });

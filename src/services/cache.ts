@@ -8,6 +8,7 @@ import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
 import { recordCacheHit, recordCacheMiss } from '../middleware/metrics';
+import { getSemanticCache } from './semantic-cache';
 
 /**
  * 语义缓存配置
@@ -46,6 +47,8 @@ class CacheStore<T> {
   private store: IKVStore | null = null;
   private useStorage = false;
   private semanticConfig: SemanticCacheConfig;
+  private hits = 0;
+  private misses = 0;
 
   constructor(maxSize = 1000, ttl = 3600000, semanticConfig?: Partial<SemanticCacheConfig>) {
     // 默认1小时TTL
@@ -131,24 +134,23 @@ class CacheStore<T> {
 
   /**
    * 语义查找 - 基于 Jaccard 相似度查找缓存
+   * 搜索顺序：内存（快）→ Redis（慢但更完整）
+   * Redis 命中时自动提升到内存缓存
    */
-  semanticFind(request: ChatCompletionRequest): T | null {
+  async semanticFind(request: ChatCompletionRequest): Promise<T | null> {
     if (!this.semanticConfig.enabled) return null;
 
     const requestTokens = this.tokenize(this.extractTextFromRequest(request));
 
-    // 遍历所有缓存条目，找最相似的
     let bestMatch: { entry: CacheEntry<T>; similarity: number } | null = null;
     const now = Date.now();
 
     for (const entry of this.cache.values()) {
       if (now > entry.expires_at) continue;
 
-      // 从 key 中解析出 model 和 request 文本
       const keyParts = entry.key.split('|');
       if (keyParts.length < 2) continue;
 
-      // 必须匹配相同的 model
       const cachedModel = keyParts[1];
       if (cachedModel !== request.model) continue;
 
@@ -166,8 +168,52 @@ class CacheStore<T> {
       }
     }
 
+    if (this.useStorage && this.store) {
+      try {
+        const redisKeys = await this.store.keys('*');
+
+        for (const key of redisKeys) {
+          if (this.cache.has(key)) continue;
+
+          const keyParts = key.split('|');
+          if (keyParts.length < 2) continue;
+          if (keyParts[1] !== request.model) continue;
+
+          const stored = await this.store.get(key);
+          if (!stored) continue;
+
+          try {
+            const entry = JSON.parse(stored) as CacheEntry<T>;
+            if (now > entry.expires_at) continue;
+
+            const messages = JSON.parse(keyParts[2]);
+            const cachedText = messages.map((m: { content: string }) => m.content).join(' ');
+            const cachedTokens = this.tokenize(cachedText);
+            const similarity = this.jaccardSimilarity(requestTokens, cachedTokens);
+
+            if (similarity >= this.semanticConfig.threshold && (!bestMatch || similarity > bestMatch.similarity)) {
+              bestMatch = { entry, similarity };
+            }
+          } catch {
+            continue;
+          }
+        }
+      } catch {
+        writeLog('warn', 'Redis semantic search failed, falling back to memory-only results');
+      }
+    }
+
     if (bestMatch) {
       bestMatch.entry.hit_count++;
+      this.hits++;
+
+      if (!this.cache.has(bestMatch.entry.key)) {
+        if (this.cache.size >= this.maxSize) {
+          this.evictLeastUsed();
+        }
+        this.cache.set(bestMatch.entry.key, bestMatch.entry);
+      }
+
       writeLog('debug', 'Semantic cache hit', { similarity: bestMatch.similarity });
       return bestMatch.entry.value;
     }
@@ -184,9 +230,11 @@ class CacheStore<T> {
     if (memEntry) {
       if (Date.now() > memEntry.expires_at) {
         this.cache.delete(key);
+        this.misses++;
         return null;
       }
       memEntry.hit_count++;
+      this.hits++;
       return memEntry.value;
     }
 
@@ -198,10 +246,12 @@ class CacheStore<T> {
           const entry = JSON.parse(stored) as CacheEntry<T>;
           if (Date.now() > entry.expires_at) {
             await this.store.delete(key);
+            this.misses++;
             return null;
           }
           // 同步到内存
           this.cache.set(key, entry);
+          this.hits++;
           return entry.value;
         }
       } catch {
@@ -209,6 +259,7 @@ class CacheStore<T> {
       }
     }
 
+    this.misses++;
     return null;
   }
 
@@ -309,22 +360,30 @@ class CacheStore<T> {
 
   /**
    * 获取统计
+   * hit_rate 为真正的缓存命中率：hits / (hits + misses)
    */
-  getStats(): { size: number; hit_rate: number } {
-    let totalHits = 0;
-    for (const entry of this.cache.values()) {
-      totalHits += entry.hit_count;
-    }
-    const size = this.cache.size;
+  getStats(): { size: number; hit_rate: number; hits: number; misses: number } {
+    const total = this.hits + this.misses;
     return {
-      size,
-      hit_rate: size > 0 ? totalHits / size : 0,
+      size: this.cache.size,
+      hits: this.hits,
+      misses: this.misses,
+      hit_rate: total > 0 ? this.hits / total : 0,
     };
   }
 }
 
 // 单例
 let cacheStore = new CacheStore<string>();
+
+let lastCacheHitType: 'exact' | 'semantic' | null = null;
+
+/**
+ * 获取最近一次缓存命中的类型
+ */
+export function getLastCacheHitType(): 'exact' | 'semantic' | null {
+  return lastCacheHitType;
+}
 
 /**
  * 初始化缓存（从配置加载）
@@ -351,24 +410,41 @@ export function generateCacheKey(request: ChatCompletionRequest, tenantId?: stri
 
 /**
  * 获取缓存（异步，支持 Redis 和语义查找）
+ * 查找顺序：精确匹配 → 嵌入向量语义匹配 → Jaccard 语义匹配
  */
 export async function getCache(request: ChatCompletionRequest, tenantId?: string, useSemantic = true): Promise<string | null> {
+  lastCacheHitType = null;
+
   const key = generateCacheKey(request, tenantId);
 
-  // 1. 先精确查找
+  // 1. 精确查找
   const exactMatch = await cacheStore.get(key);
   if (exactMatch) {
+    lastCacheHitType = 'exact';
     writeLog('debug', 'Exact cache hit');
     recordCacheHit('exact');
     return exactMatch;
   }
 
-  // 2. 语义查找（仅内存）
+  // 2. 语义查找
   if (useSemantic) {
-    const semanticMatch = cacheStore.semanticFind(request);
-    if (semanticMatch) {
+    // 2a. 嵌入向量语义查找（更准确，需要 SemanticCacheService 已初始化）
+    const semanticCache = getSemanticCache();
+    if (semanticCache?.isInitialized()) {
+      const embeddingMatch = await semanticCache.findSimilar(request, tenantId);
+      if (embeddingMatch) {
+        lastCacheHitType = 'semantic';
+        recordCacheHit('semantic');
+        return embeddingMatch;
+      }
+    }
+
+    // 2b. Jaccard 语义查找（更快，无需 API 调用）
+    const jaccardMatch = await cacheStore.semanticFind(request);
+    if (jaccardMatch) {
+      lastCacheHitType = 'semantic';
       recordCacheHit('semantic');
-      return semanticMatch;
+      return jaccardMatch;
     }
   }
 
@@ -377,7 +453,7 @@ export async function getCache(request: ChatCompletionRequest, tenantId?: string
 }
 
 /**
- * 设置缓存（异步，支持 Redis）
+ * 设置缓存（异步，支持 Redis 和语义缓存）
  */
 export async function setCache(
   request: ChatCompletionRequest,
@@ -387,6 +463,11 @@ export async function setCache(
 ): Promise<void> {
   const key = generateCacheKey(request, tenantId);
   await cacheStore.setAsync(key, response || '', ttl);
+
+  const semanticCache = getSemanticCache();
+  if (semanticCache?.isInitialized()) {
+    await semanticCache.storeEmbedding(request, response || '', tenantId);
+  }
 }
 
 /**
@@ -407,7 +488,7 @@ export function cleanCache(): number {
 /**
  * 获取缓存统计
  */
-export function getCacheStats(): { size: number; hit_rate: number } {
+export function getCacheStats(): { size: number; hit_rate: number; hits: number; misses: number } {
   return cacheStore.getStats();
 }
 

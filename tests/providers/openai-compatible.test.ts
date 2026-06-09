@@ -479,6 +479,103 @@ describe('OpenAICompatibleProvider', () => {
       await expect(provider.chatStream(request, providerConfig)).rejects.toThrow('stream error');
       expect(customParse).toHaveBeenCalled();
     });
+
+    it('should pass through reasoning_content in stream chunks', async () => {
+      const provider = new OpenAICompatibleProvider({
+        name: 'test',
+        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: false },
+      });
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"id":"1","object":"chat.completion.chunk","created":1234567890,"model":"deepseek-reasoner","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning_content":"Let me think"},"finish_reason":null}]}\n\n'
+          ));
+          controller.enqueue(encoder.encode(
+            'data: {"id":"1","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}\n\n'
+          ));
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        body: stream,
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'deepseek-reasoner',
+        messages: [{ role: 'user', content: 'hello' }],
+      };
+
+      const result = await provider.chatStream(request, providerConfig);
+      expect(result).toBeInstanceOf(ReadableStream);
+
+      const reader = result.getReader();
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(decoder.decode(value));
+      }
+
+      const firstChunk = chunks[0];
+      expect(firstChunk).toContain('reasoning_content');
+      expect(firstChunk).toContain('Let me think');
+    });
+
+    it('should pass through tool_calls delta in stream chunks', async () => {
+      const provider = new OpenAICompatibleProvider({
+        name: 'test',
+        capabilities: { chat: true, embed: false, streaming: true, vision: false, function_call: true },
+        fields: { tools: true },
+      });
+
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(
+            'data: {"id":"2","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather"}}]},"finish_reason":null}]}\n\n'
+          ));
+          controller.enqueue(encoder.encode(
+            'data: {"id":"2","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"location\\":\\"Beijing\\"}"}}]},"finish_reason":"tool_calls"}]}\n\n'
+          ));
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+
+      mockFetchWithAgent.mockResolvedValue({
+        ok: true,
+        body: stream,
+      });
+
+      const request: ChatCompletionRequest = {
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: 'What is the weather?' }],
+        tools: [{ type: 'function', function: { name: 'get_weather', description: 'Get weather', parameters: { type: 'object', properties: {} } } }],
+      };
+
+      const result = await provider.chatStream(request, providerConfig);
+      const reader = result.getReader();
+      const decoder = new TextDecoder();
+      const chunks: string[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(decoder.decode(value));
+      }
+
+      const firstChunk = chunks[0];
+      expect(firstChunk).toContain('tool_calls');
+      expect(firstChunk).toContain('get_weather');
+
+      const secondChunk = chunks[1];
+      expect(secondChunk).toContain('"finish_reason":"tool_calls"');
+    });
   });
 
   describe('embed', () => {

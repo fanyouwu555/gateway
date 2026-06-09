@@ -7,6 +7,7 @@ import type { TenantId, RequestId } from '../types';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
+import { getPricingService } from './pricing';
 
 interface TokenUsage {
   prompt_tokens: number;
@@ -99,6 +100,29 @@ class MetricsStore {
   async initStorage(): Promise<void> {
     if (this.useStorage && this.store) {
       await this.store.connect();
+      // 从 Redis 恢复历史数据到内存
+      await this.loadFromStorage();
+    }
+  }
+
+  private async loadFromStorage(): Promise<void> {
+    if (!this.store) return;
+    try {
+      const items = await this.store.lRange(this.storageKey, 0, -1);
+      if (items && items.length > 0) {
+        const parsed: RequestMetrics[] = [];
+        for (const item of items) {
+          try {
+            parsed.push(JSON.parse(item) as RequestMetrics);
+          } catch {
+            // 忽略损坏的数据
+          }
+        }
+        this.metrics = parsed;
+        writeLog('info', 'Metrics loaded from storage', { count: this.metrics.length });
+      }
+    } catch (err) {
+      writeLog('warn', 'Failed to load metrics from storage', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -144,56 +168,17 @@ class MetricsStore {
 let metricsStore = new MetricsStore();
 
 /**
+ * 初始化指标存储（从 Redis 加载历史数据）
+ */
+export async function initMetricsStore(): Promise<void> {
+  await metricsStore.initStorage();
+}
+
+/**
  * 重置指标存储（用于测试隔离）
  */
 export function resetMetricsStore(): void {
   metricsStore = new MetricsStore();
-  _pricing = {};
-}
-
-/**
- * Token 价格（每 1M tokens 的价格，美元）
- * 从配置中读取, 允许运行时覆盖
- */
-let _pricing: Record<string, { input: number; output: number }> = {};
-
-/**
- * 初始化定价（从配置加载）
- */
-export function initPricing(pricing?: Record<string, { input: number; output: number }>): void {
-  _pricing = pricing || {};
-}
-
-/**
- * 获取定价配置
- */
-export function getPricing(): Record<string, { input: number; output: number }> {
-  return _pricing;
-}
-
-// 模型未配置定价时的默认价格（美元/百万 token）
-// 使用 GPT-4 级别的保守价格，防止缺失定价导致免费使用
-const DEFAULT_INPUT_PRICE = 30;  // $30/1M input tokens
-const DEFAULT_OUTPUT_PRICE = 60; // $60/1M output tokens
-
-/**
- * 计算请求费用
- * 如果模型未配置特定定价，使用默认价格防止免费绕过配额
- */
-export function calculateCost(
-  model: string,
-  tokens: TokenUsage
-): number | undefined {
-  const pricing = _pricing[model] || _pricing['__default__'];
-  if (!pricing) {
-    // 使用默认价格防止未知模型成为"免费通道"
-    return (tokens.prompt_tokens * DEFAULT_INPUT_PRICE + tokens.completion_tokens * DEFAULT_OUTPUT_PRICE) / 1_000_000;
-  }
-
-  const inputCost = (tokens.prompt_tokens / 1000000) * pricing.input;
-  const outputCost = (tokens.completion_tokens / 1000000) * pricing.output;
-
-  return inputCost + outputCost;
 }
 
 /**
@@ -224,7 +209,7 @@ export function recordMetric(
   };
 
   // 计算费用
-  const cost = calculateCost(model, tokens);
+  const cost = getPricingService().calculateCost(model, tokens.prompt_tokens, tokens.completion_tokens);
   if (cost !== undefined) {
     metric.cost = cost;
   }

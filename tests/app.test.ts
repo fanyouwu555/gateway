@@ -5,7 +5,6 @@ import { Hono } from 'hono';
 
 const mockGetProviderNames = jest.fn(() => ['openai', 'deepseek']);
 const mockGetCacheStats = jest.fn(() => ({ size: 10, hit_rate: 0.5 }));
-const mockGetSessionStats = jest.fn(() => ({ total_sessions: 3 }));
 const mockGetProviderHealthStatus = jest.fn(() => ({
   openai: { isHealthy: true, totalRequests: 100, errorRate: 0.01, avgLatencyMs: 120 },
   deepseek: { isHealthy: false, totalRequests: 50, errorRate: 0.2, avgLatencyMs: 300 },
@@ -18,10 +17,6 @@ jest.mock('../src/providers', () => ({
 
 jest.mock('../src/services/cache', () => ({
   getCacheStats: () => mockGetCacheStats(),
-}));
-
-jest.mock('../src/services/history', () => ({
-  getSessionStats: () => mockGetSessionStats(),
 }));
 
 jest.mock('../src/services/failover', () => ({
@@ -96,6 +91,8 @@ jest.mock('../src/config', () => ({
       deepseek: { provider: 'deepseek', base_url: 'https://api.deepseek.com/v1', api_key: 'sk-deepseek' },
     },
   })),
+  isModelPool: jest.fn(() => false),
+  getModelPool: jest.fn(() => undefined),
 }));
 
 import { createApp } from '../src/app';
@@ -124,7 +121,6 @@ describe('createApp', () => {
       services: {
         providers: Array<{ name: string; status: string; has_api_key: boolean }>;
         cache: { size: number };
-        sessions: { total: number };
       };
     };
     expect(body.status).toBe('ok');

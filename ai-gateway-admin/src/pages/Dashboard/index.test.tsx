@@ -12,6 +12,7 @@ vi.mock('@/services/api', async () => {
     getTimeSeriesMetrics: vi.fn(),
     getProviderStats: vi.fn(),
     getStatusCodeStats: vi.fn(),
+    getRequestLogs: vi.fn(),
   }
 })
 
@@ -44,7 +45,7 @@ vi.mock('@/components/Charts/BarChart', () => ({
   default: () => <div data-testid="bar-chart">BarChart</div>,
 }))
 
-import { getHealth, getCacheStats, getDashboardOverview, getTimeSeriesMetrics, getProviderStats, getStatusCodeStats } from '@/services/api'
+import { getHealth, getCacheStats, getDashboardOverview, getTimeSeriesMetrics, getProviderStats, getStatusCodeStats, getRequestLogs } from '@/services/api'
 import { wsService } from '@/services/websocket'
 
 describe('Dashboard Page', () => {
@@ -74,6 +75,7 @@ describe('Dashboard Page', () => {
       { provider: 'openai', total_requests: 800 },
     ])
     ;(getStatusCodeStats as ReturnType<typeof vi.fn>).mockResolvedValue({ 200: 950, 500: 50 })
+    ;(getRequestLogs as ReturnType<typeof vi.fn>).mockResolvedValue({ logs: [], total: 0 })
   })
 
   it('renders dashboard header and connects WebSocket', () => {

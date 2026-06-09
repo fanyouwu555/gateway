@@ -13,7 +13,7 @@ import {
   ApartmentOutlined,
   BellOutlined,
   FileTextOutlined,
-  HistoryOutlined,
+  CommentOutlined,
   UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -30,7 +30,7 @@ const menuItems = [
   { key: '/cache', icon: <DatabaseOutlined />, label: '缓存管理' },
   { key: '/alerts', icon: <BellOutlined />, label: '告警规则' },
   { key: '/prompts', icon: <FileTextOutlined />, label: '提示词模板' },
-  { key: '/sessions', icon: <HistoryOutlined />, label: '会话管理' },
+  { key: '/conversations', icon: <CommentOutlined />, label: '对话日志' },
   { key: '/metrics', icon: <LineChartOutlined />, label: '用量统计' },
   { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
 ]

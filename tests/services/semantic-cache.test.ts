@@ -36,20 +36,20 @@ describe('SemanticCacheService', () => {
 
   it('should return null when disabled', async () => {
     const disabled = new SemanticCacheService({ enabled: false });
-    const result = await disabled.get({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] } as any, 't1');
+    const result = await disabled.findSimilar({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] } as any, 't1');
     expect(result).toBeNull();
   });
 
   it('should cache and retrieve by semantic similarity', async () => {
     mockGetEmbedding.mockResolvedValue([1, 0, 0]);
 
-    await service.set(
+    await service.storeEmbedding(
       { model: 'gpt-4o', messages: [{ role: 'user', content: 'hello world' }] } as any,
       '{"choices":[{"message":{"content":"Hi!"}}]}',
       't1'
     );
 
-    const result = await service.get(
+    const result = await service.findSimilar(
       { model: 'gpt-4o', messages: [{ role: 'user', content: 'hello world' }] } as any,
       't1'
     );
@@ -58,7 +58,7 @@ describe('SemanticCacheService', () => {
   });
 
   it('should skip for stream requests', async () => {
-    const result = await service.get(
+    const result = await service.findSimilar(
       { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }], stream: true } as any,
       't1'
     );
@@ -67,7 +67,7 @@ describe('SemanticCacheService', () => {
 
   it('should skip for long conversations', async () => {
     const messages = Array.from({ length: 5 }, () => ({ role: 'user', content: 'hi' }));
-    const result = await service.get(
+    const result = await service.findSimilar(
       { model: 'gpt-4o', messages } as any,
       't1'
     );

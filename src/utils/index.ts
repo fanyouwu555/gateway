@@ -126,6 +126,37 @@ export function contentToString(content: string | ChatContentPart[] | undefined)
 }
 
 /**
+ * 从 data URL 解析 base64 图片数据
+ */
+export function parseImageDataUrl(url: string): { mimeType: string; data: string } | null {
+  const match = url.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  return { mimeType: match[1], data: match[2] };
+}
+
+/**
+ * 下载图片并转为 base64（支持 data URL 和 http URL）
+ */
+export async function fetchImageAsBase64(url: string): Promise<{ mimeType: string; data: string }> {
+  const dataUrlResult = parseImageDataUrl(url);
+  if (dataUrlResult) {
+    return dataUrlResult;
+  }
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const arrayBuffer = await blob.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const mimeType = blob.type || 'image/jpeg';
+
+  return { mimeType, data: buffer.toString('base64') };
+}
+
+/**
  * 生成加密安全的随机字符串
  */
 export function generateSecureRandomString(length = 16): string {

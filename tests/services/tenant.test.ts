@@ -93,6 +93,27 @@ describe('Tenant Service', () => {
     });
   });
 
+  describe('default_model in key policy', () => {
+    it('should create key with default_model', () => {
+      const key = createTenantApiKey('default', 'Test Key', undefined, {
+        allowed_models: ['gpt-4o'],
+        default_model: 'gpt-4o',
+      });
+      expect(key).toBeDefined();
+      expect(key!.default_model).toBe('gpt-4o');
+    });
+
+    it('should create key with default_model not in allowed_models', () => {
+      const key = createTenantApiKey('default', 'Test Key', undefined, {
+        allowed_models: ['gpt-4o'],
+        default_model: 'claude-3',
+      });
+      expect(key).toBeDefined();
+      expect(key!.default_model).toBe('claude-3');
+      expect(key!.allowed_models).toEqual(['gpt-4o']);
+    });
+  });
+
   describe('verifyTenantApiKey', () => {
     it('should verify API key', () => {
       const key = createTenantApiKey('default', 'Test');

@@ -178,11 +178,25 @@ describe('Router Service', () => {
       expect(status).toHaveProperty('providers');
     });
 
-    it('should include error_rate without latency history', () => {
+    it('should include error_rate from SmartRouter', () => {
       recordError('volcano');
       const status = getRouterStatus();
       expect(status.providers.volcano?.error_rate).toBeGreaterThan(0);
-      expect(status.providers.volcano?.avg_latency).toBeUndefined();
+    });
+
+    it('should include avg_latency from SmartRouter latency history', () => {
+      recordLatency('volcano', 100);
+      recordLatency('volcano', 200);
+      const status = getRouterStatus();
+      expect(status.providers.volcano?.avg_latency).toBe(150);
+      expect(status.providers.volcano?.avgLatencyMs).toBe(150);
+    });
+
+    it('should include isHealthy from FailoverManager when failover is disabled', () => {
+      const status = getRouterStatus();
+      // failover disabled by default: all configured providers are shown as healthy with zero stats
+      expect(status.providers.volcano?.isHealthy).toBe(true);
+      expect(status.providers.volcano?.totalRequests).toBe(0);
     });
   });
 

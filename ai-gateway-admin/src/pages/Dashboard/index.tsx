@@ -12,17 +12,13 @@ import {
   getTimeSeriesMetrics,
   getProviderStats,
   getStatusCodeStats,
+  getRequestLogs,
 } from '@/services/api'
 import { wsService } from '@/services/websocket'
-import type { DashboardOverview, TimeSeriesPoint, ProviderStats } from '@/types'
+import type { DashboardOverview, TimeSeriesPoint, ProviderStats, RequestLogItem, HealthData, CacheStats } from '@/types'
 
-interface RecentLog {
-  id: string
-  time: string
-  model: string
-  status: 'success' | 'error'
-  latency: number
-  tokens: number
+interface EnhancedLog extends RequestLogItem {
+  _key: string
 }
 
 const TIME_RANGES = [
@@ -36,14 +32,17 @@ const TIME_RANGES = [
 const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [timeRange, setTimeRange] = useState(24) // 默认 24 小时
-  const [healthData, setHealthData] = useState<unknown>(null)
-  const [cacheStats, setCacheStats] = useState<{ size?: number; hit_rate?: number } | null>(null)
+  const [healthData, setHealthData] = useState<HealthData | null>(null)
+  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [overviewData, setOverviewData] = useState<DashboardOverview | null>(null)
   const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesPoint[]>([])
   const [providerStatsData, setProviderStatsData] = useState<ProviderStats[]>([])
   const [statusCodeData, setStatusCodeData] = useState<Record<string, number>>({})
   const [wsConnected, setWsConnected] = useState(false)
-  const [recentLogs, setRecentLogs] = useState<RecentLog[]>([])
+  const [recentLogs, setRecentLogs] = useState<EnhancedLog[]>([])
+  const [logTotal, setLogTotal] = useState(0)
+  const [logPage, setLogPage] = useState(1)
+  const [logLoading, setLogLoading] = useState(false)
   const seenRequestIds = useRef(new Set<string>())
 
   const fetchData = async () => {
@@ -62,16 +61,34 @@ const Dashboard: React.FC = () => {
       ])
 
       setHealthData(health)
-      setCacheStats(cache as { size?: number; hit_rate?: number })
-      setOverviewData(overview as unknown as DashboardOverview)
-      setTimeSeriesData(timeSeries as unknown as TimeSeriesPoint[])
-      setProviderStatsData(providerStats as unknown as ProviderStats[])
-      setStatusCodeData(statusCode as unknown as Record<string, number>)
+      setCacheStats(cache)
+      setOverviewData(overview)
+      setTimeSeriesData(timeSeries)
+      setProviderStatsData(providerStats)
+      setStatusCodeData(statusCode)
     } catch (error) {
       message.error('加载数据失败，请检查网络连接')
       console.error('Failed to fetch data:', error)
     } finally {
       setLoading(false)
+    }
+
+    // Fetch recent request logs
+    try {
+      setLogLoading(true)
+      const logResult = await getRequestLogs({
+        start,
+        end: now,
+        limit: 15,
+        offset: 0,
+      })
+      setRecentLogs(logResult.logs.map((log) => ({ ...log, _key: log.request_id })))
+      setLogTotal(logResult.total)
+      setLogPage(1)
+    } catch (err) {
+      console.error('Failed to fetch request logs:', err)
+    } finally {
+      setLogLoading(false)
     }
   }
 
@@ -96,15 +113,23 @@ const Dashboard: React.FC = () => {
         if (seenRequestIds.current.has(requestId)) return
         seenRequestIds.current.add(requestId)
       }
-      const log: RecentLog = {
-        id: requestId || Math.random().toString(36).substr(2, 9),
-        time: new Date().toLocaleTimeString(),
+      const log: EnhancedLog = {
+        _key: requestId || Math.random().toString(36).substr(2, 9),
+        request_id: requestId || '',
+        timestamp: Date.now(),
+        method: 'POST',
+        path: '/v1/chat/completions',
+        provider: (data.provider as string) || '',
         model: (data.model as string) || 'unknown',
-        status: data.error ? 'error' : 'success',
-        latency: (data.duration_ms as number) || 0,
-        tokens: (data.total_tokens as number) || 0,
+        status_code: data.error ? 500 : 200,
+        duration_ms: (data.duration_ms as number) || 0,
+        prompt_tokens: (data.prompt_tokens as number) || 0,
+        completion_tokens: (data.completion_tokens as number) || 0,
+        total_tokens: (data.total_tokens as number) || 0,
+        cost: (data.cost as number) || 0,
+        tenant_id: (data.tenant_id as string) || '',
       }
-      setRecentLogs((prev) => [log, ...prev.slice(0, 9)])
+      setRecentLogs((prev) => [log, ...prev.slice(0, 14)])
     }
   }, [])
 
@@ -150,20 +175,41 @@ const Dashboard: React.FC = () => {
     value: count,
   }))
 
+  const formatTime = (ts: number) => {
+    const d = new Date(ts)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+  }
+
   const columns = [
-    { title: '时间', dataIndex: 'time', key: 'time', width: 100 },
-    { title: '模型', dataIndex: 'model', key: 'model', width: 180 },
+    { title: '时间', dataIndex: 'timestamp', key: 'timestamp', width: 160, render: (v: number) => formatTime(v) },
+    { title: '供应商', dataIndex: 'provider', key: 'provider', width: 120 },
+    { title: '计费模型', dataIndex: 'model', key: 'model', width: 160 },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 80,
-      render: (status: string) => (
-        <Tag color={status === 'success' ? 'green' : 'red'}>{status === 'success' ? '成功' : '失败'}</Tag>
+      title: '输入', dataIndex: 'prompt_tokens', key: 'prompt_tokens', width: 80,
+      render: (v: number | undefined) => v?.toLocaleString() || '-',
+    },
+    {
+      title: '输出', dataIndex: 'completion_tokens', key: 'completion_tokens', width: 80,
+      render: (v: number | undefined) => v?.toLocaleString() || '-',
+    },
+    {
+      title: '成本', dataIndex: 'cost', key: 'cost', width: 100,
+      render: (v: number | undefined) => v !== undefined ? `$${v.toFixed(4)}` : '-',
+    },
+    {
+      title: '用时', dataIndex: 'duration_ms', key: 'duration_ms', width: 100,
+      render: (v: number) => `${v}ms`,
+    },
+    {
+      title: '状态', dataIndex: 'status_code', key: 'status_code', width: 80,
+      render: (v: number) => (
+        <Tag color={v >= 200 && v < 300 ? 'green' : 'red'}>{v}</Tag>
       ),
     },
-    { title: '延迟', dataIndex: 'latency', key: 'latency', width: 100, render: (v: number) => `${v}ms` },
-    { title: 'Token', dataIndex: 'tokens', key: 'tokens', width: 100, render: (v: number) => v.toLocaleString() },
+    {
+      title: '来源', dataIndex: 'tenant_id', key: 'tenant_id', width: 120,
+      render: (v: string | undefined) => v || '-',
+    },
   ]
 
   // 统计卡片数据
@@ -274,9 +320,37 @@ const Dashboard: React.FC = () => {
         <Table
           columns={columns}
           dataSource={recentLogs}
-          rowKey="id"
-          pagination={false}
+          rowKey="_key"
           size="small"
+          loading={logLoading}
+          pagination={{
+            current: logPage,
+            pageSize: 15,
+            total: logTotal,
+            showSizeChanger: false,
+            onChange: async (page) => {
+              setLogPage(page)
+              setLogLoading(true)
+              const now = Date.now()
+              const start = now - timeRange * 60 * 60 * 1000
+              try {
+                const result = await getRequestLogs({
+                  start,
+                  end: now,
+                  limit: 15,
+                  offset: (page - 1) * 15,
+                })
+                setRecentLogs(result.logs.map((log) => ({ ...log, _key: log.request_id })))
+                setLogTotal(result.total)
+              } catch (err) {
+                console.error('Failed to fetch request logs:', err)
+                message.error('加载请求日志失败')
+              } finally {
+                setLogLoading(false)
+              }
+            },
+          }}
+          scroll={{ x: 1000 }}
         />
       </Card>
 
@@ -293,7 +367,7 @@ const Dashboard: React.FC = () => {
         <Col xs={24} md={8}>
           <Card title="Provider 状态">
             <div style={{ padding: '8px 0' }}>
-              {((healthData as { services?: { providers?: Array<{ name: string; status: string }> } } | null)?.services?.providers || []).map((p) => (
+              {(healthData?.services?.providers || []).map((p) => (
                 <div key={p.name}>
                   {p.name}: <Tag color="green">{p.status}</Tag>
                 </div>
@@ -304,8 +378,8 @@ const Dashboard: React.FC = () => {
         <Col xs={24} md={8}>
           <Card title="系统信息">
             <div style={{ padding: '8px 0' }}>
-              <div>版本: {(healthData as { version?: string })?.version || '1.0.0'}</div>
-              <div>运行时间: {formatUptime((healthData as { uptime?: number })?.uptime || 0)}</div>
+              <div>版本: {healthData?.version || '1.0.0'}</div>
+              <div>运行时间: {formatUptime(healthData?.uptime || 0)}</div>
               <div>活跃租户: {overviewData?.total_tenants || 0} 个</div>
             </div>
           </Card>

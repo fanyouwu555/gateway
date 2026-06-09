@@ -2,6 +2,7 @@
  * 限流中间件
  * 支持内存令牌桶（单实例）和 Redis 滑动窗口（分布式）
  */
+import { createHash } from 'node:crypto';
 import type { Context, Next } from 'hono';
 import { getConfig } from '../config';
 import { createRedisConfigFromEnv } from '../stores/redis';
@@ -43,13 +44,15 @@ class MemoryRateLimitStore implements IRateLimitStore {
    * 获取客户端标识（API Key 或 IP）
    */
   private getClientKey(c: Context): string {
-    // 优先使用 API Key
-    const apiKey = c.get('api_key');
-    if (apiKey) {
-      return `key:${apiKey}`;
+    const keyHash = c.get('key_hash') as string | undefined;
+    if (keyHash) {
+      return `key:${keyHash.substring(0, 16)}`;
     }
-
-    // 使用 IP
+    const apiKey = c.get('api_key') as string | undefined;
+    if (apiKey) {
+      const hash = createHash('sha256').update(apiKey).digest('hex');
+      return `key:${hash.substring(0, 16)}`;
+    }
     const ip =
       c.req.header('x-forwarded-for') ||
       c.req.header('x-real-ip') ||
@@ -142,9 +145,11 @@ class MemoryRateLimitStore implements IRateLimitStore {
 class RedisRateLimitStore implements IRateLimitStore {
   private client: Redis | null = null;
   private readonly burst: number;
+  private readonly failOpen: boolean;
 
-  constructor(_qps: number, burst: number) {
+  constructor(_qps: number, burst: number, failOpen = true) {
     this.burst = burst;
+    this.failOpen = failOpen;
   }
 
   async connect(): Promise<void> {
@@ -178,9 +183,14 @@ class RedisRateLimitStore implements IRateLimitStore {
   }
 
   private getClientKey(c: Context): string {
-    const apiKey = c.get('api_key');
+    const keyHash = c.get('key_hash') as string | undefined;
+    if (keyHash) {
+      return `key:${keyHash.substring(0, 16)}`;
+    }
+    const apiKey = c.get('api_key') as string | undefined;
     if (apiKey) {
-      return `key:${apiKey}`;
+      const hash = createHash('sha256').update(apiKey).digest('hex');
+      return `key:${hash.substring(0, 16)}`;
     }
     const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
     return `ip:${ip}`;
@@ -206,8 +216,7 @@ class RedisRateLimitStore implements IRateLimitStore {
    */
   async consume(c: Context, _tokens = 1): Promise<boolean> {
     if (!this.client) {
-      // Redis 不可用时回退到允许通过
-      return true;
+      return this.failOpen;
     }
 
     const { key, burst } = this.getEffectiveKey(c);
@@ -253,7 +262,7 @@ class RedisRateLimitStore implements IRateLimitStore {
       return result === 1;
     } catch (err) {
       writeLog('warn', 'Redis consume error', { error: err instanceof Error ? err.message : String(err) });
-      return true; // Redis 出错时放行
+      return this.failOpen;
     }
   }
 
@@ -311,15 +320,16 @@ function useRedisRateLimit(): boolean {
  * 获取限流存储实例
  */
 async function getRateLimitStore(isAdmin = false): Promise<IRateLimitStore> {
+  const failOpen = process.env.RATE_LIMIT_FAIL_OPEN !== 'false';
+
   if (isAdmin) {
     if (!adminRateLimitStore) {
       const config = getConfig();
-      // Admin 路由使用更宽松的限流（burst 翻倍）
       const adminQps = (config.rate_limit.qps ?? 10) * 2;
       const adminBurst = (config.rate_limit.burst ?? 20) * 2;
 
       if (useRedisRateLimit()) {
-        const redisStore = new RedisRateLimitStore(adminQps, adminBurst);
+        const redisStore = new RedisRateLimitStore(adminQps, adminBurst, failOpen);
         await redisStore.connect();
         adminRateLimitStore = redisStore;
       } else {
@@ -335,7 +345,8 @@ async function getRateLimitStore(isAdmin = false): Promise<IRateLimitStore> {
     if (useRedisRateLimit()) {
       const redisStore = new RedisRateLimitStore(
         config.rate_limit.qps ?? 10,
-        config.rate_limit.burst ?? 20
+        config.rate_limit.burst ?? 20,
+        failOpen
       );
       await redisStore.connect();
       rateLimitStore = redisStore;
@@ -423,10 +434,3 @@ export function initRateLimitCleanInterval(ms?: number): void {
   if (_cleanInterval.unref) _cleanInterval.unref();
 }
 
-// 设置定期清理（默认值）
-if (typeof setInterval !== 'undefined') {
-  _cleanInterval = setInterval(() => {
-    cleanRateLimitStore(60000);
-  }, 60000);
-  if (_cleanInterval.unref) _cleanInterval.unref();
-}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Input, Button, message } from 'antd'
 import { KeyOutlined } from '@ant-design/icons'
 import { useAuth } from '@/components/Auth/AuthContext'
+import { verifyApiKey } from '@/services/api'
 
 export default function LoginPage() {
   const [apiKey, setApiKey] = useState('')
@@ -14,27 +15,23 @@ export default function LoginPage() {
     if (!apiKey.trim()) return
     setLoading(true)
     try {
-      const res = await fetch('/api/v1/auth/verify', {
-        headers: { Authorization: `Bearer ${apiKey.trim()}` },
-      })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.is_admin) {
-          login(apiKey.trim())
-          message.success('登录成功')
-          navigate('/dashboard')
-        } else {
-          message.error('API Key 无管理员权限')
-        }
-      } else if (res.status === 401) {
+      const data = await verifyApiKey(apiKey.trim())
+      if (data.is_admin) {
+        login(apiKey.trim())
+        message.success('登录成功')
+        navigate('/dashboard')
+      } else {
+        message.error('API Key 无管理员权限')
+      }
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 401) {
         message.error('API Key 无效，请重试')
-      } else if (res.status === 403) {
+      } else if (status === 403) {
         message.error('API Key 无管理员权限')
       } else {
-        message.error('验证失败，请重试')
+        message.error('无法连接到服务器')
       }
-    } catch {
-      message.error('无法连接到服务器')
     } finally {
       setLoading(false)
     }

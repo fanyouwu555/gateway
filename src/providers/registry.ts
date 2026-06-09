@@ -3,7 +3,7 @@
  * 注册所有可用的Provider (内置 + 动态配置)
  */
 import { registerProvider, getProviderNames } from './index';
-import type { IProvider } from '../types';
+import type { IProvider, ChatCompletionRequest, IProviderConfig } from '../types';
 import { contentToString } from '../utils';
 import { openaiProvider } from './openai';
 import { deepseekProvider } from './deepseek';
@@ -143,7 +143,7 @@ const mockProvider: IProvider = {
       usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens },
     };
   },
-  chatStream: async () => new ReadableStream(),
+  chatStream: async (_request: ChatCompletionRequest, _config: IProviderConfig, _options?: { signal?: AbortSignal }) => new ReadableStream(),
   embed: async () => ({
     object: 'list' as const,
     data: [],
@@ -165,6 +165,7 @@ export function initProviders(): void {
   registerProvider('google', googleProvider);
   registerProvider('moonshot', moonshotProvider);
   registerProvider('volcano', volcanoProvider);
+  registerProvider('volcano-chat', volcanoProvider);
   registerProvider('kimi-code', kimiCodeProvider);
   registerProvider('cohere', cohereProvider);
   registerProvider('together', togetherProvider);

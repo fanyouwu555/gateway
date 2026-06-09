@@ -2,23 +2,17 @@ import { useEffect, useState } from 'react'
 import { Card, Row, Col, Statistic, Button, Modal, message, Progress } from 'antd'
 import { ReloadOutlined, DeleteOutlined, DatabaseOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { getCacheStats, cleanCache } from '@/services/api'
-
-interface CacheStatsData {
-  size: number
-  hit_rate: number
-  hits?: number
-  misses?: number
-}
+import type { CacheStats } from '@/types'
 
 const CacheManagement: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [cleaning, setCleaning] = useState(false)
-  const [stats, setStats] = useState<CacheStatsData | null>(null)
+  const [stats, setStats] = useState<CacheStats | null>(null)
 
   const fetchStats = async () => {
     setLoading(true)
     try {
-      const data = await getCacheStats() as unknown as CacheStatsData
+      const data = await getCacheStats()
       setStats(data)
     } catch {
       message.error('获取缓存统计失败')

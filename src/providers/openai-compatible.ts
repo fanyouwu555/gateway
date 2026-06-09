@@ -4,7 +4,7 @@
  * 仅需通过配置声明支持的字段和能力，无需重复实现 HTTP 调用逻辑
  */
 import { BaseProvider } from './base';
-import type { IProviderCapabilities, IProviderConfig, ChatCompletionRequest, ChatCompletionResponse, EmbeddingRequest, EmbeddingResponse } from '../types';
+import type { IProviderCapabilities, IProviderConfig, IModelInfo, ChatCompletionRequest, ChatCompletionResponse, EmbeddingRequest, EmbeddingResponse } from '../types';
 import { fetchWithAgent } from '../utils/http-client';
 
 /**
@@ -114,7 +114,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
   /**
    * 处理流式聊天请求
    */
-  async chatStream(request: ChatCompletionRequest, config: IProviderConfig): Promise<ReadableStream> {
+  async chatStream(request: ChatCompletionRequest, config: IProviderConfig, options?: { signal?: AbortSignal }): Promise<ReadableStream> {
     const url = `${config.base_url}/chat/completions`;
     const body = this.buildChatBody(request, true);
 
@@ -122,6 +122,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
       method: 'POST',
       headers: { ...this.buildHeaders(config), ...this.extraHeaders },
       body: JSON.stringify(body),
+      signal: options?.signal,
     });
 
     if (!response.ok) {
@@ -157,5 +158,19 @@ export class OpenAICompatibleProvider extends BaseProvider {
       headers: { ...this.buildHeaders(config), ...this.extraHeaders },
       body: JSON.stringify(body),
     }, config.timeout);
+  }
+
+  async listModels(config: IProviderConfig): Promise<IModelInfo[]> {
+    const url = `${config.base_url}/models`;
+    const response = await this.fetch<{ data: Array<{ id: string; object?: string; owned_by?: string; created?: number }> }>(
+      url,
+      { method: 'GET', headers: { ...this.buildHeaders(config), ...this.extraHeaders } },
+      config.timeout
+    );
+    return response.data.map((m) => ({
+      id: m.id,
+      owned_by: m.owned_by,
+      created: m.created,
+    }));
   }
 }

@@ -7,8 +7,6 @@ import {
   getUsageByTimeRange,
   getAllMetrics,
   clearMetrics,
-  calculateCost,
-  initPricing,
   getTimeSeriesMetrics,
   getProviderStats,
   getAllTenantsStats,
@@ -16,14 +14,19 @@ import {
   getStatusCodeStats,
   getKeyUsage,
 } from '../../src/services/metrics';
+import { getPricingService } from '../../src/services/pricing';
 
 describe('Metrics Service', () => {
   beforeAll(() => {
     // 初始化测试用定价
-    initPricing({
+    getPricingService().initialize({
       'gpt-4o': { input: 5.0, output: 15.0 },
       'deepseek-chat': { input: 0.27, output: 1.1 },
     });
+  });
+
+  afterAll(() => {
+    getPricingService().initialize({});
   });
 
   beforeEach(() => {
@@ -47,26 +50,7 @@ describe('Metrics Service', () => {
       expect(metric.status_code).toBe(200);
     });
 
-    it('should calculate cost for known models', () => {
-      const cost = calculateCost('gpt-4o', {
-        prompt_tokens: 1000000,
-        completion_tokens: 500000,
-        total_tokens: 1500000,
-      });
-      expect(cost).toBeDefined();
-      expect(cost).toBeGreaterThan(0);
     });
-
-    it('should return default cost for unknown models', () => {
-      const cost = calculateCost('unknown-model', {
-        prompt_tokens: 1000,
-        completion_tokens: 500,
-        total_tokens: 1500,
-      });
-      expect(cost).toBeDefined();
-      expect(cost).toBeGreaterThan(0);
-    });
-  });
 
   describe('getTenantUsage', () => {
     it('should return empty stats for new tenant', () => {

@@ -72,7 +72,7 @@ export class AzureOpenAIProvider extends OpenAICompatibleProvider {
     }, _config.timeout);
   }
 
-  async chatStream(request: ChatCompletionRequest, _config: IProviderConfig): Promise<ReadableStream> {
+  async chatStream(request: ChatCompletionRequest, _config: IProviderConfig, options?: { signal?: AbortSignal }): Promise<ReadableStream> {
     const url = this.buildAzureUrl('/chat/completions');
     const body = (this as unknown as { buildChatBody: (request: ChatCompletionRequest, stream: boolean) => Record<string, unknown> }).buildChatBody(request, true);
 
@@ -80,6 +80,7 @@ export class AzureOpenAIProvider extends OpenAICompatibleProvider {
       method: 'POST',
       headers: this.buildAzureHeaders(),
       body: JSON.stringify(body),
+      signal: options?.signal,
     });
 
     if (!response.ok) {
