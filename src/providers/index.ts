@@ -284,38 +284,68 @@ export async function chatComplete(
 }
 
 /**
- * 流式聊天完成请求
- * 流式请求不支持 Failover（已建立的流无法切换到其他 Provider）
+ * 流式聊天完成请求（带连接层 Failover）
+ * 流建立前如果连接失败，尝试 fallback provider 重新建立连接
+ * 流建立后不支持切换（已传输的数据无法回滚）
  */
 export async function chatCompleteStream(
   providerName: string,
   request: ChatCompletionRequest,
   options?: { signal?: AbortSignal }
 ): Promise<ReadableStream> {
-  const config = getProviderConfig(providerName);
-  if (!config) {
-    throw new Error(`Provider ${providerName} not configured`);
+  const errors: Array<{ provider: string; error: string }> = [];
+  const attemptedProviders = new Set<string>();
+  const providersToTry: string[] = [providerName];
+
+  // 检查 failover 配置
+  const failoverConfig = getConfig().failover;
+  if (failoverConfig?.enabled) {
+    const fallbacks = getFallbackProviders(providerName, request.model);
+    providersToTry.push(...fallbacks);
   }
 
-  const provider = providers.get(providerName);
-  if (!provider) {
-    throw new Error(`Provider ${providerName} not registered`);
+  for (const currentProvider of providersToTry) {
+    if (attemptedProviders.has(currentProvider)) continue;
+    attemptedProviders.add(currentProvider);
+
+    const config = getProviderConfig(currentProvider);
+    if (!config) {
+      errors.push({ provider: currentProvider, error: 'Not configured' });
+      continue;
+    }
+
+    const provider = providers.get(currentProvider);
+    if (!provider) {
+      errors.push({ provider: currentProvider, error: 'Not registered' });
+      continue;
+    }
+
+    if (failoverConfig?.enabled && !activeFailover.isProviderHealthy(currentProvider)) {
+      errors.push({ provider: currentProvider, error: 'Provider unhealthy' });
+      continue;
+    }
+
+    const mappedModel = resolveModelForProvider(request.model, currentProvider);
+    const providerRequest = mappedModel !== request.model
+      ? { ...request, model: mappedModel }
+      : request;
+
+    const startTime = Date.now();
+    try {
+      const result = await callProviderWithRetry(provider, config, providerRequest, true, options);
+      activeFailover.recordProviderRequest(currentProvider, true, Date.now() - startTime);
+      return result as ReadableStream;
+    } catch (error) {
+      activeFailover.recordProviderRequest(currentProvider, false, Date.now() - startTime);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      errors.push({ provider: currentProvider, error: errMsg });
+    }
   }
 
-  const mappedModel = resolveModelForProvider(request.model, providerName);
-  const providerRequest = mappedModel !== request.model
-    ? { ...request, model: mappedModel }
-    : request;
-
-  const startTime = Date.now();
-  try {
-    const result = await callProviderWithRetry(provider, config, providerRequest, true, options);
-    activeFailover.recordProviderRequest(providerName, true, Date.now() - startTime);
-    return result as ReadableStream;
-  } catch (error) {
-    activeFailover.recordProviderRequest(providerName, false, Date.now() - startTime);
-    throw error;
-  }
+  // 所有 Provider 都失败
+  throw new Error(
+    `All providers failed for stream "${request.model}": ${errors.map((e) => `${e.provider} (${e.error})`).join('; ')}`
+  );
 }
 
 /**
