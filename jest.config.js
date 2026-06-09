@@ -20,7 +20,7 @@ export default {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/.claude/',
-    '/ai-gateway-admin/',
+    'ai-gateway-admin',
   ],
   collectCoverageFrom: [
     'src/**/*.ts',
