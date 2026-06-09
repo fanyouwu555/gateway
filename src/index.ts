@@ -17,6 +17,7 @@ import { initSemanticCache } from './services/semantic-cache';
 import { initRateLimitCleanInterval } from './middleware/ratelimit';
 import { createSensitiveWordFilterPlugin, registerPlugin } from './plugins';
 import { createPiiPlugin, createPiiBlockGuardrail, createPromptInjectionGuardrail } from './plugins/guardrails';
+import { getPluginStore } from './services/plugin-store';
 import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
@@ -24,6 +25,28 @@ import { initTenantStore, flushTenantStore } from './services/tenant';
 import { initMetricsStore } from './services/metrics';
 import { startAlertEngine } from './services/alert';
 import { initTracing } from './utils/tracing';
+
+async function loadPersistedPlugins(): Promise<void> {
+  try {
+    const store = getPluginStore();
+    const ids = await store.list();
+    for (const id of ids) {
+      const code = await store.load(id);
+      if (!code) continue;
+      const result = loadPluginInSandbox(code);
+      if (result.success && result.plugin) {
+        registerPlugin(result.plugin);
+        writeLog('info', 'Restored persisted plugin', { id });
+      } else {
+        writeLog('warn', 'Failed to restore persisted plugin', { id, error: result.error });
+      }
+    }
+  } catch (err) {
+    writeLog('error', 'Failed to load persisted plugins', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 // 创建 Hono 应用实例
 const app = createApp();
@@ -39,6 +62,9 @@ async function startServer() {
 
   // 初始化 Tracing（默认关闭，需 OTEL_ENABLED=true）
   initTracing();
+
+  // 恢复持久化的动态插件
+  await loadPersistedPlugins();
 
   // 注册内置插件
   const sensitiveWords = process.env.SENSITIVE_WORDS

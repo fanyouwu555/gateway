@@ -10,6 +10,7 @@ import {
   setPluginEnabled,
 } from '../../plugins';
 import { loadPluginInSandbox } from '../../plugins/loader';
+import { getPluginStore } from '../../services/plugin-store';
 import { pluginRegisterSchema } from '../../validation';
 
 const router = new Hono();
@@ -42,10 +43,14 @@ router.post('/v1/plugins/register', async (c: Context) => {
   }
 
   registerPlugin(result.plugin);
+
+  const pluginStore = getPluginStore();
+  await pluginStore.save(result.plugin.config.id, parsed.data.code);
+
   return c.json({ registered: true, plugin: result.plugin.config }, 201);
 });
 
-router.delete('/v1/plugins/:id', (c: Context) => {
+router.delete('/v1/plugins/:id', async (c: Context) => {
   const id = c.req.param('id') || '';
   if (!id) {
     return c.json({
@@ -58,6 +63,10 @@ router.delete('/v1/plugins/:id', (c: Context) => {
       error: { message: `Plugin not found: ${id}`, type: 'invalid_request_error', code: 'plugin_not_found' },
     }, 404);
   }
+
+  const pluginStore = getPluginStore();
+  await pluginStore.delete(id);
+
   return c.json({ unregistered: true, id });
 });
 
