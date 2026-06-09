@@ -10,8 +10,8 @@ export const groqProvider = new OpenAICompatibleProvider({
     chat: true,
     embed: false,
     streaming: true,
-    vision: false,
-    function_call: false,
+    vision: true,
+    function_call: true,
   },
   fields: {
     // Groq 支持基础参数
