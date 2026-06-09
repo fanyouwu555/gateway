@@ -116,6 +116,15 @@ function getFallbackProviders(excludeProvider: string, requestModel: string): st
 }
 
 /**
+ * Check if an error is retryable for model-level fallback
+ */
+function isRetryableError(statusCode: number | undefined, message: string): boolean {
+  if (statusCode === 429 || statusCode === 503 || statusCode === 502) return true;
+  if (message.includes('timeout') || message.includes('ETIMEDOUT') || message.includes('ECONNRESET')) return true;
+  return false;
+}
+
+/**
  * 执行单次 Provider 调用（含 Key 选择 + 重试）
  */
 async function callProviderWithRetry(
@@ -246,6 +255,23 @@ export async function chatComplete(
       const latency = Date.now() - startTime;
       activeFailover.recordProviderRequest(currentProvider, false, latency);
       const errMsg = error instanceof Error ? error.message : String(error);
+      const statusCode = (error as { status?: number }).status;
+
+      // Check for model-level fallback on retryable errors
+      const fallbackModels = getConfig().model_fallbacks?.[request.model];
+      if (fallbackModels && fallbackModels.length > 0 && isRetryableError(statusCode, errMsg)) {
+        for (const fallbackModel of fallbackModels) {
+          try {
+            const fallbackRequest = { ...providerRequest, model: fallbackModel };
+            const fallbackResult = await callProviderWithRetry(provider, config, fallbackRequest, false);
+            activeFailover.recordProviderRequest(currentProvider, true, Date.now() - startTime);
+            return fallbackResult as ChatCompletionResponse;
+          } catch {
+            // Continue to next fallback model
+          }
+        }
+      }
+
       errors.push({ provider: currentProvider, error: errMsg });
       // 继续尝试下一个 Provider
     }

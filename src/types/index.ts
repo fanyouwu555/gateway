@@ -460,6 +460,11 @@ export interface IGatewayConfig {
    *  例: { "gpt-4o": { "deepseek": "deepseek-chat", "anthropic": "claude-3-5-sonnet-20241022" } }
    */
   model_equivalents?: Record<string, Record<string, string>>;
+  /** 模型降级链：当主模型返回 429/503 时，在同一 Provider 内依次尝试 fallback 模型
+   *  key = 请求中的 model 名，value = [fallbackModel1, fallbackModel2, ...]
+   *  例: { "gpt-4o": ["gpt-4o-mini", "gpt-3.5-turbo"] }
+   */
+  model_fallbacks?: Record<string, string[]>;
   /** 模型能力池：用户请求抽象模型名，网关自动选择具体 Provider 和模型 */
   model_pools?: Record<string, IModelPool>;
   /** 动态 Provider 配置 */

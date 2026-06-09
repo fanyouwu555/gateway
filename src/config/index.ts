@@ -89,6 +89,7 @@ const DEFAULT_CONFIG: IGatewayConfig = {
   pricing: {},
   model_aliases: {},
   model_equivalents: {},
+  model_fallbacks: {},
   model_pools: {},
 };
 
@@ -157,6 +158,16 @@ function overrideFromEnv(config: IGatewayConfig): IGatewayConfig {
       config.model_equivalents = JSON.parse(modelEquivalentsEnv);
     } catch {
       writeLog('warn', 'Failed to parse MODEL_EQUIVALENTS env var, skipping');
+    }
+  }
+
+  // 从环境变量读取模型降级链配置（JSON 格式）
+  const modelFallbacksEnv = getEnv('MODEL_FALLBACKS');
+  if (modelFallbacksEnv) {
+    try {
+      config.model_fallbacks = JSON.parse(modelFallbacksEnv);
+    } catch {
+      writeLog('warn', 'Failed to parse MODEL_FALLBACKS env var, skipping');
     }
   }
 
