@@ -11,6 +11,9 @@ const embeddingCache = new Map<string, { vector: number[]; expiresAt: number }>(
 const EMBEDDING_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MAX_TEXT_LENGTH_FOR_HASH = 8000;
 
+// Singleflight: deduplicate concurrent in-flight embedding requests
+const inflightEmbeddings = new Map<string, Promise<number[] | null>>();
+
 function getCacheKey(text: string): string {
   const keyText = text.length > MAX_TEXT_LENGTH_FOR_HASH
     ? text.slice(0, MAX_TEXT_LENGTH_FOR_HASH) + createHash('sha256').update(text).digest('hex').slice(0, 16)
@@ -37,6 +40,23 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
     return cached.vector;
   }
 
+  // Singleflight: deduplicate concurrent in-flight requests
+  const inflight = inflightEmbeddings.get(cacheKey);
+  if (inflight) {
+    return inflight;
+  }
+
+  const promise = fetchEmbedding(text, cacheKey);
+  inflightEmbeddings.set(cacheKey, promise);
+
+  promise.finally(() => {
+    inflightEmbeddings.delete(cacheKey);
+  });
+
+  return promise;
+}
+
+async function fetchEmbedding(text: string, cacheKey: string): Promise<number[] | null> {
   try {
     const response = await createProviderEmbedding(EMBEDDING_PROVIDER, {
       model: EMBEDDING_MODEL,
