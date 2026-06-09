@@ -15,10 +15,12 @@ export default {
   },
   testMatch: [
     '**/tests/**/*.test.ts',
+    '**/src/**/*.test.ts',
   ],
   testPathIgnorePatterns: [
     '/node_modules/',
     '/.claude/',
+    '/ai-gateway-admin/',
   ],
   collectCoverageFrom: [
     'src/**/*.ts',

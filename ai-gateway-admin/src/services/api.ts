@@ -419,8 +419,8 @@ export async function getModels(): Promise<{ object: string; data: ModelListItem
 }
 
 export async function discoverModels(provider?: string): Promise<DiscoverModelsResponse | DiscoverAllResponse> {
-  const params = provider ? { provider } : {}
-  return get<DiscoverModelsResponse | DiscoverAllResponse>('/v1/admin/discover-models', params)
+  const params = provider ? { provider } : undefined
+  return get<DiscoverModelsResponse | DiscoverAllResponse>('/v1/admin/discover-models', { params })
 }
 
 export default api

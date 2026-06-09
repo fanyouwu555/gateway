@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, Table, Button, Tag, Space, message, Modal, List, Spin, Empty, Typography, Tooltip, Checkbox, Select, Divider, Alert } from 'antd'
-import { ReloadOutlined, RobotOutlined, SearchOutlined, ThunderboltOutlined, GlobalOutlined, CloudOutlined, BulbOutlined, StarOutlined, FireOutlined, CodeOutlined, TeamOutlined, ApiOutlined, CloudServerOutlined, RocketOutlined, EyeOutlined, SettingOutlined, SaveOutlined } from '@ant-design/icons'
+import { ReloadOutlined, RobotOutlined, SearchOutlined, ThunderboltOutlined, GlobalOutlined, CloudOutlined, BulbOutlined, StarOutlined, FireOutlined, CodeOutlined, TeamOutlined, ApiOutlined, CloudServerOutlined, RocketOutlined, EyeOutlined, SettingOutlined } from '@ant-design/icons'
 import { getHealth, getProviderStats, discoverModels, getConfig, updateConfig } from '@/services/api'
 import type { ProviderStats, ModelInfo, GatewayConfig } from '@/types'
 
@@ -356,7 +356,7 @@ const Providers: React.FC = () => {
           {record.enabled_models && record.enabled_models.length > 0 ? (
             <Space size={[0, 4]} wrap>
               {record.enabled_models.map((model) => (
-                <Tag key={model} color={model === record.default_model ? 'green' : 'blue'} size="small">
+                <Tag key={model} color={model === record.default_model ? 'green' : 'blue'}>
                   {model === record.default_model && '★ '}
                   {model}
                 </Tag>
@@ -576,11 +576,11 @@ const Providers: React.FC = () => {
                         />
                         <Text strong>{model.id}</Text>
                         {model.context_window && (
-                          <Tag color="blue" size="small">{(model.context_window / 1000).toFixed(0)}K ctx</Tag>
+                          <Tag color="blue">{(model.context_window / 1000).toFixed(0)}K ctx</Tag>
                         )}
                       </Space>
                       {selectedModels.includes(model.id) && model.id === defaultModel && (
-                        <Tag color="green" size="small">默认</Tag>
+                        <Tag color="green">默认</Tag>
                       )}
                     </div>
                   </Card>
