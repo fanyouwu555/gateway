@@ -22,6 +22,28 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 const LOG_DIR = process.env.LOG_DIR || './logs';
 const LOG_RETENTION_DAYS = 7;
 
+function getSampleRate(): number {
+  const rate = parseFloat(process.env.LOG_SAMPLE_RATE || '1.0');
+  if (Number.isNaN(rate)) return 1.0;
+  return rate;
+}
+
+function shouldLog(level: LogLevel): boolean {
+  // Error and warn are always logged
+  if (level === 'error' || level === 'warn') {
+    return true;
+  }
+  // info/debug are sampled
+  const sampleRate = getSampleRate();
+  if (sampleRate >= 1) {
+    return true;
+  }
+  if (sampleRate <= 0) {
+    return false;
+  }
+  return Math.random() < sampleRate;
+}
+
 let currentLogFile = '';
 let currentLogDate = '';
 
@@ -87,6 +109,10 @@ export function writeLog(level: LogLevel, message: string, meta?: Record<string,
   const currentLevelNum = LOG_LEVELS[getCurrentLogLevel()];
   const levelNum = LOG_LEVELS[level];
   if (levelNum < currentLevelNum) {
+    return;
+  }
+
+  if (!shouldLog(level)) {
     return;
   }
 
