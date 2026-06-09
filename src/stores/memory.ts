@@ -256,14 +256,3 @@ export class MemoryKVStore implements IKVStore {
     return count;
   }
 }
-
-/**
- * 内存存储工厂
- */
-export class MemoryStorageFactory {
-  createKVStore(prefix: string): IKVStore {
-    return new MemoryKVStore(prefix);
-  }
-}
-
-export const memoryStorageFactory = new MemoryStorageFactory();

@@ -214,21 +214,6 @@ export class RedisKVStore implements IKVStore {
   }
 }
 
-/**
- * Redis 存储工厂
- */
-export class RedisStorageFactory {
-  private config: RedisConfig;
-
-  constructor(config: RedisConfig) {
-    this.config = config;
-  }
-
-  createKVStore(prefix: string): IKVStore {
-    return new RedisKVStore({ ...this.config, prefix });
-  }
-}
-
 // 从环境变量创建 Redis 配置
 export function createRedisConfigFromEnv(): RedisConfig | null {
   const redisUrl = process.env.REDIS_URL;

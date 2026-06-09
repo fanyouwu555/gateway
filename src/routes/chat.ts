@@ -864,6 +864,29 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     c.set('provider', providerName);
     c.set('model', providerReq.model);
     c.set('pool_model', processedReq.model); // 保存原始模型池名称
+
+    // Token 级限流：请求前预估检查
+    const trl = getTokenRateLimit();
+    if (trl) {
+      const promptTokens = await countPromptTokens(
+        providerReq.messages as ChatMessage[],
+        providerReq.model,
+      );
+      const estimatedTotal = promptTokens + (providerReq.max_tokens || 4096);
+      if (!trl.check(providerReq.model, estimatedTotal)) {
+        return c.json(
+          {
+            error: {
+              message: `Token rate limit exceeded for model '${providerReq.model}'. Estimated tokens: ${estimatedTotal}`,
+              type: 'rate_limit_error',
+              code: 'token_rate_limit_exceeded',
+            },
+          },
+          429,
+        );
+      }
+    }
+
     providerCallStart = Date.now();
 
     if (providerReq.stream) {

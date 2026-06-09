@@ -68,7 +68,6 @@ jest.mock('../../src/config', () => ({
     },
     loadBalance: { strategy: 'roundRobin', providers: {} },
     cache: { enabled: true, ttl: 3600000, max_size: 1000 },
-    session: { max_sessions: 1000, max_messages_per_session: 100, ttl: 3600000 },
     rate_limit_clean_interval: 60000,
     pricing: {},
     default_model: 'gpt-4o-mini',
@@ -95,6 +94,11 @@ jest.mock('../../src/config', () => ({
   resolveModelAlias: jest.fn((alias: string) => alias),
   isModelPool: jest.fn(() => false),
   getModelPool: jest.fn(() => undefined),
+  getProviderApiKeys: (config: { api_key?: string; api_keys?: string[] }) => {
+    if (config.api_keys && config.api_keys.length > 0) return config.api_keys;
+    if (config.api_key) return [config.api_key];
+    return [];
+  },
 }));
 
 const mockOpenAI = {

@@ -40,7 +40,7 @@ describe('Provider Registry', () => {
       process.env.MOCK_PROVIDER = '1';
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('mock')).toBe(true);
+      expect(providers.getProvider('mock') !== undefined).toBe(true);
       if (original !== undefined) {
         process.env.MOCK_PROVIDER = original;
       } else {
@@ -56,7 +56,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('dynamic-test')).toBe(true);
+      expect(providers.getProvider('dynamic-test') !== undefined).toBe(true);
     });
 
     it('should skip dynamic providers with invalid URL', async () => {
@@ -67,7 +67,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('bad-provider')).toBe(false);
+      expect(providers.getProvider('bad-provider') !== undefined).toBe(false);
     });
   });
 
@@ -150,7 +150,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('localhost-test')).toBe(false);
+      expect(providers.getProvider('localhost-test') !== undefined).toBe(false);
     });
 
     it('should reject 127.0.0.1', async () => {
@@ -159,7 +159,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('loopback')).toBe(false);
+      expect(providers.getProvider('loopback') !== undefined).toBe(false);
     });
 
     it('should reject 10.x.x.x', async () => {
@@ -168,7 +168,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('private10')).toBe(false);
+      expect(providers.getProvider('private10') !== undefined).toBe(false);
     });
 
     it('should reject 172.16-31.x.x', async () => {
@@ -177,7 +177,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('private172')).toBe(false);
+      expect(providers.getProvider('private172') !== undefined).toBe(false);
     });
 
     it('should reject 192.168.x.x', async () => {
@@ -186,7 +186,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('private192')).toBe(false);
+      expect(providers.getProvider('private192') !== undefined).toBe(false);
     });
 
     it('should reject 169.254.x.x', async () => {
@@ -195,7 +195,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('linklocal')).toBe(false);
+      expect(providers.getProvider('linklocal') !== undefined).toBe(false);
     });
 
     it('should reject non-http protocols', async () => {
@@ -204,7 +204,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('fileproto')).toBe(false);
+      expect(providers.getProvider('fileproto') !== undefined).toBe(false);
     });
 
     it('should reject invalid URL', async () => {
@@ -213,7 +213,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('badurl')).toBe(false);
+      expect(providers.getProvider('badurl') !== undefined).toBe(false);
     });
 
     it('should allow public URLs', async () => {
@@ -222,7 +222,7 @@ describe('Provider Registry', () => {
       });
       const { registry, providers } = await importRegistry();
       registry.initProviders();
-      expect(providers.hasProvider('public')).toBe(true);
+      expect(providers.getProvider('public') !== undefined).toBe(true);
     });
   });
 

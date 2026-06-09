@@ -194,12 +194,4 @@ describe('MemoryKVStore', () => {
     });
   });
 
-  describe('MemoryStorageFactory', () => {
-    it('should create MemoryKVStore', () => {
-      const { MemoryStorageFactory } = require('../../src/stores/memory');
-      const factory = new MemoryStorageFactory();
-      const kv = factory.createKVStore('test');
-      expect(kv.type).toBe('memory');
-    });
-  });
 });

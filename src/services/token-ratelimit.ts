@@ -2,8 +2,9 @@
  * Token 级按模型限流服务
  *
  * 为每个模型配置每分钟 token 配额，
- * 使用令牌桶算法，在请求完成后消耗 tokens，
- * 超出配额的模型在下一次请求时被拒绝 (429)
+ * 使用令牌桶算法：
+ * 1. 请求前调用 check() 预估检查，不足则直接拒绝 (429)
+ * 2. 请求完成后调用 consume() 按实际用量扣减
  */
 import { getConfig } from '../config';
 
@@ -42,7 +43,28 @@ class TokenRateLimitStore {
   }
 
   /**
-   * 消耗令牌
+   * 检查是否有足够配额（请求前调用）
+   * @returns true 如果预估 token 数在配额内，false 如果会超限
+   */
+  check(model: string, estimatedTokens: number): boolean {
+    if (estimatedTokens <= 0) return true;
+
+    const cfg = this.getModelConfig(model);
+    if (!cfg) return true; // 未配置 = 不限流
+
+    const key = `model:${model}`;
+    let bucket = this.buckets.get(key);
+    if (!bucket) {
+      bucket = { tokens: cfg.burstTokens, lastRefill: Date.now() };
+      this.buckets.set(key, bucket);
+    }
+
+    this.refill(bucket, cfg.tokensPerMinute, cfg.burstTokens);
+    return bucket.tokens >= estimatedTokens;
+  }
+
+  /**
+   * 消耗令牌（请求完成后按实际用量扣减）
    * @returns true 如果消耗成功（未超限），false 如果超限
    */
   consume(model: string, tokenCount: number): boolean {

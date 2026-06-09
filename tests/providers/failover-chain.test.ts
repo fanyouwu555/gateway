@@ -28,6 +28,11 @@ jest.mock('../../src/config', () => ({
     },
     routing: [{ name: 'default', rules: [{ model: 'gpt-4o', provider: 'openai' }], fallback: 'deepseek' }],
   }),
+  getProviderApiKeys: (config: { api_key?: string; api_keys?: string[] }) => {
+    if (config.api_keys && config.api_keys.length > 0) return config.api_keys;
+    if (config.api_key) return [config.api_key];
+    return [];
+  },
   getProviderConfig: (name: string) => {
     const configs: Record<string, unknown> = {
       openai: { provider: 'openai', base_url: 'https://api.openai.com/v1', api_key: 'sk-openai' },

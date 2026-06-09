@@ -203,30 +203,6 @@ export function getMetrics(): string {
 }
 
 /**
- * 记录 Token 使用量
- */
-export function recordTokenUsage(provider: string, model: string, promptTokens: number, completionTokens: number): void {
-  registry.inc('gateway_tokens_total', { provider, model, type: 'prompt' }, promptTokens);
-  registry.inc('gateway_tokens_total', { provider, model, type: 'completion' }, completionTokens);
-  registry.inc('gateway_requests_total', { provider, model });
-}
-
-/**
- * 记录 HTTP 请求总数（简化版本）
- */
-export function incRequestCount(): void {
-  registry.inc('gateway_requests_total');
-}
-
-/**
- * 记录响应时间
- */
-export function recordResponseTime(ms: number): void {
-  registry.observe('gateway_response_time_seconds', ms / 1000);
-  registry.inc('gateway_response_time_ms_sum', {}, ms);
-}
-
-/**
  * Record cache hit
  */
 export function recordCacheHit(type: 'exact' | 'semantic'): void {

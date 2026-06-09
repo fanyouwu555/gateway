@@ -14,7 +14,6 @@ import {
   listPlugins,
   setPluginEnabled,
   createSensitiveWordFilterPlugin,
-  createLoggingPlugin,
 } from '../../src/plugins';
 
 const mockWriteLog = jest.fn();
@@ -377,12 +376,6 @@ describe('Plugin System', () => {
     });
   });
 
-  describe('createLoggingPlugin', () => {
-    it('should be a transform plugin', () => {
-      const plugin = createLoggingPlugin();
-      expect(plugin.config.type).toBe('transform');
-    });
-  });
 });
 
 describe('loadExternalPlugin', () => {

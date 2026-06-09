@@ -1,7 +1,7 @@
 /**
  * Provider Registry 测试
  */
-import { getProviderNames, hasProvider } from '../../src/providers';
+import { getProviderNames } from '../../src/providers';
 import { initProviders } from '../../src/providers/registry';
 
 describe('Provider Registry', () => {
@@ -18,18 +18,6 @@ describe('Provider Registry', () => {
       expect(names).toContain('moonshot');
       expect(names).toContain('volcano');
       expect(names).toContain('kimi-code');
-    });
-  });
-
-  describe('hasProvider', () => {
-    it('should return true for registered provider', () => {
-      expect(hasProvider('openai')).toBe(true);
-      expect(hasProvider('deepseek')).toBe(true);
-      expect(hasProvider('anthropic')).toBe(true);
-    });
-
-    it('should return false for non-registered provider', () => {
-      expect(hasProvider('non-existent')).toBe(false);
     });
   });
 });

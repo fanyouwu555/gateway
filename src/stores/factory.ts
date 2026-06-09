@@ -1,7 +1,7 @@
 /**
  * 存储工厂 - 创建 Memory 或 Redis 存储
  */
-import type { IKVStore, IStorageFactory, StorageType } from './interface';
+import type { IKVStore, StorageType } from './interface';
 import { MemoryKVStore } from './memory';
 import { RedisKVStore, createRedisConfigFromEnv, type RedisConfig } from './redis';
 import { writeLog } from '../utils/logger';
@@ -17,7 +17,7 @@ export interface StorageConfig {
 /**
  * 存储工厂实现
  */
-export class StorageFactory implements IStorageFactory {
+export class StorageFactory {
   private config: StorageConfig;
 
   constructor(config: StorageConfig) {

@@ -81,11 +81,6 @@ const DEFAULT_CONFIG: IGatewayConfig = {
     backend: 'memory',
     max_entries: 10000,
   },
-  session: {
-    max_sessions: 1000,
-    max_messages_per_session: 100,
-    ttl: 3600000,
-  },
   default_model: getEnv('DEFAULT_MODEL', 'ark-code-latest'),
   rate_limit_clean_interval: 60000,
   model_rate_limits: {},
@@ -465,6 +460,19 @@ export function resolveModelAlias(alias: string): string {
 
   writeLog('warn', 'Model alias resolution exceeded max depth', { alias, resolved: current });
   return current;
+}
+
+/**
+ * 获取可用于调用的 API Keys
+ */
+export function getProviderApiKeys(config: IProviderConfig): string[] {
+  if (config.api_keys && config.api_keys.length > 0) {
+    return config.api_keys;
+  }
+  if (config.api_key) {
+    return [config.api_key];
+  }
+  return [];
 }
 
 /**

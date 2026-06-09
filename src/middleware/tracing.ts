@@ -4,7 +4,6 @@
  */
 import type { Context, Next } from 'hono';
 import { createRootSpan, endSpan, parseTraceParent } from '../utils/tracing';
-import type { Span } from '@opentelemetry/api';
 
 /**
  * Tracing 中间件
@@ -29,11 +28,4 @@ export async function tracingMiddleware(c: Context, next: Next): Promise<void> {
       endSpan(span);
     }
   }
-}
-
-/**
- * 从 Context 获取当前 Span
- */
-export function getSpan(c: Context): Span | undefined {
-  return c.get('span') as Span | undefined;
 }

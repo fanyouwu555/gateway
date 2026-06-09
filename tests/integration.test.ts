@@ -2,7 +2,7 @@
  * 集成测试
  * 测试核心功能模块间的协作
  */
-import { getProvider, hasProvider } from '../src/providers';
+import { getProvider } from '../src/providers';
 import { generateCacheKey, getCache, setCache, cleanCache } from '../src/services/cache';
 import { checkQuota, recordUsage } from '../src/services/quota';
 import { createTenant, getTenant, listTenants } from '../src/services/tenant';
@@ -48,6 +48,11 @@ jest.mock('../src/config', () => ({
   }),
   isModelPool: jest.fn(() => false),
   getModelPool: jest.fn(() => undefined),
+  getProviderApiKeys: (config: { api_key?: string; api_keys?: string[] }) => {
+    if (config.api_keys && config.api_keys.length > 0) return config.api_keys;
+    if (config.api_key) return [config.api_key];
+    return [];
+  },
 }));
 
 // Mock metrics
@@ -59,9 +64,9 @@ jest.mock('../src/services/metrics', () => ({
 describe('Integration Tests', () => {
   describe('Provider Integration', () => {
     it('should have all core providers registered', () => {
-      expect(hasProvider('openai')).toBe(true);
-      expect(hasProvider('deepseek')).toBe(true);
-      expect(hasProvider('anthropic')).toBe(true);
+      expect(getProvider('openai') !== undefined).toBe(true);
+      expect(getProvider('deepseek') !== undefined).toBe(true);
+      expect(getProvider('anthropic') !== undefined).toBe(true);
     });
 
     it('should get provider by name', () => {

@@ -3,7 +3,7 @@
  * 支持实时 AI 对话流式传输
  * 协议兼容 OpenAI SSE 格式
  */
-import type { Context, Next } from 'hono';
+import type { Context } from 'hono';
 import type { WebSocket } from 'ws';
 import type { ChatCompletionRequest } from '../types';
 import { generateRequestId } from '../utils';
@@ -814,15 +814,6 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
       },
     });
   }
-}
-
-/**
- * WebSocket 中间件 - 仅认证和升级
- */
-export async function wsAuthMiddleware(_c: Context, next: Next): Promise<void> {
-  // 认证由全局 authMiddleware 处理
-  // 这里只需要确认升级请求
-  await next();
 }
 
 /**

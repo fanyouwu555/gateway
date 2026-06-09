@@ -74,10 +74,3 @@ export interface IKVStore extends IStorage {
   /** 删除匹配的所有键 */
   delByPattern(pattern: string): Promise<number>;
 }
-
-/**
- * 存储工厂
- */
-export interface IStorageFactory {
-  createKVStore(prefix: string): IKVStore;
-}

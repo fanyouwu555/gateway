@@ -11,8 +11,7 @@ import type {
   EmbeddingRequest,
   EmbeddingResponse,
 } from '../types';
-import { getProviderApiKeys } from '../types';
-import { getConfig, getProviderConfig, getRoutingStrategy, getModelPool } from '../config';
+import { getConfig, getProviderConfig, getRoutingStrategy, getModelPool, getProviderApiKeys } from '../config';
 import { failoverManager as defaultFailover } from '../services/failover';
 import { loadBalanceManager as defaultLoadBalancer } from '../services/loadbalancer';
 
@@ -73,13 +72,6 @@ export function getProviderNames(): string[] {
  */
 export function resetProviders(): void {
   providers.clear();
-}
-
-/**
- * 检查Provider是否已注册
- */
-export function hasProvider(name: string): boolean {
-  return providers.has(name);
 }
 
 /**
@@ -173,6 +165,7 @@ async function callProviderWithRetry(
  * 根据 `model_equivalents` 配置解析目标 Provider 的等效模型名
  * 当 Failover 切换到其他 Provider 时自动重命名 model 字段
  */
+/** @deprecated Exported for tests only */
 export function resolveModelForProvider(model: string, provider: string): string {
   const equivalents = getConfig().model_equivalents;
   if (!equivalents) return model;

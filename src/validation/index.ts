@@ -152,27 +152,32 @@ export const updateKeyPolicySchema = z.object({
 
 // ===== Gateway Config Update =====
 
+const providerConfigSchema = z.object({
+  provider: z.string(),
+  base_url: z.string(),
+  api_key: z.string().optional(),
+  timeout: z.number().positive().optional(),
+  headers: z.record(z.string()).optional(),
+  max_retries: z.number().positive().optional(),
+});
+
+const routingRuleSchema = z.object({
+  name: z.string(),
+  rules: z.array(z.object({
+    model: z.string(),
+    provider: z.string(),
+    max_tokens: z.number().positive().optional(),
+  })),
+  fallback: z.string().optional(),
+});
+
 export const configUpdateSchema = z.object({
   port: z.number().int().positive().optional(),
   host: z.string().optional(),
   log_level: z.enum(['debug', 'info', 'warn', 'error']).optional(),
-  providers: z.record(z.object({
-    provider: z.string(),
-    base_url: z.string(),
-    api_key: z.string().optional(),
-    timeout: z.number().positive().optional(),
-    headers: z.record(z.string()).optional(),
-    max_retries: z.number().positive().optional(),
-  })).optional(),
-  routing: z.array(z.object({
-    name: z.string(),
-    rules: z.array(z.object({
-      model: z.string(),
-      provider: z.string(),
-      max_tokens: z.number().positive().optional(),
-    })),
-    fallback: z.string().optional(),
-  })).optional(),
+  default_model: z.string().optional(),
+  providers: z.record(providerConfigSchema).optional(),
+  routing: z.array(routingRuleSchema).optional(),
   auth: z.object({
     enabled: z.boolean().optional(),
     api_keys: z.array(z.object({
@@ -187,6 +192,10 @@ export const configUpdateSchema = z.object({
     qps: z.number().positive().optional(),
     burst: z.number().positive().optional(),
   }).optional(),
+  model_rate_limits: z.record(z.object({
+    tokens_per_minute: z.number().positive(),
+    burst_tokens: z.number().positive().optional(),
+  })).optional(),
   failover: z.object({
     enabled: z.boolean().optional(),
     failureThreshold: z.number().positive().optional(),
@@ -198,16 +207,67 @@ export const configUpdateSchema = z.object({
     errorRateThreshold: z.number().optional(),
     latencyThresholdMs: z.number().positive().optional(),
   }).optional(),
+  loadBalance: z.object({
+    strategy: z.enum(['roundRobin', 'random']).optional(),
+  }).optional(),
   cache: z.object({
     enabled: z.boolean().optional(),
     ttl: z.number().positive().optional(),
     max_size: z.number().positive().optional(),
+  }).optional(),
+  semantic_cache: z.object({
+    enabled: z.boolean().optional(),
+    threshold: z.number().min(0).max(1).optional(),
+    backend: z.enum(['memory', 'redis_vector']).optional(),
+    max_entries: z.number().positive().optional(),
+  }).optional(),
+  cost_control: z.object({
+    monthly_budget: z.number().positive().optional(),
+    warn_threshold: z.number().positive().optional(),
+  }).optional(),
+  request_logging: z.object({
+    enabled: z.boolean().optional(),
+    max_body_size: z.number().positive().optional(),
+    sample_rate: z.number().min(0).max(1).optional(),
+  }).optional(),
+  conversation_logging: z.object({
+    enabled: z.boolean().optional(),
+    max_memory_sessions: z.number().positive().optional(),
+    redis_ttl_days: z.number().positive().optional(),
+    max_turns_per_session: z.number().positive().optional(),
   }).optional(),
   pricing: z.record(z.object({
     input: z.number(),
     output: z.number(),
   })).optional(),
   model_aliases: z.record(z.string()).optional(),
+  model_equivalents: z.record(z.record(z.string())).optional(),
+  model_pools: z.record(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    capabilities: z.array(z.string()).optional(),
+    candidates: z.array(z.object({
+      provider: z.string(),
+      model: z.string(),
+      priority: z.number(),
+      enabled: z.boolean().optional(),
+    })),
+  })).optional(),
+  dynamicProviders: z.array(z.object({
+    name: z.string(),
+    base_url: z.string(),
+    api_key: z.string().optional(),
+    auth_header: z.string().optional(),
+    auth_prefix: z.string().optional(),
+    endpoints: z.object({
+      chat: z.string().optional(),
+      chat_stream: z.string().optional(),
+      embeddings: z.string().optional(),
+      models: z.string().optional(),
+    }).optional(),
+    capabilities: z.record(z.boolean()).optional(),
+  })).optional(),
+  rate_limit_clean_interval: z.number().positive().optional(),
 });
 
 // ===== Prompt Template =====

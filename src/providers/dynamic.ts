@@ -24,10 +24,11 @@ export class DynamicProvider extends BaseProvider {
     super();
     this.name = dynamicConfig.name;
     this.config = dynamicConfig;
+    const ep = dynamicConfig.endpoints || {};
     this.capabilities = {
-      chat: !!dynamicConfig.endpoints.chat,
-      embed: !!dynamicConfig.endpoints.embeddings,
-      streaming: !!dynamicConfig.endpoints.chat_stream,
+      chat: !!ep.chat,
+      embed: !!ep.embeddings,
+      streaming: !!ep.chat_stream,
       vision: dynamicConfig.capabilities?.vision ?? false,
       function_call: dynamicConfig.capabilities?.function_call ?? false,
     };
@@ -37,7 +38,7 @@ export class DynamicProvider extends BaseProvider {
     request: ChatCompletionRequest,
     config: IProviderConfig
   ): Promise<ChatCompletionResponse> {
-    const endpoint = this.config.endpoints.chat || '/chat/completions';
+    const endpoint = this.config.endpoints?.chat || '/chat/completions';
     const url = `${config.base_url}${endpoint}`;
 
     const body = {
@@ -72,7 +73,7 @@ export class DynamicProvider extends BaseProvider {
     config: IProviderConfig,
     options?: { signal?: AbortSignal }
   ): Promise<ReadableStream> {
-    const endpoint = this.config.endpoints.chat_stream || this.config.endpoints.chat || '/chat/completions';
+    const endpoint = this.config.endpoints?.chat_stream || this.config.endpoints?.chat || '/chat/completions';
     const url = `${config.base_url}${endpoint}`;
 
     const body = {
@@ -114,7 +115,7 @@ export class DynamicProvider extends BaseProvider {
     request: EmbeddingRequest,
     config: IProviderConfig
   ): Promise<EmbeddingResponse> {
-    const endpoint = this.config.endpoints.embeddings || '/embeddings';
+    const endpoint = this.config.endpoints?.embeddings || '/embeddings';
     const url = `${config.base_url}${endpoint}`;
 
     const body = {
@@ -153,7 +154,7 @@ export class DynamicProvider extends BaseProvider {
   }
 
   async listModels(config: IProviderConfig): Promise<IModelInfo[]> {
-    const endpoint = this.config.endpoints.models;
+    const endpoint = this.config.endpoints?.models;
     if (!endpoint) return [];
     const url = `${config.base_url}${endpoint}`;
     const response = await this.fetch<{ data: Array<{ id: string; owned_by?: string; created?: number }> }>(

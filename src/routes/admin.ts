@@ -28,6 +28,7 @@ import {
 } from '../services/prompt';
 import { getRouterStatus } from '../services/router';
 import { getRequestLogStore } from '../services/request-log';
+import { getConversationLogService } from '../services/conversation-log';
 import {
   listTenants,
   getTenant,
@@ -68,7 +69,6 @@ import { requireAdmin } from '../middleware/auth';
 import { auditAdmin } from '../utils/audit';
 import { getKeyUsage } from '../services/metrics';
 import { getPricingService } from '../services/pricing';
-import { getConversationLogService } from '../services/conversation-log';
 import type { IConversationFilter } from '../types';
 
 const adminRouter = new Hono();
@@ -166,7 +166,8 @@ adminRouter.get('/v1/usage/status-codes', (c: Context) => {
 
 // === 配额状态 ===
 adminRouter.get('/v1/quota', (c: Context) => {
-  const status = getQuotaStatus('default');
+  const tenantId = c.req.query('tenant_id') || 'default';
+  const status = getQuotaStatus(tenantId);
   return c.json(status);
 });
 
@@ -794,6 +795,29 @@ adminRouter.get('/v1/request-logs', (c: Context) => {
     offset: offset ? parseInt(offset, 10) : 0,
   });
   return c.json({ logs, total: store.getTotalCount() });
+});
+
+// ===== 会话管理 API（基于对话日志的统计视图） =====
+
+/** GET /v1/sessions — 会话统计 */
+adminRouter.get('/v1/sessions', async (c: Context) => {
+  const service = getConversationLogService();
+  const { sessions } = await service.listSessions({ limit: 10000 });
+  const totalSessions = sessions.length;
+  const totalMessages = sessions.reduce((sum, s) => sum + (s.turn_count || 0), 0);
+  const byTenant: Record<string, number> = {};
+  for (const s of sessions) {
+    const tid = s.tenant_id || 'default';
+    byTenant[tid] = (byTenant[tid] || 0) + 1;
+  }
+  return c.json({ total_sessions: totalSessions, total_messages: totalMessages, by_tenant: byTenant });
+});
+
+/** POST /v1/sessions/clean — 清理所有会话 */
+adminRouter.post('/v1/sessions/clean', async (c: Context) => {
+  const service = getConversationLogService();
+  await service.clearAll();
+  return c.json({ cleaned: true });
 });
 
 // ===== 会话日志管理 API =====

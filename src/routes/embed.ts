@@ -12,8 +12,51 @@ import { recordMetric } from '../services/metrics';
 import { recordUsage } from '../services/quota';
 import { getPricingService } from '../services/pricing';
 import { getRequestLogStore } from '../services/request-log';
+import { checkQuota, checkKeyQuota } from '../services/quota';
+import { getTokenRateLimit } from '../services/token-ratelimit';
+import { countCompletionTokens } from '../services/token-counter';
 
 const embedRouter = new Hono();
+
+function checkEmbedKeyPolicies(c: Context, model: string): Response | null {
+  const keyAllowedModels = c.get('key_allowed_models') as string[] | undefined;
+  const apiKeyMeta = c.get('api_key_meta') as { default_model?: string } | undefined;
+  if (keyAllowedModels && keyAllowedModels.length > 0 && !keyAllowedModels.includes(model)) {
+    if (apiKeyMeta?.default_model !== model) {
+      return c.json(
+        {
+          error: {
+            message: `Model '${model}' is not allowed by this API key. Allowed: ${keyAllowedModels.join(', ')}`,
+            type: 'invalid_request_error',
+            code: 'model_not_allowed',
+          },
+        },
+        403,
+      );
+    }
+  }
+
+  const keyMonthlyBudget = c.get('key_monthly_budget') as number | undefined;
+  if (keyMonthlyBudget !== undefined) {
+    const keyHash = c.get('key_hash') as string | undefined;
+    if (keyHash) {
+      const budgetCheck = checkKeyQuota(keyHash, keyMonthlyBudget);
+      if (!budgetCheck.allowed) {
+        return c.json(
+          {
+            error: {
+              message: budgetCheck.reason || 'API key monthly budget exceeded',
+              type: 'rate_limit_error',
+              code: 'budget_exceeded',
+            },
+          },
+          429,
+        );
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * 处理 Embedding 请求
@@ -59,9 +102,50 @@ async function handleEmbedding(c: Context): Promise<Response> {
     c.set('provider', providerName);
     c.set('model', model);
 
+    const tenantId = c.get('tenant_id');
+
+    // Key policy check
+    const policyError = checkEmbedKeyPolicies(c, model);
+    if (policyError) return policyError;
+
+    // Quota check
+    if (tenantId) {
+      const quotaCheck = checkQuota(tenantId);
+      if (!quotaCheck.allowed) {
+        return c.json(
+          {
+            error: {
+              message: quotaCheck.reason || 'Quota exceeded',
+              type: 'rate_limit_error',
+              code: 'quota_exceeded',
+            },
+          },
+          429,
+        );
+      }
+    }
+
+    // Token rate limit check (pre-request)
+    const trl = getTokenRateLimit();
+    if (trl) {
+      const inputText = Array.isArray(request.input) ? request.input.join(' ') : request.input;
+      const estimatedTokens = await countCompletionTokens(inputText, model);
+      if (!trl.check(model, estimatedTokens)) {
+        return c.json(
+          {
+            error: {
+              message: `Token rate limit exceeded for model '${model}'. Estimated tokens: ${estimatedTokens}`,
+              type: 'rate_limit_error',
+              code: 'token_rate_limit_exceeded',
+            },
+          },
+          429,
+        );
+      }
+    }
+
     const response = await createEmbedding(providerName, request);
 
-    const tenantId = c.get('tenant_id');
     const promptTokens = response.usage?.prompt_tokens || 0;
     const totalTokens = response.usage?.total_tokens || 0;
 

@@ -348,26 +348,3 @@ export function createSensitiveWordFilterPlugin(words: string[]): GuardrailPlugi
     },
   };
 }
-
-/**
- * 日志记录插件
- */
-export function createLoggingPlugin(): TransformPlugin {
-  return {
-    config: {
-      id: 'request-logger',
-      name: 'Request Logger',
-      type: 'transform',
-      enabled: true,
-      priority: 0,
-    },
-    async transform(c: Context, data: unknown): Promise<unknown> {
-      const start = Date.now();
-      const context = c as Context & { next?: () => Promise<void> };
-      await context.next?.();
-      const duration = Date.now() - start;
-      writeLog('info', 'Plugin request processed', { duration_ms: duration });
-      return data;
-    },
-  };
-}

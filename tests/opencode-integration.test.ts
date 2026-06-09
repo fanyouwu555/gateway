@@ -76,7 +76,6 @@ jest.mock('../src/config', () => ({
     },
     loadBalance: { strategy: 'roundRobin', providers: {} },
     cache: { enabled: true, ttl: 3600000, max_size: 1000 },
-    session: { max_sessions: 1000, max_messages_per_session: 100, ttl: 3600000 },
     rate_limit_clean_interval: 60000,
     pricing: {
       'gpt-4o': { input: 2.5, output: 10.0 },
@@ -105,6 +104,11 @@ jest.mock('../src/config', () => ({
     fallback: 'openai',
   }),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  getProviderApiKeys: (config: { api_key?: string; api_keys?: string[] }) => {
+    if (config.api_keys && config.api_keys.length > 0) return config.api_keys;
+    if (config.api_key) return [config.api_key];
+    return [];
+  },
   isModelPool: jest.fn(() => false),
   getModelPool: jest.fn(() => undefined),
 }));
@@ -166,8 +170,7 @@ describe('OpenCode Integration Tests', () => {
   });
 
   // ============================================================
-  // 2. 模拟 OpenCode 发送 chat completion（非流式）
-  // ============================================================
+  // 2. 模拟 OpenCode 发�?chat completion（非流式�?  // ============================================================
   describe('POST /v1/chat/completions (OpenCode chat)', () => {
     it('should work with explicit model (OpenCode sends model)', async () => {
       mockOpenAI.chat.mockResolvedValue({
@@ -276,7 +279,7 @@ describe('OpenCode Integration Tests', () => {
   });
 
   // ============================================================
-  // 3. 模拟 OpenCode 发送 streaming chat completion
+  // 3. 模拟 OpenCode 发�?streaming chat completion
   // ============================================================
   describe('POST /v1/chat/completions with stream=true (OpenCode streaming)', () => {
     it('should return SSE stream for streaming request', async () => {
@@ -321,8 +324,7 @@ describe('OpenCode Integration Tests', () => {
   });
 
   // ============================================================
-  // 4. 模拟 OpenCode 无认证请求
-  // ============================================================
+  // 4. 模拟 OpenCode 无认证请�?  // ============================================================
   describe('Authentication', () => {
     it('should return 401 when no API key provided', async () => {
       const res = await app.request('/v1/models');

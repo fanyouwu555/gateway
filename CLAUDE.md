@@ -78,9 +78,8 @@ The app uses Hono's sub-app pattern for middleware scoping:
 Each module checks its own env var. Default is `memory`. Set to `redis` for production:
 
 ```
-STORAGE_TYPE=memory           # global default
-CACHE_STORAGE=memory          # response cache
-HISTORY_STORAGE=memory        # session history
+STORAGE_TYPE=memory           # global default (all services share this)
+CACHE_STORAGE=memory          # response cache (uses global STORAGE_TYPE)
 METRICS_STORAGE=memory        # usage metrics
 RATE_LIMIT_STORAGE=memory     # sliding window counter
 FAILOVER_STORAGE=memory       # health state persistence
@@ -137,8 +136,12 @@ Defined in `src/services/prompt.ts`. Built-in template store with support for `{
 | ALL | `/v1/prompts/*` | Prompt template CRUD + render | Admin Key |
 | ALL | `/v1/alerts/*` | Alert rule management | Admin Key |
 | GET | `/v1/router/status` | Router status | Admin Key |
-| ALL | `/v1/sessions/*` | Session management | Admin Key |
-| WS | `/v1/ws/*` | WebSocket admin + streaming | Admin Key |
+| ALL | `/v1/conversations/*` | Conversation log management | Admin Key |
+| GET | `/v1/request-logs` | Request/response logs | Admin Key |
+| ALL | `/v1/pricing/*` | Model pricing management | Admin Key |
+| GET | `/v1/admin/discover-models` | Discover models from provider | Admin Key |
+| GET | `/v1/auth/verify` | Verify admin auth key | Admin Key |
+| WS | `/v1/ws/*` | WebSocket streaming + real-time metrics | API Key |
 
 ## Type System
 

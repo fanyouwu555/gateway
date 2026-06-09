@@ -155,17 +155,6 @@ export interface IProviderConfig {
   headers?: Record<string, string>;
 }
 
-/** 获取可用于调用的 API Keys */
-export function getProviderApiKeys(config: IProviderConfig): string[] {
-  if (config.api_keys && config.api_keys.length > 0) {
-    return config.api_keys;
-  }
-  if (config.api_key) {
-    return [config.api_key];
-  }
-  return [];
-}
-
 /** Provider 能力定义 */
 export interface IProviderCapabilities {
   chat: boolean;
@@ -428,7 +417,7 @@ export interface IGatewayConfig {
     latencyThresholdMs?: number;
   };
   loadBalance?: {
-    strategy: 'roundRobin' | 'random';
+    strategy?: 'roundRobin' | 'random';
   };
   /** 缓存配置 */
   cache?: {
@@ -455,12 +444,6 @@ export interface IGatewayConfig {
     max_memory_sessions?: number;
     redis_ttl_days?: number;
     max_turns_per_session?: number;
-  };
-  /** 会话历史配置 */
-  session?: {
-    max_sessions: number;
-    max_messages_per_session: number;
-    ttl: number; // 毫秒
   };
   /** 限流清理间隔（毫秒） */
   rate_limit_clean_interval?: number;
@@ -490,7 +473,7 @@ export interface DynamicProviderConfig {
   api_key?: string;
   auth_header?: string; // 自定义认证 header 名称
   auth_prefix?: string; // 认证前缀 (Bearer, ApiKey 等)
-  endpoints: {
+  endpoints?: {
     chat?: string;
     chat_stream?: string;
     embeddings?: string;

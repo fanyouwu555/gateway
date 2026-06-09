@@ -1,7 +1,6 @@
 /**
  * Model Equivalents E2E Tests
- * 验证完整 HTTP 请求链路下模型名自动重映射
- */
+ * 验证完整 HTTP 请求链路下模型名自动重映�? */
 import { createApp } from '../../src/app';
 import type { Hono } from 'hono';
 import { registerProvider, resetProviders, resetProviderDeps } from '../../src/providers';
@@ -64,7 +63,6 @@ jest.mock('../../src/config', () => ({
     },
     loadBalance: { strategy: 'roundRobin', providers: {} },
     cache: { enabled: true, ttl: 3600000, max_size: 1000 },
-    session: { max_sessions: 1000, max_messages_per_session: 100, ttl: 3600000 },
     rate_limit_clean_interval: 60000,
     pricing: {},
     default_model: 'gpt-4o-mini',
@@ -102,6 +100,11 @@ jest.mock('../../src/config', () => ({
     fallback: 'deepseek',
   }),
   resolveModelAlias: jest.fn((alias: string) => alias),
+  getProviderApiKeys: (config: { api_key?: string; api_keys?: string[] }) => {
+    if (config.api_keys && config.api_keys.length > 0) return config.api_keys;
+    if (config.api_key) return [config.api_key];
+    return [];
+  },
   isModelPool: jest.fn(() => false),
   getModelPool: jest.fn(() => undefined),
 }));
@@ -158,8 +161,7 @@ describe('Model Equivalents E2E', () => {
   });
 
   // ============================================================
-  // 1. 正常请求路径（无 failover）— 模型名不变
-  // ============================================================
+  // 1. 正常请求路径（无 failover）�?模型名不�?  // ============================================================
   describe('Normal path (no failover)', () => {
     it('should NOT remap model for primary provider on success', async () => {
       mockOpenAI.chat.mockImplementation(async (req: { model: string }) => ({
@@ -184,7 +186,7 @@ describe('Model Equivalents E2E', () => {
   });
 
   // ============================================================
-  // 2. Failover 路径 — 模型名 remap
+  // 2. Failover 路径 �?模型�?remap
   // ============================================================
   describe('Failover with model_equivalents', () => {
     it('should remap model when failing over to deepseek', async () => {
@@ -237,7 +239,7 @@ describe('Model Equivalents E2E', () => {
   });
 
   // ============================================================
-  // 3. 无 model_equivalent 时的兜底行为
+  // 3. �?model_equivalent 时的兜底行为
   // ============================================================
   describe('No equivalent configured', () => {
     it('should keep original model when no equivalent for fallback provider', async () => {
@@ -276,7 +278,7 @@ describe('Model Equivalents E2E', () => {
   });
 
   // ============================================================
-  // 4. 所有 Provider 全面崩溃
+  // 4. 所�?Provider 全面崩溃
   // ============================================================
   describe('All providers fail', () => {
     it('should return 500 when all providers in chain fail', async () => {
