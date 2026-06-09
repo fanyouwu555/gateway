@@ -3,7 +3,7 @@
  * 独立写入器，与系统日志分离，满足合规要求
  * 格式：JSON Lines，存储于 logs/audit-YYYY-MM-DD.log
  */
-import { appendFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { createHash } from 'crypto';
 
@@ -143,4 +143,78 @@ export function auditAdmin(params: {
     severity: params.severity || 'medium',
     metadata: params.metadata,
   });
+}
+
+export interface AuditLogQuery {
+  tenant_id?: string;
+  event_type?: string;
+  start?: number; // timestamp ms
+  end?: number;   // timestamp ms
+  limit?: number;
+  offset?: number;
+}
+
+export interface AuditLogEntry extends AuditEvent {
+  id: string;
+}
+
+export function readAuditLogs(query: AuditLogQuery = {}): { logs: AuditLogEntry[]; total: number } {
+  const {
+    tenant_id,
+    event_type,
+    start,
+    end,
+    limit = 50,
+    offset = 0,
+  } = query;
+
+  const allLogs: AuditLogEntry[] = [];
+
+  try {
+    if (!existsSync(AUDIT_LOG_DIR)) {
+      return { logs: [], total: 0 };
+    }
+
+    const files = readdirSync(AUDIT_LOG_DIR)
+      .filter((f) => f.startsWith('audit-') && f.endsWith('.log'))
+      .sort()
+      .reverse(); // newest first
+
+    for (const file of files) {
+      const filePath = join(AUDIT_LOG_DIR, file);
+      const content = readFileSync(filePath, 'utf-8');
+      const lines = content.split('\n').filter((line) => line.trim());
+
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line) as AuditEvent;
+
+          // Filter by time range
+          const eventTime = new Date(event.timestamp).getTime();
+          if (start && eventTime < start) continue;
+          if (end && eventTime > end) continue;
+
+          // Filter by tenant
+          if (tenant_id && event.tenant_id !== tenant_id) continue;
+
+          // Filter by event type
+          if (event_type && event.event_type !== event_type) continue;
+
+          allLogs.push({
+            ...event,
+            id: `${event.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+          });
+        } catch {
+          // skip corrupted lines
+        }
+      }
+    }
+  } catch {
+    // return empty on error
+  }
+
+  const total = allLogs.length;
+  const paginated = allLogs.slice(offset, offset + Math.min(limit, 500));
+
+  return { logs: paginated, total };
 }

@@ -11,7 +11,7 @@ import { getPricingService } from '../../services/pricing';
 import { getRequestLogStore } from '../../services/request-log';
 import { getConversationLogService } from '../../services/conversation-log';
 import { getProvider, getProviderNames } from '../../providers';
-import { auditAdmin } from '../../utils/audit';
+import { auditAdmin, readAuditLogs } from '../../utils/audit';
 import type { IModelInfo, IConversationFilter } from '../../types';
 
 const router = new Hono();
@@ -206,6 +206,27 @@ router.delete('/v1/conversations/:session_id', async (c: Context) => {
 
   await service.deleteSession(sessionId);
   return c.json({ success: true }, 200);
+});
+
+// === 审计日志 ===
+router.get('/v1/audit/logs', (c: Context) => {
+  const tenantId = c.req.query('tenant_id');
+  const eventType = c.req.query('event_type');
+  const start = c.req.query('start') ? parseInt(c.req.query('start')!, 10) : undefined;
+  const end = c.req.query('end') ? parseInt(c.req.query('end')!, 10) : undefined;
+  const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : 50;
+  const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!, 10) : 0;
+
+  const result = readAuditLogs({
+    tenant_id: tenantId,
+    event_type: eventType,
+    start,
+    end,
+    limit: Math.min(limit, 500),
+    offset,
+  });
+
+  return c.json(result);
 });
 
 // === 模型发现 ===
