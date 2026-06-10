@@ -118,6 +118,9 @@ class FailoverManager {
    */
   private async loadHealthState(): Promise<void> {
     if (!this.store) return;
+    if (!this.store.isConnected()) {
+      await this.store.connect();
+    }
 
     try {
       const stored = await this.store.hGetAll('health');
@@ -137,6 +140,9 @@ class FailoverManager {
   private async saveProviderHealthState(provider: string, health: ProviderHealth): Promise<void> {
     if (!this.store) return;
     try {
+      if (!this.store.isConnected()) {
+        await this.store.connect();
+      }
       await this.store.hSet('provider_health', provider, JSON.stringify(health));
     } catch (err) {
       writeLog('warn', 'Failed to save provider health state', {
@@ -152,6 +158,9 @@ class FailoverManager {
   private async loadProviderHealthState(): Promise<void> {
     if (!this.store) return;
     try {
+      if (!this.store.isConnected()) {
+        await this.store.connect();
+      }
       const stored = await this.store.hGetAll('provider_health');
       for (const [key, value] of Object.entries(stored)) {
         this.providerHealth.set(key, JSON.parse(value) as ProviderHealth);
@@ -171,6 +180,9 @@ class FailoverManager {
     if (!this.store) return;
 
     try {
+      if (!this.store.isConnected()) {
+        await this.store.connect();
+      }
       await this.store.hSet('health', key, JSON.stringify(health));
     } catch (err) {
       writeLog('warn', 'Failed to save health state', { key, error: err instanceof Error ? err.message : String(err) });
@@ -237,7 +249,7 @@ class FailoverManager {
   /**
    * 记录请求失败
    */
-  recordFailure(provider: string, apiKey: string): void {
+  async recordFailure(provider: string, apiKey: string): Promise<void> {
     this.ensureConfig();
     const key = `${provider}:${apiKey.substring(0, 8)}`;
     let health = this.tokenHealth.get(key);
@@ -264,13 +276,13 @@ class FailoverManager {
 
     this.tokenHealth.set(key, health);
     // 持久化状态
-    this.saveHealthState(key, health);
+    await this.saveHealthState(key, health);
   }
 
   /**
    * 记录请求成功
    */
-  recordSuccess(provider: string, apiKey: string): void {
+  async recordSuccess(provider: string, apiKey: string): Promise<void> {
     this.ensureConfig();
     const key = `${provider}:${apiKey.substring(0, 8)}`;
     const health = this.tokenHealth.get(key);
@@ -288,13 +300,13 @@ class FailoverManager {
 
     this.tokenHealth.set(key, health);
     // 持久化状态
-    this.saveHealthState(key, health);
+    await this.saveHealthState(key, health);
   }
 
   /**
    * Record a provider-level request result
    */
-  recordProviderRequest(provider: string, success: boolean, latencyMs: number): void {
+  async recordProviderRequest(provider: string, success: boolean, latencyMs: number): Promise<void> {
     this.ensureConfig();
     let health = this.providerHealth.get(provider);
     if (!health) {
@@ -354,7 +366,7 @@ class FailoverManager {
     }
 
     this.providerHealth.set(provider, health);
-    this.saveProviderHealthState(provider, health);
+    await this.saveProviderHealthState(provider, health);
   }
 
   /**

@@ -151,7 +151,7 @@ async function callProviderWithRetry(
   if (stream) {
     // 流式调用不重试（流建立后无法回滚）
     const result = await provider.chatStream(request, callConfig, options);
-    activeFailover.recordSuccess(provider.name, activeKey);
+    await activeFailover.recordSuccess(provider.name, activeKey);
     return result;
   }
 
@@ -159,10 +159,10 @@ async function callProviderWithRetry(
     async () => {
       try {
         const result = await provider.chat(request, callConfig);
-        activeFailover.recordSuccess(provider.name, activeKey);
+        await activeFailover.recordSuccess(provider.name, activeKey);
         return result;
       } catch (error) {
-        activeFailover.recordFailure(provider.name, activeKey);
+        await activeFailover.recordFailure(provider.name, activeKey);
         throw error;
       }
     },
@@ -249,11 +249,11 @@ export async function chatComplete(
       startTime = Date.now();
       const result = await callProviderWithRetry(provider, config, providerRequest, false);
       const latency = Date.now() - startTime;
-      activeFailover.recordProviderRequest(currentProvider, true, latency);
+      await activeFailover.recordProviderRequest(currentProvider, true, latency);
       return result as ChatCompletionResponse;
     } catch (error) {
       const latency = Date.now() - startTime;
-      activeFailover.recordProviderRequest(currentProvider, false, latency);
+      await activeFailover.recordProviderRequest(currentProvider, false, latency);
       const errMsg = error instanceof Error ? error.message : String(error);
       const statusCode = (error as { status?: number }).status;
 
@@ -264,7 +264,7 @@ export async function chatComplete(
           try {
             const fallbackRequest = { ...providerRequest, model: fallbackModel };
             const fallbackResult = await callProviderWithRetry(provider, config, fallbackRequest, false);
-            activeFailover.recordProviderRequest(currentProvider, true, Date.now() - startTime);
+            await activeFailover.recordProviderRequest(currentProvider, true, Date.now() - startTime);
             return fallbackResult as ChatCompletionResponse;
           } catch {
             // Continue to next fallback model
@@ -333,10 +333,10 @@ export async function chatCompleteStream(
     const startTime = Date.now();
     try {
       const result = await callProviderWithRetry(provider, config, providerRequest, true, options);
-      activeFailover.recordProviderRequest(currentProvider, true, Date.now() - startTime);
+      await activeFailover.recordProviderRequest(currentProvider, true, Date.now() - startTime);
       return result as ReadableStream;
     } catch (error) {
-      activeFailover.recordProviderRequest(currentProvider, false, Date.now() - startTime);
+      await activeFailover.recordProviderRequest(currentProvider, false, Date.now() - startTime);
       const errMsg = error instanceof Error ? error.message : String(error);
       errors.push({ provider: currentProvider, error: errMsg });
     }
