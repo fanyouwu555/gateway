@@ -387,11 +387,13 @@ export function getLastCacheHitType(): 'exact' | 'semantic' | null {
 
 /**
  * 初始化缓存（从配置加载）
+ * @returns 创建的 CacheStore 实例，方便调用方连接 Redis
  */
-export function initCache(config?: { ttl?: number; max_size?: number }): void {
+export function initCache(config?: { ttl?: number; max_size?: number }): CacheStore<string> {
   const ttl = config?.ttl ?? 3600000;
   const maxSize = config?.max_size ?? 1000;
   cacheStore = new CacheStore<string>(maxSize, ttl);
+  return cacheStore;
 }
 
 /**
