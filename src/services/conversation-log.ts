@@ -43,6 +43,13 @@ export class ConversationLogService {
     this.writeLocks = new Map();
   }
 
+  private async getStore(): Promise<IKVStore> {
+    if (!this.store.isConnected()) {
+      await this.store.connect();
+    }
+    return this.store;
+  }
+
   async saveTurn(turn: IConversationTurn): Promise<void> {
     const { session_id } = turn;
     // Chain writes for the same session to prevent race conditions
@@ -54,12 +61,13 @@ export class ConversationLogService {
         this.updateMemoryCache(session_id, turn);
         const turnKey = `${TURN_KEY_PREFIX}:${session_id}`;
         const turnIndex = await this.getNextTurnIndex(session_id);
-        await this.store.hSet(turnKey, `turn_${turnIndex}`, JSON.stringify(turn));
+        const store = await this.getStore();
+        await store.hSet(turnKey, `turn_${turnIndex}`, JSON.stringify(turn));
         const ttlMs = this.config.redisTtlDays * 24 * 60 * 60 * 1000;
-        await this.store.expire(turnKey, ttlMs);
+        await store.expire(turnKey, ttlMs);
         await this.updateSessionMeta(turn);
-        await this.store.hSet(INDEX_KEY, session_id, String(turn.timestamp));
-        await this.store.expire(INDEX_KEY, ttlMs);
+        await store.hSet(INDEX_KEY, session_id, String(turn.timestamp));
+        await store.expire(INDEX_KEY, ttlMs);
       } catch (err) {
         writeLog('warn', 'Failed to save conversation turn', {
           session_id: turn.session_id,
@@ -86,7 +94,8 @@ export class ConversationLogService {
       return [...cached];
     }
     const turnKey = `${TURN_KEY_PREFIX}:${sessionId}`;
-    const hash = await this.store.hGetAll(turnKey);
+    const store = await this.getStore();
+    const hash = await store.hGetAll(turnKey);
     const turns: IConversationTurn[] = [];
     for (const field of Object.keys(hash).sort()) {
       if (field.startsWith('turn_')) {
@@ -109,13 +118,15 @@ export class ConversationLogService {
     const cached = this.memoryMeta.get(sessionId);
     if (cached) return { ...cached };
     const metaKey = `${META_KEY_PREFIX}:${sessionId}`;
-    const hash = await this.store.hGetAll(metaKey);
+    const store = await this.getStore();
+    const hash = await store.hGetAll(metaKey);
     if (!hash || Object.keys(hash).length === 0) return null;
     return this.parseSessionMeta(hash);
   }
 
   async listSessions(filter: IConversationFilter): Promise<{ sessions: ISessionMeta[]; total: number }> {
-    const index = await this.store.hGetAll(INDEX_KEY);
+    const store = await this.getStore();
+    const index = await store.hGetAll(INDEX_KEY);
     let sessionIds = Object.keys(index);
     if (filter.start !== undefined) {
       sessionIds = sessionIds.filter((id) => parseInt(index[id], 10) >= filter.start!);
@@ -149,16 +160,17 @@ export class ConversationLogService {
     this.lruOrder = this.lruOrder.filter((id) => id !== sessionId);
     const turnKey = `${TURN_KEY_PREFIX}:${sessionId}`;
     const metaKey = `${META_KEY_PREFIX}:${sessionId}`;
+    const store = await this.getStore();
     // MemoryKVStore delete() only clears cache, not hashes — use hDel to clear hash fields
-    const turnHash = await this.store.hGetAll(turnKey);
+    const turnHash = await store.hGetAll(turnKey);
     if (Object.keys(turnHash).length > 0) {
-      await this.store.hDel(turnKey, ...Object.keys(turnHash));
+      await store.hDel(turnKey, ...Object.keys(turnHash));
     }
-    const metaHash = await this.store.hGetAll(metaKey);
+    const metaHash = await store.hGetAll(metaKey);
     if (Object.keys(metaHash).length > 0) {
-      await this.store.hDel(metaKey, ...Object.keys(metaHash));
+      await store.hDel(metaKey, ...Object.keys(metaHash));
     }
-    await this.store.hDel(INDEX_KEY, sessionId);
+    await store.hDel(INDEX_KEY, sessionId);
     return true;
   }
 
@@ -166,9 +178,10 @@ export class ConversationLogService {
     this.memoryCache.clear();
     this.memoryMeta.clear();
     this.lruOrder = [];
-    await this.store.delByPattern(`${TURN_KEY_PREFIX}:*`);
-    await this.store.delByPattern(`${META_KEY_PREFIX}:*`);
-    await this.store.delete(INDEX_KEY);
+    const store = await this.getStore();
+    await store.delByPattern(`${TURN_KEY_PREFIX}:*`);
+    await store.delByPattern(`${META_KEY_PREFIX}:*`);
+    await store.delete(INDEX_KEY);
   }
 
   private updateMemoryCache(sessionId: string, turn: IConversationTurn): void {
@@ -202,7 +215,8 @@ export class ConversationLogService {
 
   private async getNextTurnIndex(sessionId: string): Promise<number> {
     const turnKey = `${TURN_KEY_PREFIX}:${sessionId}`;
-    const hash = await this.store.hGetAll(turnKey);
+    const store = await this.getStore();
+    const hash = await store.hGetAll(turnKey);
     const indices = Object.keys(hash)
       .filter((k) => k.startsWith('turn_'))
       .map((k) => parseInt(k.replace('turn_', ''), 10));
@@ -242,23 +256,24 @@ export class ConversationLogService {
     this.memoryMeta.set(session_id, meta);
     const metaKey = `${META_KEY_PREFIX}:${session_id}`;
     const ttlMs = this.config.redisTtlDays * 24 * 60 * 60 * 1000;
-    await this.store.hSet(metaKey, 'session_id', meta.session_id);
-    await this.store.hSet(metaKey, 'created_at', String(meta.created_at));
-    await this.store.hSet(metaKey, 'updated_at', String(meta.updated_at));
-    await this.store.hSet(metaKey, 'turn_count', String(meta.turn_count));
-    await this.store.hSet(metaKey, 'total_prompt_tokens', String(meta.total_prompt_tokens));
-    await this.store.hSet(metaKey, 'total_completion_tokens', String(meta.total_completion_tokens));
-    await this.store.hSet(metaKey, 'total_tokens', String(meta.total_tokens));
-    await this.store.hSet(metaKey, 'total_cost', String(meta.total_cost));
-    if (meta.tenant_id) await this.store.hSet(metaKey, 'tenant_id', meta.tenant_id);
-    if (meta.last_model) await this.store.hSet(metaKey, 'last_model', meta.last_model);
+    const store = await this.getStore();
+    await store.hSet(metaKey, 'session_id', meta.session_id);
+    await store.hSet(metaKey, 'created_at', String(meta.created_at));
+    await store.hSet(metaKey, 'updated_at', String(meta.updated_at));
+    await store.hSet(metaKey, 'turn_count', String(meta.turn_count));
+    await store.hSet(metaKey, 'total_prompt_tokens', String(meta.total_prompt_tokens));
+    await store.hSet(metaKey, 'total_completion_tokens', String(meta.total_completion_tokens));
+    await store.hSet(metaKey, 'total_tokens', String(meta.total_tokens));
+    await store.hSet(metaKey, 'total_cost', String(meta.total_cost));
+    if (meta.tenant_id) await store.hSet(metaKey, 'tenant_id', meta.tenant_id);
+    if (meta.last_model) await store.hSet(metaKey, 'last_model', meta.last_model);
     if (meta.client_info) {
-      await this.store.hSet(metaKey, 'client_info_name', meta.client_info.name);
-      if (meta.client_info.version) await this.store.hSet(metaKey, 'client_info_version', meta.client_info.version);
-      await this.store.hSet(metaKey, 'client_info_inferred_from', meta.client_info.inferred_from);
+      await store.hSet(metaKey, 'client_info_name', meta.client_info.name);
+      if (meta.client_info.version) await store.hSet(metaKey, 'client_info_version', meta.client_info.version);
+      await store.hSet(metaKey, 'client_info_inferred_from', meta.client_info.inferred_from);
     }
-    if (meta.user_agent) await this.store.hSet(metaKey, 'user_agent', meta.user_agent);
-    await this.store.expire(metaKey, ttlMs);
+    if (meta.user_agent) await store.hSet(metaKey, 'user_agent', meta.user_agent);
+    await store.expire(metaKey, ttlMs);
   }
 
   private parseSessionMeta(hash: Record<string, string>): ISessionMeta | null {

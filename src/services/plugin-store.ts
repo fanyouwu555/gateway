@@ -11,25 +11,35 @@ export class PluginStore {
     this.store = createKVStore('plugins');
   }
 
+  private async getStore(): Promise<IKVStore> {
+    if (!this.store.isConnected()) {
+      await this.store.connect();
+    }
+    return this.store;
+  }
+
   async save(id: string, code: string): Promise<void> {
-    await this.store.set(`${PLUGIN_PREFIX}${id}`, code);
+    const store = await this.getStore();
+    await store.set(`${PLUGIN_PREFIX}${id}`, code);
     const list = await this.getList();
     if (!list.includes(id)) {
       list.push(id);
-      await this.store.set(PLUGIN_LIST_KEY, JSON.stringify(list));
+      await store.set(PLUGIN_LIST_KEY, JSON.stringify(list));
     }
   }
 
   async load(id: string): Promise<string | null> {
-    const code = await this.store.get(`${PLUGIN_PREFIX}${id}`);
+    const store = await this.getStore();
+    const code = await store.get(`${PLUGIN_PREFIX}${id}`);
     return code || null;
   }
 
   async delete(id: string): Promise<void> {
-    await this.store.delete(`${PLUGIN_PREFIX}${id}`);
+    const store = await this.getStore();
+    await store.delete(`${PLUGIN_PREFIX}${id}`);
     const list = await this.getList();
     const filtered = list.filter((p) => p !== id);
-    await this.store.set(PLUGIN_LIST_KEY, JSON.stringify(filtered));
+    await store.set(PLUGIN_LIST_KEY, JSON.stringify(filtered));
   }
 
   async list(): Promise<string[]> {
@@ -37,7 +47,8 @@ export class PluginStore {
   }
 
   private async getList(): Promise<string[]> {
-    const raw = await this.store.get(PLUGIN_LIST_KEY);
+    const store = await this.getStore();
+    const raw = await store.get(PLUGIN_LIST_KEY);
     if (!raw) return [];
     try {
       return JSON.parse(raw) as string[];
