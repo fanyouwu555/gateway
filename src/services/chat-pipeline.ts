@@ -13,12 +13,24 @@ import type { ChatCompletionRequest } from '../types';
  * 解析并规范化请求中的模型名
  * 优先级：请求体 → API Key 默认模型 → fallbackModel
  */
+const DEFAULT_MODEL_ALIAS = 'DefaultModel';
+
 export function resolveRequestModel(
   request: Omit<ChatCompletionRequest, 'model'> & { model?: string },
   apiKeyMeta?: { default_model?: string } | undefined,
   fallbackModel?: string,
 ): ChatCompletionRequest {
   let resolved = request;
+
+  // 如果请求传了 "DefaultModel"，替换为 key 的默认模型；key 无 default_model 时清空，走 fallback
+  if (resolved.model === DEFAULT_MODEL_ALIAS) {
+    if (apiKeyMeta?.default_model) {
+      resolved = { ...resolved, model: resolveModelAlias(apiKeyMeta.default_model) };
+    } else {
+      resolved = { ...resolved, model: undefined };
+    }
+  }
+
   if (!resolved.model) {
     if (apiKeyMeta?.default_model) {
       resolved = { ...resolved, model: resolveModelAlias(apiKeyMeta.default_model) };
