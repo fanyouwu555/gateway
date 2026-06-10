@@ -30,8 +30,8 @@ describe('Tenant Service', () => {
   });
 
   describe('createTenant', () => {
-    it('should create new tenant', () => {
-      const tenant = createTenant(createValidConfig('New Tenant'));
+    it('should create new tenant', async () => {
+      const tenant = await createTenant(createValidConfig('New Tenant'));
       expect(tenant.tenant_id).toMatch(/^tenant_/);
       expect(tenant.name).toBe('New Tenant');
       expect(tenant.plan).toBe('free');
@@ -52,20 +52,20 @@ describe('Tenant Service', () => {
   });
 
   describe('updateTenant', () => {
-    it('should update tenant properties', () => {
-      const updated = updateTenant('default', { name: 'Updated Name' });
+    it('should update tenant properties', async () => {
+      const updated = await updateTenant('default', { name: 'Updated Name' });
       expect(updated?.name).toBe('Updated Name');
     });
 
-    it('should return null for non-existent tenant', () => {
-      const updated = updateTenant('non-existent', { name: 'Test' });
+    it('should return null for non-existent tenant', async () => {
+      const updated = await updateTenant('non-existent', { name: 'Test' });
       expect(updated).toBeNull();
     });
   });
 
   describe('deleteTenant', () => {
-    it('should not delete default tenant', () => {
-      const result = deleteTenant('default');
+    it('should not delete default tenant', async () => {
+      const result = await deleteTenant('default');
       expect(result).toBe(false);
     });
   });
@@ -79,23 +79,23 @@ describe('Tenant Service', () => {
   });
 
   describe('createTenantApiKey', () => {
-    it('should add API key to tenant', () => {
-      const result = createTenantApiKey('default', 'Test Key');
+    it('should add API key to tenant', async () => {
+      const result = await createTenantApiKey('default', 'Test Key');
       expect(result).toBeDefined();
     });
   });
 
   describe('deleteTenantApiKey', () => {
-    it('should remove API key from tenant', () => {
-      const key = createTenantApiKey('default', 'Test');
+    it('should remove API key from tenant', async () => {
+      const key = await createTenantApiKey('default', 'Test');
       const result = deleteTenantApiKey(key!.key);
       expect(result).toBe(true);
     });
   });
 
   describe('default_model in key policy', () => {
-    it('should create key with default_model', () => {
-      const key = createTenantApiKey('default', 'Test Key', undefined, {
+    it('should create key with default_model', async () => {
+      const key = await createTenantApiKey('default', 'Test Key', undefined, {
         allowed_models: ['gpt-4o'],
         default_model: 'gpt-4o',
       });
@@ -103,8 +103,8 @@ describe('Tenant Service', () => {
       expect(key!.default_model).toBe('gpt-4o');
     });
 
-    it('should create key with default_model not in allowed_models', () => {
-      const key = createTenantApiKey('default', 'Test Key', undefined, {
+    it('should create key with default_model not in allowed_models', async () => {
+      const key = await createTenantApiKey('default', 'Test Key', undefined, {
         allowed_models: ['gpt-4o'],
         default_model: 'claude-3',
       });
@@ -115,8 +115,8 @@ describe('Tenant Service', () => {
   });
 
   describe('verifyTenantApiKey', () => {
-    it('should verify API key', () => {
-      const key = createTenantApiKey('default', 'Test');
+    it('should verify API key', async () => {
+      const key = await createTenantApiKey('default', 'Test');
       const result = verifyTenantApiKey(key!.key);
       expect(result.valid).toBe(true);
     });

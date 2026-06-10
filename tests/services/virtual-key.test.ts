@@ -22,16 +22,16 @@ describe('Virtual Key System', () => {
   });
 
   describe('Create API Key with policy', () => {
-    it('should create key with allowed_models', () => {
-      const key = createTenantApiKey('default', 'test-key', undefined, {
+    it('should create key with allowed_models', async () => {
+      const key = await createTenantApiKey('default', 'test-key', undefined, {
         allowed_models: ['gpt-4o', 'deepseek-chat'],
       });
       expect(key).toBeDefined();
       expect(key!.allowed_models).toEqual(['gpt-4o', 'deepseek-chat']);
     });
 
-    it('should create key with rate limit policy', () => {
-      const key = createTenantApiKey('default', 'rate-limited-key', undefined, {
+    it('should create key with rate limit policy', async () => {
+      const key = await createTenantApiKey('default', 'rate-limited-key', undefined, {
         rate_limit_qps: 5,
         rate_limit_burst: 10,
       });
@@ -40,32 +40,32 @@ describe('Virtual Key System', () => {
       expect(key!.rate_limit_burst).toBe(10);
     });
 
-    it('should create key with monthly budget', () => {
-      const key = createTenantApiKey('default', 'budget-key', undefined, {
+    it('should create key with monthly budget', async () => {
+      const key = await createTenantApiKey('default', 'budget-key', undefined, {
         monthly_budget: 50,
       });
       expect(key).toBeDefined();
       expect(key!.monthly_budget).toBe(50);
     });
 
-    it('should create key with max_tokens_per_request', () => {
-      const key = createTenantApiKey('default', 'token-limited-key', undefined, {
+    it('should create key with max_tokens_per_request', async () => {
+      const key = await createTenantApiKey('default', 'token-limited-key', undefined, {
         max_tokens_per_request: 1024,
       });
       expect(key).toBeDefined();
       expect(key!.max_tokens_per_request).toBe(1024);
     });
 
-    it('should create key with metadata', () => {
-      const key = createTenantApiKey('default', 'meta-key', undefined, {
+    it('should create key with metadata', async () => {
+      const key = await createTenantApiKey('default', 'meta-key', undefined, {
         metadata: { user_id: 'u123', department: 'engineering' },
       });
       expect(key).toBeDefined();
       expect(key!.metadata).toEqual({ user_id: 'u123', department: 'engineering' });
     });
 
-    it('should create key with all policy fields', () => {
-      const key = createTenantApiKey('default', 'full-policy-key', undefined, {
+    it('should create key with all policy fields', async () => {
+      const key = await createTenantApiKey('default', 'full-policy-key', undefined, {
         allowed_models: ['gpt-4o'],
         rate_limit_qps: 10,
         rate_limit_burst: 20,
@@ -82,8 +82,8 @@ describe('Virtual Key System', () => {
       expect(key!.metadata).toEqual({ app: 'test' });
     });
 
-    it('should return plaintext key only at creation', () => {
-      const key = createTenantApiKey('default', 'plaintext-test', undefined, {
+    it('should return plaintext key only at creation', async () => {
+      const key = await createTenantApiKey('default', 'plaintext-test', undefined, {
         allowed_models: ['gpt-4o'],
       });
       expect(key).toBeDefined();
@@ -93,26 +93,26 @@ describe('Virtual Key System', () => {
   });
 
   describe('Update API Key policy', () => {
-    it('should update allowed_models', () => {
-      const created = createTenantApiKey('default', 'update-test', undefined, {
+    it('should update allowed_models', async () => {
+      const created = await createTenantApiKey('default', 'update-test', undefined, {
         allowed_models: ['gpt-4o'],
       });
       expect(created).toBeDefined();
 
-      const updated = updateTenantApiKeyPolicy(created!.key, {
+      const updated = await updateTenantApiKeyPolicy(created!.key, {
         allowed_models: ['gpt-4o', 'claude-3-opus'],
       });
       expect(updated).toBeDefined();
       expect(updated!.allowed_models).toEqual(['gpt-4o', 'claude-3-opus']);
     });
 
-    it('should update rate limit policy', () => {
-      const created = createTenantApiKey('default', 'rl-update', undefined, {
+    it('should update rate limit policy', async () => {
+      const created = await createTenantApiKey('default', 'rl-update', undefined, {
         rate_limit_qps: 5,
       });
       expect(created).toBeDefined();
 
-      const updated = updateTenantApiKeyPolicy(created!.key, {
+      const updated = await updateTenantApiKeyPolicy(created!.key, {
         rate_limit_qps: 10,
         rate_limit_burst: 20,
       });
@@ -121,34 +121,34 @@ describe('Virtual Key System', () => {
       expect(updated!.rate_limit_burst).toBe(20);
     });
 
-    it('should update monthly_budget', () => {
-      const created = createTenantApiKey('default', 'budget-update', undefined, {
+    it('should update monthly_budget', async () => {
+      const created = await createTenantApiKey('default', 'budget-update', undefined, {
         monthly_budget: 50,
       });
       expect(created).toBeDefined();
 
-      const updated = updateTenantApiKeyPolicy(created!.key, {
+      const updated = await updateTenantApiKeyPolicy(created!.key, {
         monthly_budget: 100,
       });
       expect(updated).toBeDefined();
       expect(updated!.monthly_budget).toBe(100);
     });
 
-    it('should return null for non-existent key hash', () => {
-      const result = updateTenantApiKeyPolicy('non-existent-hash', {
+    it('should return null for non-existent key hash', async () => {
+      const result = await updateTenantApiKeyPolicy('non-existent-hash', {
         name: 'new-name',
       });
       expect(result).toBeNull();
     });
 
-    it('should update name without affecting policy', () => {
-      const created = createTenantApiKey('default', 'original-name', undefined, {
+    it('should update name without affecting policy', async () => {
+      const created = await createTenantApiKey('default', 'original-name', undefined, {
         allowed_models: ['gpt-4o'],
         monthly_budget: 50,
       });
       expect(created).toBeDefined();
 
-      const updated = updateTenantApiKeyPolicy(created!.key, {
+      const updated = await updateTenantApiKeyPolicy(created!.key, {
         name: 'new-name',
       });
       expect(updated).toBeDefined();
@@ -157,14 +157,14 @@ describe('Virtual Key System', () => {
       expect(updated!.monthly_budget).toBe(50);
     });
 
-    it('should clear policy fields when set to empty array', () => {
-      const created = createTenantApiKey('default', 'clear-test', undefined, {
+    it('should clear policy fields when set to empty array', async () => {
+      const created = await createTenantApiKey('default', 'clear-test', undefined, {
         allowed_models: ['gpt-4o'],
         monthly_budget: 50,
       });
       expect(created).toBeDefined();
 
-      const updated = updateTenantApiKeyPolicy(created!.key, {
+      const updated = await updateTenantApiKeyPolicy(created!.key, {
         allowed_models: [],
         monthly_budget: undefined,
       });
@@ -175,8 +175,8 @@ describe('Virtual Key System', () => {
   });
 
   describe('Find API Key by hash', () => {
-    it('should find key by its hashed value', () => {
-      const created = createTenantApiKey('default', 'find-by-hash', undefined, {
+    it('should find key by its hashed value', async () => {
+      const created = await createTenantApiKey('default', 'find-by-hash', undefined, {
         allowed_models: ['gpt-4o'],
       });
       expect(created).toBeDefined();
@@ -188,8 +188,8 @@ describe('Virtual Key System', () => {
   });
 
   describe('Delete API Key with policy', () => {
-    it('should delete key with policy', () => {
-      const created = createTenantApiKey('default', 'delete-policy', undefined, {
+    it('should delete key with policy', async () => {
+      const created = await createTenantApiKey('default', 'delete-policy', undefined, {
         allowed_models: ['gpt-4o'],
       });
       expect(created).toBeDefined();
@@ -200,8 +200,8 @@ describe('Virtual Key System', () => {
   });
 
   describe('Verify API Key', () => {
-    it('should verify valid key with policy', () => {
-      const created = createTenantApiKey('default', 'verify-policy', undefined, {
+    it('should verify valid key with policy', async () => {
+      const created = await createTenantApiKey('default', 'verify-policy', undefined, {
         allowed_models: ['gpt-4o'],
         rate_limit_qps: 10,
       });
@@ -215,8 +215,8 @@ describe('Virtual Key System', () => {
   });
 
   describe('Per-key usage tracking', () => {
-    it('should track key-level usage in metrics', () => {
-      const created = createTenantApiKey('default', 'usage-key');
+    it('should track key-level usage in metrics', async () => {
+      const created = await createTenantApiKey('default', 'usage-key');
       expect(created).toBeDefined();
 
       // Record some usage against this key
@@ -234,8 +234,8 @@ describe('Virtual Key System', () => {
       expect(usage.last_used).not.toBeNull();
     });
 
-    it('should return zero usage for unused key', () => {
-      const created = createTenantApiKey('default', 'unused-key');
+    it('should return zero usage for unused key', async () => {
+      const created = await createTenantApiKey('default', 'unused-key');
       expect(created).toBeDefined();
 
       const usage = getKeyUsage(created!.key);
@@ -245,8 +245,8 @@ describe('Virtual Key System', () => {
       expect(usage.last_used).toBeNull();
     });
 
-    it('should aggregate usage across multiple requests', () => {
-      const created = createTenantApiKey('default', 'multi-usage-key');
+    it('should aggregate usage across multiple requests', async () => {
+      const created = await createTenantApiKey('default', 'multi-usage-key');
       expect(created).toBeDefined();
 
       for (let i = 0; i < 5; i++) {

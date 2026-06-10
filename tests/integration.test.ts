@@ -125,8 +125,8 @@ describe('Integration Tests', () => {
   });
 
   describe('Tenant Integration', () => {
-    it('should create and get tenant', () => {
-      const tenant = createTenant({ name: 'Integration Test', plan: 'pro', status: 'active', settings: {}, limits: { daily_requests: 100, daily_tokens: 10000, monthly_cost: 10, max_api_keys: 3, concurrent_requests: 5 } });
+    it('should create and get tenant', async () => {
+      const tenant = await createTenant({ name: 'Integration Test', plan: 'pro', status: 'active', settings: {}, limits: { daily_requests: 100, daily_tokens: 10000, monthly_cost: 10, max_api_keys: 3, concurrent_requests: 5 } });
       expect(tenant.tenant_id).toMatch(/^tenant_/);
 
       // Should find by generated ID
