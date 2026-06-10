@@ -230,7 +230,7 @@ class TenantStore {
   /**
    * 创建租户
    */
-  create(tenant: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at'>): TenantConfig {
+  async create(tenant: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at'>): Promise<TenantConfig> {
     const tenantId = `tenant_${generateRequestId()}`;
     const now = Date.now();
 
@@ -242,7 +242,7 @@ class TenantStore {
     };
 
     this.tenants.set(tenantId, newTenant);
-    this.persistTenant(tenantId).catch(() => {});
+    await this.persistTenant(tenantId);
     return newTenant;
   }
 
@@ -256,7 +256,7 @@ class TenantStore {
   /**
    * 更新租户
    */
-  update(tenantId: TenantId, updates: Partial<Omit<TenantConfig, 'tenant_id' | 'created_at'>>): TenantConfig | null {
+  async update(tenantId: TenantId, updates: Partial<Omit<TenantConfig, 'tenant_id' | 'created_at'>>): Promise<TenantConfig | null> {
     const tenant = this.tenants.get(tenantId);
     if (!tenant) return null;
 
@@ -266,18 +266,18 @@ class TenantStore {
       updated_at: Date.now(),
     };
     this.tenants.set(tenantId, updated);
-    this.persistTenant(tenantId).catch(() => {});
+    await this.persistTenant(tenantId);
     return updated;
   }
 
   /**
    * 删除租户
    */
-  delete(tenantId: TenantId): boolean {
+  async delete(tenantId: TenantId): Promise<boolean> {
     if (tenantId === 'default') return false;
     const deleted = this.tenants.delete(tenantId);
     if (deleted) {
-      this.removeTenantFromStorage(tenantId).catch(() => {});
+      await this.removeTenantFromStorage(tenantId);
     }
     return deleted;
   }
@@ -294,12 +294,12 @@ class TenantStore {
    * Key 以哈希形式存储，与认证中间件的 verifyApiKey() 兼容
    * 支持传入虚拟 Key 策略字段（allowed_models / rate_limit 等）
    */
-  createApiKey(
+  async createApiKey(
     tenantId: TenantId,
     name: string,
     expiresAt?: number,
     policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
-  ): IApiKeyMeta | null {
+  ): Promise<IApiKeyMeta | null> {
     const tenant = this.tenants.get(tenantId);
     if (!tenant) return null;
 
@@ -327,7 +327,7 @@ class TenantStore {
     const list = this.keyPrefixIndex.get(prefix) || [];
     list.push(hashedKey);
     this.keyPrefixIndex.set(prefix, list);
-    this.persistApiKey(hashedKey).catch(() => {});
+    await this.persistApiKey(hashedKey);
     // 返回明文 key（调用方需在创建时保存，之后无法再次获取）
     return { ...meta, key: plaintextKey };
   }
@@ -416,10 +416,10 @@ class TenantStore {
   /**
    * 更新 API Key 策略（通过哈希值定位，也支持明文输入）
    */
-  updateApiKeyPolicy(
+  async updateApiKeyPolicy(
     key: string,
     updates: Partial<Pick<IApiKeyMeta, 'name' | 'expires_at' | 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>>
-  ): IApiKeyMeta | null {
+  ): Promise<IApiKeyMeta | null> {
     // 先尝试直接按哈希值查找
     let record = this.apiKeys.get(key);
     if (!record) {
@@ -433,7 +433,7 @@ class TenantStore {
       ...updates,
     };
     this.apiKeys.set(record.key, { ...record, meta: newMeta });
-    this.persistApiKey(record.key).catch(() => {});
+    await this.persistApiKey(record.key);
     return newMeta;
   }
 
@@ -525,9 +525,9 @@ export async function flushTenantStore(): Promise<void> {
 /**
  * 创建租户
  */
-export function createTenant(
+export async function createTenant(
   tenant: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at' | 'settings' | 'limits'> & { settings?: TenantSettings; limits?: TenantLimits }
-): TenantConfig {
+): Promise<TenantConfig> {
   // plan 感知的默认限制
   const planDefaults: Record<string, TenantLimits> = {
     free:       { daily_requests: 1000, daily_tokens: 100000,  monthly_cost: 100,  max_api_keys: 5,  concurrent_requests: 10 },
@@ -554,17 +554,17 @@ export function getTenant(tenantId: TenantId): TenantConfig | null {
 /**
  * 更新租户
  */
-export function updateTenant(
+export async function updateTenant(
   tenantId: TenantId,
   updates: Partial<Omit<TenantConfig, 'tenant_id' | 'created_at'>>
-): TenantConfig | null {
+): Promise<TenantConfig | null> {
   return tenantStore.update(tenantId, updates);
 }
 
 /**
  * 删除租户
  */
-export function deleteTenant(tenantId: TenantId): boolean {
+export async function deleteTenant(tenantId: TenantId): Promise<boolean> {
   return tenantStore.delete(tenantId);
 }
 
@@ -578,12 +578,12 @@ export function listTenants(): TenantConfig[] {
 /**
  * 创建租户API Key（支持虚拟 Key 策略字段）
  */
-export function createTenantApiKey(
+export async function createTenantApiKey(
   tenantId: TenantId,
   name: string,
   expiresAt?: number,
   policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
-): IApiKeyMeta | null {
+): Promise<IApiKeyMeta | null> {
   return tenantStore.createApiKey(tenantId, name, expiresAt, policy);
 }
 
@@ -597,10 +597,10 @@ export function findTenantApiKeyByHash(hash: string): IApiKeyMeta | undefined {
 /**
  * 更新 API Key 策略（通过哈希值定位）
  */
-export function updateTenantApiKeyPolicy(
+export async function updateTenantApiKeyPolicy(
   hash: string,
   updates: Parameters<typeof tenantStore.updateApiKeyPolicy>[1]
-): IApiKeyMeta | null {
+): Promise<IApiKeyMeta | null> {
   return tenantStore.updateApiKeyPolicy(hash, updates);
 }
 

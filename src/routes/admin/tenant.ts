@@ -39,7 +39,7 @@ router.post('/v1/tenants', async (c: Context) => {
       },
     }, 400);
   }
-  const tenant = createTenant(parsed.data);
+  const tenant = await createTenant(parsed.data);
   if (!tenant) {
     return c.json({ error: { message: 'Failed to create tenant', type: 'invalid_request_error', code: 'create_failed' } }, 400);
   }
@@ -97,7 +97,7 @@ router.post('/v1/tenants/:id/keys', async (c: Context) => {
     }, 400);
   }
   const { name, expires_at, allowed_models, default_model, rate_limit_qps, rate_limit_burst, monthly_budget, max_tokens_per_request, metadata } = parsed.data;
-  const key = createTenantApiKey(tenantId, name, expires_at, {
+  const key = await createTenantApiKey(tenantId, name, expires_at, {
     allowed_models,
     default_model,
     rate_limit_qps,
@@ -146,7 +146,7 @@ router.put('/v1/tenants/:id/keys/:keyHash', async (c: Context) => {
       },
     }, 400);
   }
-  const updated = updateTenantApiKeyPolicy(keyHash, parsed.data);
+  const updated = await updateTenantApiKeyPolicy(keyHash, parsed.data);
   if (!updated) {
     return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
@@ -175,16 +175,16 @@ router.put('/v1/tenants/:id', async (c: Context) => {
       },
     }, 400);
   }
-  const tenant = updateTenant(id, parsed.data);
+  const tenant = await updateTenant(id, parsed.data);
   if (!tenant) {
     return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
   return c.json(tenant);
 });
 
-router.delete('/v1/tenants/:id', (c: Context) => {
+router.delete('/v1/tenants/:id', async (c: Context) => {
   const id = c.req.param('id')!;
-  const deleted = deleteTenant(id);
+  const deleted = await deleteTenant(id);
   if (!deleted) {
     return c.json({ error: { message: 'Cannot delete tenant', type: 'invalid_request_error', code: 'delete_failed' } }, 400);
   }
