@@ -25,7 +25,10 @@ import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { initTenantStore, flushTenantStore } from './services/tenant';
 import { initMetricsStore } from './services/metrics';
 import { startAlertEngine } from './services/alert';
+import { failoverManager } from './services/failover';
 import { initTracing } from './utils/tracing';
+import { initStorageFactory } from './stores/factory';
+import type { StorageType } from './stores/interface';
 
 async function loadPersistedPlugins(): Promise<void> {
   try {
@@ -58,6 +61,13 @@ const app = createApp();
  * CORS 由 Hono cors() 中间件处理（src/app.ts）
  */
 async function startServer() {
+  // 显式初始化存储工厂（避免延迟初始化导致配置不可控）
+  const storageType = (process.env.STORAGE_TYPE || 'memory') as StorageType;
+  initStorageFactory({ type: storageType });
+  if (storageType === 'memory') {
+    writeLog('warn', 'Running with IN-MEMORY storage — all data will be lost on restart. Set STORAGE_TYPE=redis for persistence.');
+  }
+
   // 初始化 Providers
   initProviders();
 
@@ -94,10 +104,14 @@ async function startServer() {
   const config = getConfig();
 
   // 初始化缓存配置
-  initCache(config.cache);
+  const cacheStore = initCache(config.cache);
+  await cacheStore.initStorage();
 
   // 初始化语义缓存
   initSemanticCache(config.semantic_cache);
+
+  // 初始化 FailoverManager（加载配置和持久化状态）
+  await failoverManager.init();
 
   // 初始化限流清理间隔
   initRateLimitCleanInterval(config.rate_limit_clean_interval);
@@ -283,9 +297,15 @@ async function startServer() {
     writeLog('info', 'Server shutting down', { signal });
     // 清理所有 WebSocket 连接
     resetWebSocketConnections();
-    server.close(() => {
-      writeLog('info', 'HTTP server closed');
-      process.exit(0);
+    // Flush 待写入 Redis 的数据，避免优雅关闭时丢失
+    Promise.all([
+      flushQuotaStore().catch(() => {}),
+      flushTenantStore().catch(() => {}),
+    ]).then(() => {
+      server.close(() => {
+        writeLog('info', 'HTTP server closed');
+        process.exit(0);
+      });
     });
     // 超时强制退出
     setTimeout(() => {
