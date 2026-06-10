@@ -174,6 +174,8 @@ export interface IModelInfo {
   capabilities?: Partial<IProviderCapabilities>;
   pricing?: { input: number; output: number };
   created?: number;
+  /** 模型状态，如 Enabled / Shutdown / Retiring */
+  status?: string;
 }
 
 /** Provider 接口 */

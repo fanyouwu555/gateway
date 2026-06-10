@@ -67,6 +67,7 @@ class WebSocketManager {
   private connections = new Map<string, WSConnection>();
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private metricsInterval: NodeJS.Timeout | null = null;
+  private startTime = Date.now();
   private readonly HEARTBEAT_INTERVAL = 30000; // 30s ping
   private readonly METRICS_INTERVAL = 5000; // 5s metrics broadcast
   private readonly MAX_IDLE_TIME = 300000; // 5分钟超时
@@ -406,7 +407,7 @@ class WebSocketManager {
     return {
       total: this.connections.size,
       by_tenant: byTenant,
-      uptime: 0, // TODO: 跟踪管理器启动时间
+      uptime: Math.floor((Date.now() - this.startTime) / 1000),
     };
   }
 

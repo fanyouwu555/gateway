@@ -162,15 +162,26 @@ export class OpenAICompatibleProvider extends BaseProvider {
 
   async listModels(config: IProviderConfig): Promise<IModelInfo[]> {
     const url = `${config.base_url}/models`;
-    const response = await this.fetch<{ data: Array<{ id: string; object?: string; owned_by?: string; created?: number }> }>(
+    const response = await this.fetch<{
+      data: Array<{
+        id: string;
+        object?: string;
+        owned_by?: string;
+        created?: number;
+        status?: string;
+      }>;
+    }>(
       url,
       { method: 'GET', headers: { ...this.buildHeaders(config), ...this.extraHeaders } },
       config.timeout
     );
-    return response.data.map((m) => ({
-      id: m.id,
-      owned_by: m.owned_by,
-      created: m.created,
-    }));
+    return response.data
+      .filter((m) => !m.status || m.status === 'Enabled')
+      .map((m) => ({
+        id: m.id,
+        owned_by: m.owned_by,
+        created: m.created,
+        status: m.status,
+      }));
   }
 }
