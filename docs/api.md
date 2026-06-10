@@ -1042,7 +1042,12 @@ data: [DONE]
 | 401 | `authentication_error` | 认证失败 |
 | 403 | `permission_error` | 权限不足 |
 | 404 | `invalid_request_error` | 路由未找到 |
-| 429 | `rate_limit_error` | 限流触发 |
+| 429 | `rate_limit_error` | QPS 限流触发 |
+| 429 | `token_rate_limit_exceeded` | Token 消耗限流触发 |
+| 429 | `quota_exceeded` | 租户配额已耗尽 |
+| 403 | `budget_exceeded` | 月度预算已超出 |
+| 403 | `model_not_allowed` | 当前 Key 无权使用该模型 |
+| 403 | `guardrail_blocked` | 内容安全检查未通过 |
 | 500 | `internal_error` | 服务器内部错误 |
 | 502 | `provider_error` | Provider 请求失败 |
 

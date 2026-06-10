@@ -21,14 +21,14 @@ Commands **must** be run in this order before committing: `lint → tsc --noEmit
 src/app.ts          Hono app factory (middleware + routes, no server lifecycle)
 src/index.ts        HTTP server start + init (node:http, graceful shutdown)
 src/routes/         API route handlers (chat, embed, model, admin)
-src/middleware/     Middleware chain: cors → logger → metrics → auth → ratelimit
+src/middleware/     Middleware chain: cors → logger → metrics → tracing → auth → virtualKey → ratelimit
 src/providers/      AI provider adapters + registry + call orchestration
-src/services/       Business logic: router, metrics, cache, quota, failover, loadbalancer, tenant
+src/services/       Business logic: router, metrics, cache, quota, failover, loadbalancer, tenant, alert, prompt, chat-pipeline, semantic-cache, token-ratelimit, token-counter, conversation-log, request-log, pricing, embedding
 src/plugins/        Plugin system: guardrail, request/response interceptors
-src/stores/         Storage abstraction: interface → MemoryKVStore / RedisKVStore
+src/stores/         Storage abstraction: interface → MemoryKVStore / RedisKVStore, vector memory, ratelimit store
 src/config/         Config loader (env vars + conf/default.json)
 src/types/          Shared type definitions (no business logic imports allowed)
-src/utils/          Pure utilities: logger (standalone), hashing, helpers
+src/utils/          Pure utilities: logger (standalone), hashing, helpers, audit, tracing, client-info
 src/validation/     Zod schemas for request validation
 tests/              Test suites (colocated tests also in src/)
 conf/               Config files (mounted readonly in Docker)
@@ -57,7 +57,6 @@ Each module checks its own env var. Default is `memory`. Set to `redis` for prod
 ```
 STORAGE_TYPE=memory          # global default
 CACHE_STORAGE=memory         # response cache
-HISTORY_STORAGE=memory       # session history
 METRICS_STORAGE=memory       # usage metrics
 RATE_LIMIT_STORAGE=memory    # sliding window counter
 FAILOVER_STORAGE=memory      # health state persistence
@@ -67,7 +66,7 @@ Redis config from env: `REDIS_URL`, or `REDIS_HOST/PORT/PASSWORD/DB`.
 
 ## Provider system
 
-- **OpenAI-compatible providers** (openai, deepseek, groq, mistral, moonshot): use `OpenAICompatibleProvider` base class (`src/providers/openai-compatible.ts`). Each is ~15 lines of config, not 100+ lines of HTTP boilerplate.
+- **OpenAI-compatible providers** (openai, deepseek, groq, mistral, moonshot, volcano, kimi-code, cohere, together, xai, azure-openai): use `OpenAICompatibleProvider` base class (`src/providers/openai-compatible.ts`). Each is ~15 lines of config, not 100+ lines of HTTP boilerplate.
 - **Non-OpenAI providers** (anthropic, google): extend `BaseProvider` directly with custom format conversion.
 - **DynamicProvider**: config-driven, no code changes needed. Declare in `conf/default.json` under `dynamicProviders`.
 - To add a new provider: create a config object (for OpenAI-compatible) or extend BaseProvider, register in `registry.ts`.
@@ -89,7 +88,7 @@ Config file path: `CONFIG_PATH` env var, default `./conf/default.json`.
 
 ## Tests
 
-- 263 tests, 23 suites (as of May 2026).
+- 900+ tests, 60+ suites (as of Jun 2026).
 - Jest uses `ts-jest` with ESM preset. Module name mapper strips `.js` extensions.
 - Tests live in both `tests/` and `src/` (colocated with source).
 - Coverage threshold: branches/functions/lines/statements ≥ 60%.
@@ -143,11 +142,19 @@ ai-gateway-admin/src/
     common/        通用业务组件（StatsCard 等）
     Layout/        主布局（侧边栏 + 顶栏 + 内容区）
   pages/           业务页面（按功能模块划分子目录）
+    Alerts/        告警规则管理
+    Cache/         缓存管理
+    Conversations/ 对话日志管理
     Dashboard/     仪表盘
-    Providers/     Provider 管理
-    Tenants/       租户管理
+    Login/         登录页
     Metrics/       用量统计
+    Plugins/       插件管理
+    Prompts/       提示词模板管理
+    Providers/     Provider 管理
+    Router/        路由状态
+    Sessions/      会话管理
     Settings/      系统设置
+    Tenants/       租户管理
   services/        API 请求封装层（仅此目录调用 axios）
   stores/          Zustand Store
   types/           TypeScript 类型定义

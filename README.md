@@ -12,8 +12,14 @@
 - 📊 **实时指标** - Prometheus 格式指标，支持 Grafana 可视化
 - 🛡️ **安全防护** - API Key 认证、租户隔离、速率限制
 - 🚦 **插件系统** - Guardrail、请求处理、响应处理插件
-- 📦 **会话管理** - 自动上下文管理，支持多轮对话
+- 📦 **对话日志** - 自动记录对话历史，支持查询和统计
 - 📈 **用量统计** - 按租户、按 Provider、按模型的细粒度统计
+- 🔍 **语义缓存** - LSH 相似度匹配，提升重复查询性能
+- 🧮 **Token 限流** - 基于 Token 消耗的精细化速率限制
+- 🏷️ **模型池** - 多模型组合路由策略
+- 🔐 **虚拟 Key** - 独立配额和限制的 API Key 策略
+- 📡 **分布式追踪** - OpenTelemetry 追踪支持
+- 🛡️ **内容安全** - PII 检测、Prompt Injection 防护、敏感词过滤
 - 🔌 **WebSocket 支持** - 实时流式通信
 - 📝 **提示词模板** - 支持 `{{var}}` 变量替换，预设常用模板
 - 🚨 **告警引擎** - 基于阈值的自动告警，支持 Webhook 通知
@@ -161,8 +167,14 @@ npm run lint
 | DeepSeek | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ❌ |
 | Mistral | ✅ 完整 | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Groq | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Google | ✅ 完整 | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Moonshot (Kimi) | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Google | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Moonshot | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Volcano | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Kimi Code | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Cohere | ✅ 完整 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Together AI | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ❌ |
+| xAI (Grok) | ✅ 完整 | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Azure OpenAI | ✅ 完整 | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ## 🎯 智能路由策略
 
@@ -209,6 +221,10 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 
 | 变量 | 默认值 | 描述 |
 |---|---|---|
+| `STORAGE_TYPE` | `memory` | 全局存储类型 (memory / redis) |
+| `CACHE_STORAGE` | `memory` | 缓存存储类型 |
+| `METRICS_STORAGE` | `memory` | 指标存储类型 |
+| `RATE_LIMIT_STORAGE` | `memory` | 限流存储类型 |
 | `HTTP_POOL_SIZE` | `100` | 每个目标地址最大连接数 |
 | `HTTP_KEEP_ALIVE` | `true` | 是否启用 HTTP Keep-Alive |
 | `HTTP_KEEP_ALIVE_TIMEOUT` | `60000` | Keep-Alive 超时 (毫秒) |

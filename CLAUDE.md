@@ -27,11 +27,11 @@ Run a single test file: `npx jest path/to/test.test.ts --no-coverage`
 src/app.ts          Hono app factory (middleware + routes, no server lifecycle)
 src/index.ts        HTTP server start + init (node:http, graceful shutdown)
 src/routes/         API route handlers (chat, embed, model, admin)
-src/middleware/     Middleware chain: cors → logger → metrics → auth → ratelimit
+src/middleware/     Middleware chain: cors → logger → metrics → tracing → auth → virtualKey → rateLimit
 src/providers/      AI provider adapters + registry + call orchestration
-src/services/       Business logic: router, metrics, cache, quota, failover, loadbalancer, tenant, alert, prompt
+src/services/       Business logic: router, metrics, cache, quota, failover, loadbalancer, tenant, alert, prompt, chat-pipeline, semantic-cache, token-ratelimit, token-counter, conversation-log, request-log, pricing, embedding
 src/plugins/        Plugin system: guardrail, request/response interceptors + VM sandbox loader
-src/stores/         Storage abstraction: interface → MemoryKVStore / RedisKVStore, factory pattern
+src/stores/         Storage abstraction: interface → MemoryKVStore / RedisKVStore, vector memory, ratelimit store, factory pattern
 src/config/         Config loader (env vars + conf/default.json), model alias resolution
 src/types/          Shared type definitions (no business logic imports allowed)
 src/utils/          Pure utilities: logger (standalone), hashing, helpers
@@ -60,16 +60,16 @@ ai-gateway-admin/   React admin dashboard (Vite + Ant Design + Zustand + ECharts
 ### Middleware Scoping Pattern
 
 The app uses Hono's sub-app pattern for middleware scoping:
-- `app` (global): cors, logger, metrics, public routes (/health, /, /metrics)
-- `protectedApi` (sub-app): auth, rateLimit, all business routes
+- `app` (global): cors, logger, metrics, tracing, public routes (/health, /, /metrics) + WS auth endpoint
+- `protectedApi` (sub-app): auth, virtualKey, rateLimit, all business routes
 - Admin routes have additional `requireAdmin` middleware
 
 ## Key Modules
 
 ### Providers
 
-- **OpenAI-compatible** (openai, deepseek, groq, mistral, moonshot, volcano): extend `OpenAICompatibleProvider` (~15 lines each, no HTTP boilerplate)
-- **Non-OpenAI** (anthropic, google, kimi-code): extend `BaseProvider` directly with custom format conversion
+- **OpenAI-compatible** (openai, deepseek, groq, mistral, moonshot, volcano, kimi-code, cohere, together, xai, azure-openai): extend `OpenAICompatibleProvider` (~15 lines each, no HTTP boilerplate)
+- **Non-OpenAI** (anthropic, google): extend `BaseProvider` directly with custom format conversion
 - **DynamicProvider**: config-driven in `conf/default.json` under `dynamicProviders`, no code changes needed
 - **Registry**: `src/providers/registry.ts` — call `registerProvider(name, instance)` to add
 
@@ -137,8 +137,11 @@ Defined in `src/services/prompt.ts`. Built-in template store with support for `{
 | ALL | `/v1/alerts/*` | Alert rule management | Admin Key |
 | GET | `/v1/router/status` | Router status | Admin Key |
 | ALL | `/v1/conversations/*` | Conversation log management | Admin Key |
+| GET | `/v1/conversations/:session_id/stats` | Session stats | Admin Key |
 | GET | `/v1/request-logs` | Request/response logs | Admin Key |
 | ALL | `/v1/pricing/*` | Model pricing management | Admin Key |
+| GET | `/v1/sessions` | Session stats | Admin Key |
+| POST | `/v1/sessions/clean` | Clean expired sessions | Admin Key |
 | GET | `/v1/admin/discover-models` | Discover models from provider | Admin Key |
 | GET | `/v1/auth/verify` | Verify admin auth key | Admin Key |
 | WS | `/v1/ws/*` | WebSocket streaming + real-time metrics | API Key |
@@ -177,7 +180,7 @@ pnpm test         # vitest
 
 Directory structure (locked, do not refactor):
 - `components/` — reusable (Charts/, common/, Layout/)
-- `pages/` — business pages (Dashboard/, Providers/, Tenants/, Metrics/, Settings/)
+- `pages/` — business pages (Dashboard/, Providers/, Tenants/, Metrics/, Settings/, Alerts/, Cache/, Conversations/, Login/, Plugins/, Prompts/, Router/, Sessions/)
 - `services/` — Axios API layer ONLY
 - `stores/` — Zustand global state
 - `types/` — TypeScript definitions
