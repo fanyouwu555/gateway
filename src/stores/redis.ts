@@ -40,6 +40,18 @@ export class RedisKVStore implements IKVStore {
   }
 
   async connect(): Promise<void> {
+    if (this.client && this.connected) return;
+
+    // 如果之前有未成功连接的 client，清理后重试
+    if (this.client && !this.connected) {
+      try {
+        await this.client.disconnect();
+      } catch {
+        // 忽略断开错误
+      }
+      this.client = null;
+    }
+
     if (this.client) return;
 
     const options: RedisOptions = {
