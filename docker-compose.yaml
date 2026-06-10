@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   gateway:
     build:
       context: .
@@ -11,18 +24,35 @@ services:
       - PORT=3000
       - HOST=0.0.0.0
       - LOG_LEVEL=info
+      # 存储后端（生产环境必须使用 Redis）
+      - STORAGE_TYPE=redis
+      - REDIS_URL=redis://redis:6379/0
+      # 各模块存储
+      - CACHE_STORAGE=redis
+      - METRICS_STORAGE=redis
+      - RATE_LIMIT_STORAGE=redis
+      - FAILOVER_STORAGE=redis
+      - ALERT_STORAGE=redis
+      - TENANT_STORAGE=redis
+      - QUOTA_STORAGE=redis
       # 添加你的API Keys
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - API_KEYS=${API_KEYS:-sk-test-default}
     volumes:
       - ./conf:/app/conf:ro
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+volumes:
+  redis_data:
 
 networks:
   default:

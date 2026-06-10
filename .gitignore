@@ -4,9 +4,6 @@ node_modules/
 # Build output
 dist/
 
-# Package lock (use npm ci for reproducible installs)
-package-lock.json
-
 # Environment files
 .env
 .env.local
