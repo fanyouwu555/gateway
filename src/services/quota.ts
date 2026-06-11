@@ -78,6 +78,7 @@ class QuotaStore {
 
   /**
    * 获取配额
+   * 自动检查 last_reset，跨天重置 daily，跨月重置 monthly
    */
   get(tenantId: TenantId): {
     daily_requests: number;
@@ -95,6 +96,34 @@ class QuotaStore {
         last_reset: Date.now(),
       };
       this.quotas.set(tenantId, quota);
+      return quota;
+    }
+
+    // 自动重置：检查 last_reset 是否跨天/跨月
+    const now = new Date();
+    const lastReset = new Date(quota.last_reset);
+    const dayChanged =
+      now.getUTCFullYear() !== lastReset.getUTCFullYear() ||
+      now.getUTCMonth() !== lastReset.getUTCMonth() ||
+      now.getUTCDate() !== lastReset.getUTCDate();
+    const monthChanged =
+      now.getUTCFullYear() !== lastReset.getUTCFullYear() ||
+      now.getUTCMonth() !== lastReset.getUTCMonth();
+
+    if (dayChanged || monthChanged) {
+      if (dayChanged) {
+        quota.daily_requests = 0;
+        quota.daily_tokens = 0;
+      }
+      if (monthChanged) {
+        quota.monthly_cost = 0;
+      }
+      quota.last_reset = Date.now();
+
+      // 异步持久化到 Redis
+      if (this.useRedis) {
+        this.persist(tenantId).catch(() => {});
+      }
     }
 
     return quota;

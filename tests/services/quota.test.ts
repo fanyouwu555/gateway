@@ -231,6 +231,71 @@ describe('Quota Service', () => {
     });
   });
 
+  describe('auto reset by date', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should auto-reset daily quota when day changes', () => {
+      jest.useFakeTimers();
+      const now = new Date('2026-06-11T10:00:00Z').getTime();
+      jest.setSystemTime(now);
+
+      setTenantLimits('tenant-1', { daily_tokens: 100 });
+      recordUsage('tenant-1', 200, 1);
+
+      // 当天应被拒绝
+      let result = checkQuota('tenant-1');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('Daily token limit exceeded');
+
+      // 推进到第二天
+      jest.setSystemTime(now + 24 * 60 * 60 * 1000);
+
+      // 应自动重置并允许通过
+      result = checkQuota('tenant-1');
+      expect(result.allowed).toBe(true);
+      expect(result.remaining_tokens).toBe(100);
+    });
+
+    it('should auto-reset monthly cost when month changes', () => {
+      jest.useFakeTimers();
+      const now = new Date('2026-06-30T10:00:00Z').getTime();
+      jest.setSystemTime(now);
+
+      recordUsage('tenant-1', 1000, 150);
+
+      // 当月应被拒绝（超过 global monthly_budget 100）
+      let result = checkQuota('tenant-1');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('Monthly budget exceeded');
+
+      // 推进到下个月
+      jest.setSystemTime(now + 24 * 60 * 60 * 1000);
+
+      // 应自动重置并允许通过
+      result = checkQuota('tenant-1');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should not reset when within same day', () => {
+      jest.useFakeTimers();
+      const now = new Date('2026-06-11T10:00:00Z').getTime();
+      jest.setSystemTime(now);
+
+      setTenantLimits('tenant-1', { daily_tokens: 100 });
+      recordUsage('tenant-1', 200, 1);
+
+      // 推进 1 小时（同一天）
+      jest.setSystemTime(now + 60 * 60 * 1000);
+
+      // 仍应被拒绝
+      const result = checkQuota('tenant-1');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('Daily token limit exceeded');
+    });
+  });
+
   describe('getQuotaStatus', () => {
     it('should return full quota status', () => {
       const status = getQuotaStatus('test-tenant');
