@@ -364,33 +364,33 @@ const Tenants: React.FC = () => {
             </Select>
           </Form.Item>
 
-          <Form.Item label="默认 Provider" name={['settings', 'default_provider']}>
-            <Input placeholder="openai" />
+          <Form.Item label="默认 Provider（可选）" name={['settings', 'default_provider']}>
+            <Input placeholder="留空则不指定默认 Provider" />
           </Form.Item>
-          <Form.Item label="允许的 Providers（逗号分隔）" name={['settings', 'allowed_providers']}>
-            <Input placeholder="openai, deepseek" />
+          <Form.Item label="允许的 Providers（可选，留空=不限制）" name={['settings', 'allowed_providers']}>
+            <Input placeholder="openai, deepseek（留空=允许全部）" />
           </Form.Item>
-          <Form.Item label="允许的模型（逗号分隔）" name={['settings', 'allowed_models']}>
-            <Input placeholder="gpt-4o-mini, deepseek-chat" />
+          <Form.Item label="允许的模型（可选，留空=不限制）" name={['settings', 'allowed_models']}>
+            <Input placeholder="gpt-4o-mini, deepseek-chat（留空=允许全部）" />
           </Form.Item>
-          <Form.Item label="Webhook URL" name={['settings', 'webhook_url']}>
+          <Form.Item label="Webhook URL（可选）" name={['settings', 'webhook_url']}>
             <Input placeholder="https://example.com/webhook" />
           </Form.Item>
 
-          <Form.Item label="日请求限制" name={['limits', 'daily_requests']}>
+          <Form.Item label="日请求限制" name={['limits', 'daily_requests']} initialValue={1000}>
             <InputNumber min={1} style={{ width: '100%' }} placeholder="1000" />
           </Form.Item>
-          <Form.Item label="日 Token 限制" name={['limits', 'daily_tokens']}>
+          <Form.Item label="日 Token 限制" name={['limits', 'daily_tokens']} initialValue={100000}>
             <InputNumber min={1} style={{ width: '100%' }} placeholder="100000" />
           </Form.Item>
-          <Form.Item label="月预算（USD）" name={['limits', 'monthly_cost']}>
+          <Form.Item label="月预算（USD）" name={['limits', 'monthly_cost']} initialValue={100}>
             <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="100" />
           </Form.Item>
-          <Form.Item label="最大 API Keys" name={['limits', 'max_api_keys']}>
-            <InputNumber min={1} style={{ width: '100%' }} placeholder="10" />
+          <Form.Item label="最大 API Keys" name={['limits', 'max_api_keys']} initialValue={5}>
+            <InputNumber min={1} style={{ width: '100%' }} placeholder="5" />
           </Form.Item>
-          <Form.Item label="并发请求限制" name={['limits', 'concurrent_requests']}>
-            <InputNumber min={1} style={{ width: '100%' }} placeholder="100" />
+          <Form.Item label="并发请求限制" name={['limits', 'concurrent_requests']} initialValue={10}>
+            <InputNumber min={1} style={{ width: '100%' }} placeholder="10" />
           </Form.Item>
         </Form>
       </Modal>

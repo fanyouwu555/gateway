@@ -239,6 +239,14 @@ class TenantStore {
       tenant_id: tenantId,
       created_at: now,
       updated_at: now,
+      settings: tenant.settings || {},
+      limits: tenant.limits || {
+        daily_requests: 1000,
+        daily_tokens: 100000,
+        monthly_cost: 100,
+        max_api_keys: 5,
+        concurrent_requests: 10,
+      },
     };
 
     this.tenants.set(tenantId, newTenant);
