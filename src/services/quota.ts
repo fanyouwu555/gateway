@@ -9,6 +9,7 @@ import { getConfig } from '../config';
 import { getTenant } from './tenant';
 import { writeLog } from '../utils/logger';
 import { createKVStore } from '../stores/factory';
+import { shouldUseRedis } from '../utils';
 
 /**
  * 配额检查结果
@@ -47,7 +48,7 @@ class QuotaStore {
   private store: ReturnType<typeof createKVStore> | null = null;
 
   constructor() {
-    this.useRedis = process.env.QUOTA_STORAGE === 'redis';
+    this.useRedis = shouldUseRedis('QUOTA_STORAGE');
     if (this.useRedis) {
       this.store = createKVStore('quota');
     }
@@ -202,6 +203,19 @@ class QuotaStore {
           }
         }
       }
+      // 加载 Key 级月度花费
+      const keyCostsData = await store.get('quota:key_monthly_costs');
+      if (keyCostsData) {
+        try {
+          const parsed = JSON.parse(keyCostsData) as Record<string, { cost: number; last_reset: number }>;
+          for (const [keyHash, entry] of Object.entries(parsed)) {
+            this.keyMonthlyCosts.set(keyHash, entry);
+          }
+        } catch {
+          // 忽略解析失败
+        }
+      }
+
       writeLog('info', 'Quota loaded from Redis', { count: keys.length });
     } catch (err) {
       writeLog('warn', 'Failed to load quota from Redis', {
@@ -220,6 +234,12 @@ class QuotaStore {
       for (const [tenantId, quota] of this.quotas.entries()) {
         await store.set(`quota:${tenantId}`, JSON.stringify(quota));
       }
+      // 持久化 Key 级月度花费
+      const keyCostsObj: Record<string, { cost: number; last_reset: number }> = {};
+      for (const [keyHash, entry] of this.keyMonthlyCosts.entries()) {
+        keyCostsObj[keyHash] = entry;
+      }
+      await store.set('quota:key_monthly_costs', JSON.stringify(keyCostsObj));
     } catch (err) {
       writeLog('warn', 'Failed to flush quota to Redis', {
         error: err instanceof Error ? err.message : String(err),
