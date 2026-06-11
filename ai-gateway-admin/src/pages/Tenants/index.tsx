@@ -147,7 +147,7 @@ const Tenants: React.FC = () => {
       const values = await createKeyForm.validateFields()
       const payload: Record<string, unknown> = { name: values.name }
       if (values.expires_at) payload.expires_at = values.expires_at
-      if (values.allowed_models) payload.allowed_models = values.allowed_models.split(',').map((s: string) => s.trim()).filter(Boolean)
+      if (values.allowed_models?.length > 0) payload.allowed_models = values.allowed_models
       if (values.default_model) payload.default_model = values.default_model
       if (values.rate_limit_qps) payload.rate_limit_qps = values.rate_limit_qps
       if (values.rate_limit_burst) payload.rate_limit_burst = values.rate_limit_burst
@@ -175,7 +175,7 @@ const Tenants: React.FC = () => {
     setEditingKey(key)
     editPolicyForm.setFieldsValue({
       name: key.name,
-      allowed_models: key.allowed_models?.join(', ') || '',
+      allowed_models: key.allowed_models || [],
       default_model: key.default_model,
       rate_limit_qps: key.rate_limit_qps,
       rate_limit_burst: key.rate_limit_burst,
@@ -193,8 +193,8 @@ const Tenants: React.FC = () => {
       const values = await editPolicyForm.validateFields()
       const payload: Record<string, unknown> = {}
       if (values.name) payload.name = values.name
-      if (values.allowed_models) {
-        payload.allowed_models = values.allowed_models.split(',').map((s: string) => s.trim()).filter(Boolean)
+      if (values.allowed_models?.length > 0) {
+        payload.allowed_models = values.allowed_models
       }
       if (values.default_model !== undefined) payload.default_model = values.default_model
       if (values.rate_limit_qps) payload.rate_limit_qps = values.rate_limit_qps
@@ -443,11 +443,21 @@ const Tenants: React.FC = () => {
           <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入 Key 名称' }]}>
             <Input placeholder="例如：user-zhangsan" />
           </Form.Item>
-          <Form.Item label="允许的模型（逗号分隔，留空=不限制）" name="allowed_models">
-            <Input placeholder="gpt-4o-mini, deepseek-chat" />
+          <Form.Item label="允许的模型（留空=不限制）" name="allowed_models">
+            <Select
+              mode="multiple"
+              placeholder="请选择允许的模型"
+              allowClear
+              showSearch
+              options={modelOptions.map((m) => ({ label: m, value: m }))}
+            />
           </Form.Item>
           <Form.Item label="默认模型" name="default_model">
-            <Input placeholder="例如：gpt-4o-mini" />
+            <Select placeholder="请选择默认模型" allowClear showSearch>
+              {modelOptions.map((m) => (
+                <Select.Option key={m} value={m}>{m}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item label="QPS 限制" name="rate_limit_qps">
             <InputNumber min={1} style={{ width: '100%' }} placeholder="每秒请求数" />
@@ -491,11 +501,21 @@ const Tenants: React.FC = () => {
           <Form.Item label="名称" name="name">
             <Input placeholder="Key 名称" />
           </Form.Item>
-          <Form.Item label="允许的模型（逗号分隔，空=不限制）" name="allowed_models">
-            <Input placeholder="gpt-4o-mini, deepseek-chat" />
+          <Form.Item label="允许的模型（空=不限制）" name="allowed_models">
+            <Select
+              mode="multiple"
+              placeholder="请选择允许的模型"
+              allowClear
+              showSearch
+              options={modelOptions.map((m) => ({ label: m, value: m }))}
+            />
           </Form.Item>
           <Form.Item label="默认模型" name="default_model">
-            <Input placeholder="例如：gpt-4o-mini" />
+            <Select placeholder="请选择默认模型" allowClear showSearch>
+              {modelOptions.map((m) => (
+                <Select.Option key={m} value={m}>{m}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item label="QPS 限制" name="rate_limit_qps">
             <InputNumber min={1} style={{ width: '100%' }} />
