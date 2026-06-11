@@ -43,6 +43,34 @@ export class ConversationLogService {
     this.writeLocks = new Map();
   }
 
+  /**
+   * 初始化存储连接，预加载会话索引到内存
+   */
+  async init(): Promise<void> {
+    const store = await this.getStore();
+    try {
+      const index = await store.hGetAll(INDEX_KEY);
+      const sessionIds = Object.keys(index);
+      // 预加载最近活跃会话的元数据到内存
+      const sorted = sessionIds
+        .map((id) => ({ id, ts: parseInt(index[id], 10) }))
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, this.config.maxMemorySessions);
+      for (const { id } of sorted) {
+        const meta = await this.getSessionMeta(id);
+        if (meta) {
+          this.memoryMeta.set(id, meta);
+          this.lruOrder.push(id);
+        }
+      }
+      writeLog('info', 'Conversation log initialized', { sessions: sorted.length });
+    } catch (err) {
+      writeLog('warn', 'Failed to initialize conversation log', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   private async getStore(): Promise<IKVStore> {
     if (!this.store.isConnected()) {
       await this.store.connect();
@@ -317,6 +345,11 @@ export function getConversationLogService(): ConversationLogService {
     });
   }
   return _instance;
+}
+
+export async function initConversationLogService(): Promise<void> {
+  const service = getConversationLogService();
+  await service.init();
 }
 
 export function resetConversationLogService(): void {

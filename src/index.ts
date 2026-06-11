@@ -25,6 +25,8 @@ import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { initTenantStore, flushTenantStore } from './services/tenant';
 import { initMetricsStore } from './services/metrics';
 import { startAlertEngine } from './services/alert';
+import { initConversationLogService } from './services/conversation-log';
+import { initRequestLogStore } from './services/request-log';
 import { failoverManager } from './services/failover';
 import { initTracing } from './utils/tracing';
 import { initStorageFactory } from './stores/factory';
@@ -116,8 +118,14 @@ async function startServer() {
   // 初始化限流清理间隔
   initRateLimitCleanInterval(config.rate_limit_clean_interval);
 
+  // 初始化会话日志存储（从 Redis 预加载会话索引）
+  await initConversationLogService();
+
+  // 初始化请求日志存储（从 Redis 加载历史日志）
+  await initRequestLogStore();
+
   // 启动告警引擎
-  startAlertEngine();
+  await startAlertEngine();
   writeLog('info', 'Alert engine started');
 
   // 初始化配额存储（从 Redis 加载历史数据）
