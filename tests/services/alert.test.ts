@@ -35,8 +35,8 @@ describe('Alert Engine', () => {
   });
 
   describe('rule management', () => {
-    it('should add and list rules', () => {
-      addAlertRule({
+    it('should add and list rules', async () => {
+      await addAlertRule({
         id: 'rule-1',
         name: 'Error Rate Alert',
         metric: 'error_rate',
@@ -52,8 +52,8 @@ describe('Alert Engine', () => {
       expect(rules[0].id).toBe('rule-1');
     });
 
-    it('should update existing rule', () => {
-      addAlertRule({
+    it('should update existing rule', async () => {
+      await addAlertRule({
         id: 'rule-1',
         name: 'Original',
         metric: 'error_rate',
@@ -64,7 +64,7 @@ describe('Alert Engine', () => {
         cooldown_seconds: 60,
       });
 
-      addAlertRule({
+      await addAlertRule({
         id: 'rule-1',
         name: 'Updated',
         metric: 'error_rate',
@@ -81,8 +81,8 @@ describe('Alert Engine', () => {
       expect(rules[0].threshold).toBe(0.2);
     });
 
-    it('should remove a rule', () => {
-      addAlertRule({
+    it('should remove a rule', async () => {
+      await addAlertRule({
         id: 'rule-1',
         name: 'Test',
         metric: 'error_rate',
@@ -93,16 +93,16 @@ describe('Alert Engine', () => {
         cooldown_seconds: 60,
       });
 
-      expect(removeAlertRule('rule-1')).toBe(true);
+      expect(await removeAlertRule('rule-1')).toBe(true);
       expect(listAlertRules()).toHaveLength(0);
     });
 
-    it('should return false when removing non-existent rule', () => {
-      expect(removeAlertRule('nonexistent')).toBe(false);
+    it('should return false when removing non-existent rule', async () => {
+      expect(await removeAlertRule('nonexistent')).toBe(false);
     });
 
-    it('should enable/disable rules', () => {
-      addAlertRule({
+    it('should enable/disable rules', async () => {
+      await addAlertRule({
         id: 'rule-1',
         name: 'Test',
         metric: 'error_rate',
@@ -113,24 +113,24 @@ describe('Alert Engine', () => {
         cooldown_seconds: 60,
       });
 
-      setAlertEnabled('rule-1', false);
+      await setAlertEnabled('rule-1', false);
       expect(listAlertRules()[0].enabled).toBe(false);
 
-      setAlertEnabled('rule-1', true);
+      await setAlertEnabled('rule-1', true);
       expect(listAlertRules()[0].enabled).toBe(true);
     });
 
-    it('should return false when enabling non-existent rule', () => {
-      expect(setAlertEnabled('nonexistent', true)).toBe(false);
+    it('should return false when enabling non-existent rule', async () => {
+      expect(await setAlertEnabled('nonexistent', true)).toBe(false);
     });
   });
 
   describe('evaluation', () => {
-    it('should not trigger when below threshold', () => {
+    it('should not trigger when below threshold', async () => {
       const { fetchWithAgent } = require('../../src/utils/http-client');
       fetchWithAgent.mockClear();
 
-      addAlertRule({
+      await addAlertRule({
         id: 'rule-1',
         name: 'High Error Rate',
         metric: 'error_rate',
@@ -145,7 +145,7 @@ describe('Alert Engine', () => {
       expect(fetchWithAgent).not.toHaveBeenCalled();
     });
 
-    it('should trigger webhook when threshold exceeded', () => {
+    it('should trigger webhook when threshold exceeded', async () => {
       const { getDashboardOverview } = require('../../src/services/metrics');
       getDashboardOverview.mockReturnValue({
         total_requests: 100,
@@ -162,7 +162,7 @@ describe('Alert Engine', () => {
       const { fetchWithAgent } = require('../../src/utils/http-client');
       fetchWithAgent.mockClear();
 
-      addAlertRule({
+      await addAlertRule({
         id: 'rule-1',
         name: 'High Error Rate',
         metric: 'error_rate',
@@ -176,18 +176,17 @@ describe('Alert Engine', () => {
       evaluateAlerts();
 
       // fetch is async, wait for next tick
-      return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
-        expect(fetchWithAgent).toHaveBeenCalledWith(
-          'http://example.com/webhook',
-          expect.objectContaining({
-            method: 'POST',
-            body: expect.stringContaining('firing'),
-          })
-        );
-      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(fetchWithAgent).toHaveBeenCalledWith(
+        'http://example.com/webhook',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('firing'),
+        })
+      );
     });
 
-    it('should respect cooldown period', () => {
+    it('should respect cooldown period', async () => {
       const { getDashboardOverview } = require('../../src/services/metrics');
       getDashboardOverview.mockReturnValue({
         total_requests: 100,
@@ -204,7 +203,7 @@ describe('Alert Engine', () => {
       const { fetchWithAgent } = require('../../src/utils/http-client');
       fetchWithAgent.mockClear();
 
-      addAlertRule({
+      await addAlertRule({
         id: 'rule-1',
         name: 'High Error Rate',
         metric: 'error_rate',
@@ -218,12 +217,11 @@ describe('Alert Engine', () => {
       evaluateAlerts();
       evaluateAlerts(); // second call within cooldown
 
-      return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
-        expect(fetchWithAgent).toHaveBeenCalledTimes(1);
-      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(fetchWithAgent).toHaveBeenCalledTimes(1);
     });
 
-    it('should trigger with lt condition', () => {
+    it('should trigger with lt condition', async () => {
       const { getDashboardOverview } = require('../../src/services/metrics');
       getDashboardOverview.mockReturnValue({
         total_requests: 100,
@@ -240,7 +238,7 @@ describe('Alert Engine', () => {
       const { fetchWithAgent } = require('../../src/utils/http-client');
       fetchWithAgent.mockClear();
 
-      addAlertRule({
+      await addAlertRule({
         id: 'rule-lt',
         name: 'Low Latency',
         metric: 'avg_latency_ms',
@@ -253,18 +251,17 @@ describe('Alert Engine', () => {
 
       evaluateAlerts();
 
-      return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
-        expect(fetchWithAgent).toHaveBeenCalledWith(
-          'http://example.com/webhook',
-          expect.objectContaining({
-            method: 'POST',
-            body: expect.stringContaining('firing'),
-          })
-        );
-      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(fetchWithAgent).toHaveBeenCalledWith(
+        'http://example.com/webhook',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('firing'),
+        })
+      );
     });
 
-    it('should resolve previously firing alert', () => {
+    it('should resolve previously firing alert', async () => {
       const { getDashboardOverview } = require('../../src/services/metrics');
       getDashboardOverview.mockReturnValue({
         total_requests: 100,
@@ -280,7 +277,7 @@ describe('Alert Engine', () => {
 
       const { fetchWithAgent } = require('../../src/utils/http-client');
 
-      addAlertRule({
+      await addAlertRule({
         id: 'rule-resolve',
         name: 'High Error Rate',
         metric: 'error_rate',
@@ -307,19 +304,18 @@ describe('Alert Engine', () => {
 
       evaluateAlerts(); // should resolve
 
-      return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
-        const calls = fetchWithAgent.mock.calls;
-        expect(calls.length).toBeGreaterThanOrEqual(2);
-        const lastCall = calls[calls.length - 1];
-        expect(lastCall[1].body).toContain('resolved');
-      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const calls = fetchWithAgent.mock.calls;
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+      const lastCall = calls[calls.length - 1];
+      expect(lastCall[1].body).toContain('resolved');
     });
 
-    it('should not evaluate disabled rules', () => {
+    it('should not evaluate disabled rules', async () => {
       const { fetchWithAgent } = require('../../src/utils/http-client');
       fetchWithAgent.mockClear();
 
-      addAlertRule({
+      await addAlertRule({
         id: 'rule-disabled',
         name: 'Disabled',
         metric: 'error_rate',
@@ -332,12 +328,11 @@ describe('Alert Engine', () => {
 
       evaluateAlerts();
 
-      return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
-        expect(fetchWithAgent).not.toHaveBeenCalled();
-      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(fetchWithAgent).not.toHaveBeenCalled();
     });
 
-    it('should evaluate total_requests metric', () => {
+    it('should evaluate total_requests metric', async () => {
       const { getDashboardOverview } = require('../../src/services/metrics');
       getDashboardOverview.mockReturnValue({
         total_requests: 200,
@@ -354,7 +349,7 @@ describe('Alert Engine', () => {
       const { fetchWithAgent } = require('../../src/utils/http-client');
       fetchWithAgent.mockClear();
 
-      addAlertRule({
+      await addAlertRule({
         id: 'rule-requests',
         name: 'High Requests',
         metric: 'total_requests',
@@ -367,9 +362,8 @@ describe('Alert Engine', () => {
 
       evaluateAlerts();
 
-      return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
-        expect(fetchWithAgent).toHaveBeenCalled();
-      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(fetchWithAgent).toHaveBeenCalled();
     });
   });
 });
