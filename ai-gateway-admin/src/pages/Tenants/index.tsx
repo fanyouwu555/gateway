@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, Select, Drawer, Descriptions, message, Popconfirm, Typography } from 'antd'
 import { PlusOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CopyOutlined, WarningOutlined } from '@ant-design/icons'
-import { getTenants, getTenantStats, getTenantKeys, createTenant, createTenantKey, updateKeyPolicy, deleteTenant, deleteApiKey } from '@/services/api'
+import { getTenants, getTenantStats, getTenantKeys, createTenant, createTenantKey, updateKeyPolicy, deleteTenant, deleteApiKey, getConfig, getModels } from '@/services/api'
 import type { Tenant, TenantStats, ApiKey } from '@/types'
 
 const planColors: Record<string, string> = {
@@ -25,6 +25,10 @@ const Tenants: React.FC = () => {
   const [tenantStats, setTenantStats] = useState<TenantStats | null>(null)
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [form] = Form.useForm()
+
+  // Provider / Model 下拉选项
+  const [providerOptions, setProviderOptions] = useState<string[]>([])
+  const [modelOptions, setModelOptions] = useState<string[]>([])
 
   // Create Key modal
   const [createKeyModalVisible, setCreateKeyModalVisible] = useState(false)
@@ -52,7 +56,20 @@ const Tenants: React.FC = () => {
 
   useEffect(() => {
     fetchTenants()
+    fetchProviderAndModelOptions()
   }, [])
+
+  const fetchProviderAndModelOptions = async () => {
+    try {
+      const [configData, modelsData] = await Promise.all([getConfig(), getModels()])
+      const providers = Object.keys(configData.providers || {})
+      setProviderOptions(providers)
+      const models = (modelsData.data || []).map((m: { id: string }) => m.id)
+      setModelOptions(models)
+    } catch {
+      // 静默失败，不影响主流程
+    }
+  }
 
   const handleViewDetail = async (tenant: Tenant) => {
     setCurrentTenant(tenant)
@@ -80,11 +97,11 @@ const Tenants: React.FC = () => {
       // Build settings if any field present
       const settings: Record<string, unknown> = {}
       if (values.settings?.default_provider) settings.default_provider = values.settings.default_provider
-      if (values.settings?.allowed_providers) {
-        settings.allowed_providers = values.settings.allowed_providers.split(',').map((s: string) => s.trim()).filter(Boolean)
+      if (values.settings?.allowed_providers?.length > 0) {
+        settings.allowed_providers = values.settings.allowed_providers
       }
-      if (values.settings?.allowed_models) {
-        settings.allowed_models = values.settings.allowed_models.split(',').map((s: string) => s.trim()).filter(Boolean)
+      if (values.settings?.allowed_models?.length > 0) {
+        settings.allowed_models = values.settings.allowed_models
       }
       if (values.settings?.webhook_url) settings.webhook_url = values.settings.webhook_url
       if (Object.keys(settings).length > 0) payload.settings = settings
@@ -365,13 +382,29 @@ const Tenants: React.FC = () => {
           </Form.Item>
 
           <Form.Item label="默认 Provider（可选）" name={['settings', 'default_provider']}>
-            <Input placeholder="留空则不指定默认 Provider" />
+            <Select placeholder="留空则不指定默认 Provider" allowClear showSearch>
+              {providerOptions.map((p) => (
+                <Select.Option key={p} value={p}>{p}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item label="允许的 Providers（可选，留空=不限制）" name={['settings', 'allowed_providers']}>
-            <Input placeholder="openai, deepseek（留空=允许全部）" />
+            <Select
+              mode="multiple"
+              placeholder="请选择允许的 Providers（留空=允许全部）"
+              allowClear
+              showSearch
+              options={providerOptions.map((p) => ({ label: p, value: p }))}
+            />
           </Form.Item>
           <Form.Item label="允许的模型（可选，留空=不限制）" name={['settings', 'allowed_models']}>
-            <Input placeholder="gpt-4o-mini, deepseek-chat（留空=允许全部）" />
+            <Select
+              mode="multiple"
+              placeholder="请选择允许的模型（留空=允许全部）"
+              allowClear
+              showSearch
+              options={modelOptions.map((m) => ({ label: m, value: m }))}
+            />
           </Form.Item>
           <Form.Item label="Webhook URL（可选）" name={['settings', 'webhook_url']}>
             <Input placeholder="https://example.com/webhook" />
