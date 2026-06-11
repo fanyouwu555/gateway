@@ -53,7 +53,7 @@ jest.mock('../../src/providers', () => ({
 
 jest.mock('../../src/services/cache', () => ({
   getCacheStats: jest.fn(() => ({ size: 0, hit_rate: 0 })),
-  cleanCache: jest.fn(() => 0),
+  flushCache: jest.fn(() => Promise.resolve(0)),
 }));
 
 jest.mock('../../src/services/metrics', () => ({
