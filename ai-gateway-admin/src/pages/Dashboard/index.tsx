@@ -94,20 +94,11 @@ const Dashboard: React.FC = () => {
 
   const handleWebSocketMessage = useCallback((raw: unknown) => {
     const data = raw as Record<string, unknown>
-    if (data.type === 'metrics_update' || data.event === 'metrics_update') {
-      setOverviewData((prev) => ({
-        ...prev,
-        total_requests: (data.total_requests as number | undefined) ?? prev?.total_requests ?? 0,
-        total_tokens: (data.total_tokens as number | undefined) ?? prev?.total_tokens ?? 0,
-        total_cost: (data.total_cost as number | undefined) ?? prev?.total_cost ?? 0,
-        avg_duration_ms: (data.avg_duration_ms as number | undefined) ?? prev?.avg_duration_ms ?? 0,
-        success_rate: (data.success_rate as number | undefined) ?? prev?.success_rate ?? 0,
-        error_rate: (data.error_rate as number | undefined) ?? prev?.error_rate ?? 0,
-        total_providers: (data.total_providers as number | undefined) ?? prev?.total_providers ?? 0,
-        total_models: (data.total_models as number | undefined) ?? prev?.total_models ?? 0,
-        total_tenants: (data.total_tenants as number | undefined) ?? prev?.total_tenants ?? 0,
-      }))
-    } else if (data.type === 'chat.completion.chunk' || data.event === 'request_complete') {
+    // 注意：不处理 metrics_update 覆盖 overviewData，
+    // 因为 WebSocket 推送的是最近 1 小时数据，而 Dashboard 可能显示 24h/7d，
+    // 统计口径不一致会导致数据闪烁（如 1h 内无请求时全为 0）。
+    // overviewData 只由 fetchData() 在 timeRange 切换或刷新时更新。
+    if (data.type === 'chat.completion.chunk' || data.event === 'request_complete') {
       const requestId = (data.request_id as string)
       if (requestId) {
         if (seenRequestIds.current.has(requestId)) return
