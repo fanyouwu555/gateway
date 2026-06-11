@@ -223,3 +223,21 @@ export function ensureKeyHashed(key: string): string {
   if (isHashedKey(key)) return key;
   return hashApiKey(key);
 }
+
+/**
+ * 统一判断是否应该使用 Redis 存储。
+ * 优先级：模块级环境变量 > 全局 STORAGE_TYPE / REDIS_URL
+ * @param moduleEnvVar 模块级环境变量名（如 'TENANT_STORAGE'）
+ */
+export function shouldUseRedis(moduleEnvVar?: string): boolean {
+  // 如果模块显式设置了环境变量，以其为准
+  if (moduleEnvVar && process.env[moduleEnvVar]) {
+    return process.env[moduleEnvVar] === 'redis';
+  }
+  // 否则跟随全局配置
+  return (
+    process.env.STORAGE_TYPE === 'redis' ||
+    !!process.env.REDIS_URL ||
+    !!process.env.REDIS_HOST
+  );
+}

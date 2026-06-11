@@ -8,6 +8,7 @@ import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
 import { getPricingService } from './pricing';
+import { shouldUseRedis } from '../utils';
 
 interface TokenUsage {
   prompt_tokens: number;
@@ -91,7 +92,7 @@ class MetricsStore {
   private readonly storageKey = 'metrics';
 
   constructor() {
-    this.useStorage = process.env.METRICS_STORAGE === 'redis';
+    this.useStorage = shouldUseRedis('METRICS_STORAGE');
     if (this.useStorage) {
       this.store = createKVStore('metrics');
     }

@@ -11,6 +11,7 @@ import {
 } from '../stores/ratelimit';
 import { ConcurrencyLimiter } from '../services/concurrency-limiter';
 import { getTenant } from '../services/tenant';
+import { shouldUseRedis } from '../utils';
 
 // 限流存储实例
 let rateLimitStore: IRateLimitStore | null = null;
@@ -31,7 +32,7 @@ export function resetRateLimitStore(): void {
  * 是否使用 Redis 限流
  */
 function useRedisRateLimit(): boolean {
-  return process.env.RATE_LIMIT_STORAGE === 'redis' || !!process.env.REDIS_URL || !!process.env.REDIS_HOST;
+  return shouldUseRedis('RATE_LIMIT_STORAGE');
 }
 
 /**

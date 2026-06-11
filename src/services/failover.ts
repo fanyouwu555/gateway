@@ -8,6 +8,7 @@ import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
 import { fetchWithAgent } from '../utils/http-client';
+import { shouldUseRedis } from '../utils';
 
 /**
  * Failover 配置
@@ -85,7 +86,7 @@ class FailoverManager {
       healthCheckTimeout: 5000,
       healthCheckModel: 'gpt-4o-mini',
     };
-    this.useStorage = process.env.FAILOVER_STORAGE === 'redis';
+    this.useStorage = shouldUseRedis('FAILOVER_STORAGE');
   }
 
   private ensureConfig(): void {

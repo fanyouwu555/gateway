@@ -4,7 +4,7 @@
  * 支持内存存储（默认）和 Redis 持久化（可选）
  */
 import type { TenantId, IApiKeyMeta } from '../types';
-import { generateRequestId, hashApiKey, verifyApiKey, generateSecureRandomString } from '../utils';
+import { generateRequestId, hashApiKey, verifyApiKey, generateSecureRandomString, shouldUseRedis } from '../utils';
 import { writeLog } from '../utils/logger';
 import { createKVStore } from '../stores/factory';
 
@@ -58,7 +58,7 @@ class TenantStore {
   private store: ReturnType<typeof createKVStore> | null = null;
 
   constructor() {
-    this.useRedis = process.env.TENANT_STORAGE === 'redis';
+    this.useRedis = shouldUseRedis('TENANT_STORAGE');
     if (this.useRedis) {
       this.store = createKVStore('tenant');
     }
