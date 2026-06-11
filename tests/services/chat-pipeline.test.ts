@@ -5,6 +5,16 @@ import { resolveRequestModel } from '../../src/services/chat-pipeline';
 
 jest.mock('../../src/config', () => ({
   resolveModelAlias: jest.fn((alias: string) => alias),
+  getConfig: jest.fn(() => ({
+    loadBalance: { strategy: 'roundRobin' },
+    providers: {},
+    failover: { enabled: false },
+  })),
+  getProviderConfig: jest.fn(() => undefined),
+  getProviderForModel: jest.fn(() => undefined),
+  getRoutingStrategy: jest.fn(() => ({ name: 'default', rules: [] })),
+  getModelPool: jest.fn(() => undefined),
+  isModelPool: jest.fn(() => false),
 }));
 
 describe('resolveRequestModel()', () => {

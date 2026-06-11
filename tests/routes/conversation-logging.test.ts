@@ -53,6 +53,9 @@ jest.mock('../../src/providers', () => ({
     usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
   })),
   chatCompleteStream: jest.fn(() => Promise.resolve(new ReadableStream())),
+  getProvider: jest.fn(() => ({
+    capabilities: { chat: true, embed: true, streaming: true, vision: true, function_call: true, reasoning: true },
+  })),
 }));
 
 jest.mock('../../src/services/cache', () => ({

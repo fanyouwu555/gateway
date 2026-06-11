@@ -119,8 +119,9 @@ describe('Router Service', () => {
         ],
       };
       const decision = smartRoute(request, 'balance');
-      // No high-quality provider (claude) in config, falls back to balanced
-      expect(decision.reason).toBe('balanced_choice');
+      // kimi-for-coding in config supports function_call, so it should be selected
+      expect(decision.reason).toBe('tools_require_function_call');
+      expect(decision.provider).toBe('kimi-code');
     });
 
     it('should route by balance default when no model or tools', () => {

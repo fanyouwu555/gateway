@@ -34,12 +34,31 @@
     "smart-chat": {
       "name": "smart-chat",
       "description": "通用对话，自动选择最优供应商",
-      "capabilities": ["chat"],
+      "capabilities": ["chat", "streaming", "function_call"],
       "candidates": [
         { "provider": "volcano-chat", "model": "doubao-pro-128k-240515", "priority": 1, "enabled": false },
         { "provider": "moonshot", "model": "kimi-k2.6", "priority": 2 }
       ]
+    },
+    "vision-chat": {
+      "name": "vision-chat",
+      "description": "多模态对话，支持图片输入",
+      "capabilities": ["chat", "streaming", "vision", "function_call"],
+      "candidates": [
+        { "provider": "openai", "model": "gpt-4o", "priority": 1 },
+        { "provider": "anthropic", "model": "claude-3-5-sonnet-20241022", "priority": 2 }
+      ]
     }
+  },
+  "model_capabilities": {
+    "gpt-4o": { "chat": true, "embed": true, "streaming": true, "vision": true, "function_call": true, "reasoning": true },
+    "gpt-4o-mini": { "chat": true, "embed": true, "streaming": true, "vision": true, "function_call": true, "reasoning": true },
+    "claude-3-5-sonnet-20241022": { "chat": true, "embed": false, "streaming": true, "vision": true, "function_call": true, "reasoning": true },
+    "claude-3-opus-20240229": { "chat": true, "embed": false, "streaming": true, "vision": true, "function_call": true, "reasoning": true },
+    "deepseek-chat": { "chat": true, "embed": true, "streaming": true, "vision": false, "function_call": true, "reasoning": true },
+    "deepseek-reasoner": { "chat": true, "embed": false, "streaming": true, "vision": false, "function_call": false, "reasoning": true },
+    "kimi-k2.6": { "chat": true, "embed": false, "streaming": true, "vision": true, "function_call": true, "reasoning": true },
+    "kimi-for-coding": { "chat": true, "embed": false, "streaming": true, "vision": true, "function_call": true, "reasoning": true }
   },
   "auth": {
     "enabled": true,

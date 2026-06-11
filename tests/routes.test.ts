@@ -94,7 +94,9 @@ jest.mock('../src/providers', () => ({
     usage: { prompt_tokens: 5, total_tokens: 5 },
   }),
   registerProvider: jest.fn(),
-  getProvider: jest.fn(),
+  getProvider: jest.fn(() => ({
+    capabilities: { chat: true, embed: true, streaming: true, vision: true, function_call: true, reasoning: true },
+  })),
   hasProvider: jest.fn(),
   getProviderNames: jest.fn(() => ['openai', 'deepseek']),
 }));

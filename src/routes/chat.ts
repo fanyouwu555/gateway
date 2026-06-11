@@ -28,6 +28,8 @@ import { getConversationLogService } from '../services/conversation-log';
 import type { ChatMessage, ChatCompletionChunk, ChatCompletionRequest } from '../types';
 import type { Span } from '@opentelemetry/api';
 import { extractClientInfo } from '../utils/client-info';
+import { inferRequirements, getModelCapabilities, checkCapabilityMatch, formatCapabilityError } from '../services/model-capability';
+import { getProvider } from '../providers';
 
 const chatRouter = new Hono();
 
@@ -763,6 +765,28 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     c.set('provider', providerName);
     c.set('model', providerReq.model);
     c.set('pool_model', processedReq.model); // 保存原始模型池名称
+
+    // 能力校验：确保目标模型支持请求所需的能力
+    const requirements = inferRequirements(providerReq);
+    let modelCaps = getModelCapabilities(providerReq.model);
+    if (!modelCaps) {
+      const provider = getProvider(providerName);
+      modelCaps = provider?.capabilities || null;
+    }
+    const missing = checkCapabilityMatch(requirements, modelCaps);
+    if (missing.length > 0) {
+      return c.json(
+        {
+          error: {
+            message: formatCapabilityError(providerReq.model, missing),
+            type: 'invalid_request_error',
+            code: 'capability_mismatch',
+            param: 'model',
+          },
+        },
+        400,
+      );
+    }
 
     // Token 级限流：请求前预估检查
     const trl = getTokenRateLimit();

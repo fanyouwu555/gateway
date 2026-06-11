@@ -5,8 +5,10 @@
  * 使 chat.ts 只保留 HTTP 请求/响应处理。
  */
 import { resolveModelAlias, isModelPool, getModelPool, getProviderForModel } from '../config';
+import { getProvider } from '../providers';
 import { smartRoute, evaluateConditionalRules, type RouterStrategy } from './router';
 import { writeLog } from '../utils/logger';
+import { inferRequirements, getModelCapabilities, checkCapabilityMatch } from './model-capability';
 import type { ChatCompletionRequest } from '../types';
 
 /**
@@ -69,21 +71,39 @@ export function resolveProviderForRequest(
   requestHeaders: Record<string, string>,
 ): ProviderResolution | ProviderResolutionError {
   const model = processedReq.model;
+  const requirements = inferRequirements(processedReq);
 
   // 1. 优先检查模型能力池
   if (model && isModelPool(model)) {
     const pool = getModelPool(model);
     if (pool && pool.candidates && pool.candidates.length > 0) {
-      const enabledCandidates = pool.candidates
+      let candidates = pool.candidates
         .filter((c) => c.enabled !== false)
         .sort((a, b) => a.priority - b.priority);
 
-      if (enabledCandidates.length > 0) {
-        const selected = enabledCandidates[0];
+      if (candidates.length > 0) {
+        // 能力过滤：排除不满足请求能力要求的候选
+        const filtered = candidates.filter((c) => {
+          let caps = getModelCapabilities(c.model);
+          if (!caps) {
+            const provider = getProvider(c.provider);
+            caps = provider?.capabilities || null;
+          }
+          if (!caps) return true; // 未知能力，不过滤（向后兼容）
+          const missing = checkCapabilityMatch(requirements, caps);
+          return missing.length === 0;
+        });
+        // 过滤后为空时回退到全部候选（向后兼容）
+        if (filtered.length > 0) {
+          candidates = filtered;
+        }
+
+        const selected = candidates[0];
         writeLog('info', 'Model pool resolved', {
           pool: model,
           provider: selected.provider,
           actualModel: selected.model,
+          capability_filtered: filtered.length !== candidates.length,
         });
         return { provider: selected.provider, actualModel: selected.model };
       }
@@ -100,6 +120,9 @@ export function resolveProviderForRequest(
     tenant_id: tenantId,
     content_length: contentLength,
     has_tools: !!(processedReq.tools && processedReq.tools.length > 0),
+    has_vision: requirements.vision,
+    has_reasoning: requirements.reasoning,
+    has_streaming: requirements.streaming,
     headers: requestHeaders,
   });
 

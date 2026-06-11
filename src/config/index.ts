@@ -91,6 +91,7 @@ const DEFAULT_CONFIG: IGatewayConfig = {
   model_equivalents: {},
   model_fallbacks: {},
   model_pools: {},
+  model_capabilities: {},
 };
 
 /**

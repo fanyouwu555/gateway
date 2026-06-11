@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { getProviderForModel, resolveModelAlias } from '../config';
-import { createEmbedding } from '../providers';
+import { createEmbedding, getProvider } from '../providers';
 import { embeddingRequestSchema } from '../validation';
 import { logError } from '../utils/logger';
 import { recordMetric } from '../services/metrics';
@@ -107,6 +107,22 @@ async function handleEmbedding(c: Context): Promise<Response> {
     // Key policy check
     const policyError = checkEmbedKeyPolicies(c, model);
     if (policyError) return policyError;
+
+    // 能力校验：确保 Provider 支持 embeddings
+    const provider = getProvider(providerName);
+    if (!provider?.capabilities.embed) {
+      return c.json(
+        {
+          error: {
+            message: `Model '${model}' does not support embeddings. Please use a model that supports this feature.`,
+            type: 'invalid_request_error',
+            code: 'capability_mismatch',
+            param: 'model',
+          },
+        },
+        400
+      );
+    }
 
     // Quota check
     if (tenantId) {

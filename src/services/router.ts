@@ -4,8 +4,10 @@
  */
 import type { ChatCompletionRequest, IRoutingStrategy, IConditionalRoutingRule } from '../types';
 import { getRoutingStrategy, getConfig, getModelPool, isModelPool } from '../config';
+import { getProvider } from '../providers';
 import { failoverManager } from './failover';
 import { contentToString } from '../utils';
+import { inferRequirements, getModelCapabilities, checkCapabilityMatch, type RequestCapabilityRequirements } from './model-capability';
 
 /**
  * 路由决策
@@ -49,9 +51,11 @@ class SmartRouter {
    * 根据请求特征选择Provider
    */
   route(request: ChatCompletionRequest, strategy: RouterStrategy = 'balance'): RoutingDecision {
+    const requirements = inferRequirements(request);
+
     // 1. 优先检查模型能力池
     if (request.model && isModelPool(request.model)) {
-      const poolDecision = this.routeByModelPool(request);
+      const poolDecision = this.routeByModelPool(request, requirements);
       if (poolDecision) {
         return poolDecision;
       }
@@ -86,7 +90,10 @@ class SmartRouter {
    * 按模型能力池路由
    * 在池内按 priority 排序，结合健康状态选择第一个可用的 candidate
    */
-  private routeByModelPool(request: ChatCompletionRequest): RoutingDecision | null {
+  private routeByModelPool(
+    request: ChatCompletionRequest,
+    requirements?: RequestCapabilityRequirements,
+  ): RoutingDecision | null {
     if (!request.model) return null;
 
     const pool = getModelPool(request.model);
@@ -95,16 +102,35 @@ class SmartRouter {
     }
 
     // 按 priority 排序（数字越小优先级越高），过滤掉 disabled 的 candidate
-    const enabledCandidates = pool.candidates
+    let candidates = pool.candidates
       .filter((c) => c.enabled !== false)
       .sort((a, b) => a.priority - b.priority);
 
-    if (enabledCandidates.length === 0) {
+    if (candidates.length === 0) {
       return null;
     }
 
+    // 能力过滤：如果提供了需求，排除不满足能力要求的候选
+    if (requirements) {
+      const filtered = candidates.filter((c) => {
+        let caps = getModelCapabilities(c.model);
+        if (!caps) {
+          const provider = getProvider(c.provider);
+          caps = provider?.capabilities || null;
+        }
+        if (!caps) return true; // 未知能力，不过滤（向后兼容）
+        const missing = checkCapabilityMatch(requirements, caps);
+        return missing.length === 0;
+      });
+
+      // 过滤后为空时回退到全部候选，避免破坏现有配置
+      if (filtered.length > 0) {
+        candidates = filtered;
+      }
+    }
+
     // 选择第一个健康的 candidate
-    for (const candidate of enabledCandidates) {
+    for (const candidate of candidates) {
       if (failoverManager.isProviderHealthy(candidate.provider)) {
         return {
           provider: candidate.provider,
@@ -117,8 +143,8 @@ class SmartRouter {
 
     // 如果所有 candidate 都不健康，返回第一个（让 Failover 后续处理）
     return {
-      provider: enabledCandidates[0].provider,
-      model: enabledCandidates[0].model,
+      provider: candidates[0].provider,
+      model: candidates[0].model,
       reason: `model_pool:${pool.name}:unhealthy_fallback`,
       confidence: 0.5,
     };
@@ -237,16 +263,21 @@ class SmartRouter {
       }
     }
 
-    // 检查是否有工具调用
+    // 检查是否有工具调用，选择支持 function_call 的模型
     if (request.tools && request.tools.length > 0) {
-      const toolRule = rules.find(
-        (r) => r.model.includes('gpt-4') || r.model.includes('claude')
-      );
+      const toolRule = rules.find((r) => {
+        let caps = getModelCapabilities(r.model);
+        if (!caps) {
+          const provider = getProvider(r.provider);
+          caps = provider?.capabilities || null;
+        }
+        return caps?.function_call;
+      });
       if (toolRule) {
         return {
           provider: toolRule.provider,
           model: toolRule.model,
-          reason: 'tools_require_high_quality',
+          reason: 'tools_require_function_call',
           confidence: 0.9,
         };
       }
@@ -350,6 +381,9 @@ export interface ConditionalRoutingRequest {
   tenant_id?: string;
   content_length?: number;
   has_tools?: boolean;
+  has_vision?: boolean;
+  has_reasoning?: boolean;
+  has_streaming?: boolean;
   headers?: Record<string, string>;
 }
 
@@ -408,6 +442,15 @@ function evaluateCondition(
         break;
       case 'has_tools':
         actualValue = request.has_tools;
+        break;
+      case 'has_vision':
+        actualValue = request.has_vision;
+        break;
+      case 'has_reasoning':
+        actualValue = request.has_reasoning;
+        break;
+      case 'has_streaming':
+        actualValue = request.has_streaming;
         break;
       case 'content_length':
         actualValue = request.content_length;

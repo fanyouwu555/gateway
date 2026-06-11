@@ -470,6 +470,8 @@ export interface IGatewayConfig {
   model_fallbacks?: Record<string, string[]>;
   /** 模型能力池：用户请求抽象模型名，网关自动选择具体 Provider 和模型 */
   model_pools?: Record<string, IModelPool>;
+  /** 模型能力覆盖：key = 模型ID，value = 能力标志（覆盖 Provider 默认能力） */
+  model_capabilities?: Record<string, Partial<IProviderCapabilities>>;
   /** 动态 Provider 配置 */
   dynamicProviders?: DynamicProviderConfig[];
 }
