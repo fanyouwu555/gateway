@@ -110,8 +110,12 @@ async function checkCaches(
       const metricProvider = hitType === 'semantic' ? 'semantic_cache' : 'cache';
       writeLog('debug', 'Cache hit', { model: req.model, hitType });
       c.set('cache_hit', true);
+
+      // 缓存命中后补执行响应插件，确保命中与未命中的行为一致
+      let cachedResp = JSON.parse(cached) as import('../types').ChatCompletionResponse;
+      cachedResp = await runResponsePlugins(c, cachedResp);
+
       endSpan(cacheSpan);
-      const cachedResp = JSON.parse(cached) as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } };
       const promptTokens = cachedResp.usage?.prompt_tokens || 0;
       const completionTokens = cachedResp.usage?.completion_tokens || 0;
       const totalTokens = cachedResp.usage?.total_tokens || 0;
@@ -442,6 +446,13 @@ async function handleNonStreamingResponse(
   recordAiTtfb(ttfbMs, providerName, model);
   recordLatency(providerName, ttfbMs);
 
+  // 在响应插件处理前缓存原始 provider 响应，确保缓存内容与插件无关
+  if ((config.cache?.enabled || config.semantic_cache?.enabled) && !req.stream) {
+    setCache(req, JSON.stringify(response), tenantId).catch((err) => {
+      writeLog('warn', 'Failed to cache response', { error: err instanceof Error ? err.message : String(err) });
+    });
+  }
+
   response = await runResponsePlugins(c, response);
 
   if (response.usage) {
@@ -552,12 +563,6 @@ async function handleNonStreamingResponse(
       request_body: sanitizedBody,
       response_body: JSON.stringify({ usage: response.usage }),
       cost,
-    });
-  }
-
-  if ((config.cache?.enabled || config.semantic_cache?.enabled) && !req.stream) {
-    setCache(req, JSON.stringify(response), tenantId).catch((err) => {
-      writeLog('warn', 'Failed to cache response', { error: err instanceof Error ? err.message : String(err) });
     });
   }
 
