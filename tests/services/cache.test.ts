@@ -9,6 +9,7 @@ import {
   getCacheStats,
   createCacheStore,
   resetCache,
+  flushCache,
 } from '../../src/services/cache';
 import type { ChatCompletionRequest } from '../../src/types';
 
@@ -130,6 +131,73 @@ describe('Cache Service', () => {
     it('should create cache store with custom config', () => {
       const store = createCacheStore<string>(100, 60000);
       expect(store).toBeDefined();
+    });
+  });
+
+  describe('generateCacheKey', () => {
+    it('should produce fixed-length SHA-256 hex keys', () => {
+      const request: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Hello world this is a long message' }],
+      };
+      const key = generateCacheKey(request);
+      expect(key).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it('should not be affected by pipe characters in content', () => {
+      const request: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'a|b|c' }],
+      };
+      const key = generateCacheKey(request);
+      expect(key).toMatch(/^[a-f0-9]{64}$/);
+    });
+  });
+
+  describe('LRU eviction', () => {
+    it('should evict least recently used entries first', async () => {
+      // 创建容量为 2 的 store
+      const store = createCacheStore<string>(2, 60000);
+
+      await store.setAsync('key1', 'v1', { request_text: 'one', model: 'm1' });
+      await new Promise((r) => setTimeout(r, 20));
+      await store.setAsync('key2', 'v2', { request_text: 'two', model: 'm1' });
+
+      // 访问 key1，使其比 key2 更新
+      await new Promise((r) => setTimeout(r, 20));
+      await store.get('key1');
+
+      // 写入 key3，应该淘汰 key2（最久未访问）
+      await new Promise((r) => setTimeout(r, 20));
+      await store.setAsync('key3', 'v3', { request_text: 'three', model: 'm1' });
+
+      expect(await store.get('key1')).toBe('v1');
+      expect(await store.get('key2')).toBeNull();
+      expect(await store.get('key3')).toBe('v3');
+    });
+  });
+
+  describe('flushCache', () => {
+    it('should clear all entries and reset stats', async () => {
+      const request: ChatCompletionRequest = {
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'flush test' }],
+      };
+      await setCache(request, '{"result": "ok"}');
+      await getCache(request); // 1 hit
+
+      const before = getCacheStats();
+      expect(before.size).toBe(1);
+      expect(before.hits).toBe(1);
+
+      const count = await flushCache();
+      expect(count).toBeGreaterThanOrEqual(1);
+
+      const after = getCacheStats();
+      expect(after.size).toBe(0);
+      expect(after.hits).toBe(0);
+      expect(after.misses).toBe(0);
+      expect(await getCache(request)).toBeNull();
     });
   });
 

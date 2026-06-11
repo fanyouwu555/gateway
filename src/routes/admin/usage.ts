@@ -14,7 +14,7 @@ import {
   type AggregationGranularity,
 } from '../../services/metrics';
 import { getQuotaStatus } from '../../services/quota';
-import { getCacheStats, cleanCache } from '../../services/cache';
+import { getCacheStats, flushCache } from '../../services/cache';
 
 const router = new Hono();
 
@@ -85,9 +85,9 @@ router.get('/v1/cache', (c: Context) => {
   return c.json(stats);
 });
 
-router.post('/v1/cache/clean', (c: Context) => {
-  cleanCache();
-  return c.json({ cleaned: true });
+router.post('/v1/cache/clean', async (c: Context) => {
+  const count = await flushCache();
+  return c.json({ cleaned: true, count });
 });
 
 export default router;

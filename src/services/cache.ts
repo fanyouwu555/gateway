@@ -3,12 +3,14 @@
  * 基于请求内容生成缓存键，支持语义缓存
  * 支持内存/Redis 存储
  */
+import { createHash } from 'crypto';
 import type { ChatCompletionRequest } from '../types';
 import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
 import { recordCacheHit, recordCacheMiss } from '../middleware/metrics';
 import { getSemanticCache } from './semantic-cache';
+import { shouldUseRedis } from '../utils';
 
 /**
  * 语义缓存配置
@@ -27,14 +29,34 @@ const DEFAULT_SEMANTIC_CONFIG: SemanticCacheConfig = {
 };
 
 /**
+ * 从请求中提取文本内容（独立函数，供 CacheStore 外部使用）
+ */
+function extractTextFromRequest(request: ChatCompletionRequest): string {
+  return request.messages.map((m) => m.content).join(' ');
+}
+
+/**
  * 缓存条目
  */
 interface CacheEntry<T> {
   key: string;
   value: T;
+  /** 请求文本，用于语义匹配 */
+  request_text: string;
+  /** 模型名称，用于语义匹配时过滤 */
+  model: string;
   created_at: number;
   expires_at: number;
   hit_count: number;
+  last_accessed_at: number;
+}
+
+/**
+ * 缓存元数据
+ */
+interface CacheEntryMetadata {
+  request_text: string;
+  model: string;
 }
 
 /**
@@ -57,10 +79,9 @@ class CacheStore<T> {
     this.semanticConfig = { ...DEFAULT_SEMANTIC_CONFIG, ...semanticConfig };
 
     // 初始化存储 (Redis 或 Memory)
-    const useStorage = process.env.CACHE_STORAGE === 'redis';
-    this.useStorage = useStorage;
+    this.useStorage = shouldUseRedis('CACHE_STORAGE');
 
-    if (useStorage) {
+    if (this.useStorage) {
       this.store = createKVStore('cache');
     }
   }
@@ -75,7 +96,7 @@ class CacheStore<T> {
   }
 
   /**
-   * 生成缓存键
+   * 生成缓存键（SHA-256 哈希，固定长度，避免 key 污染和过长）
    */
   generateKey(request: ChatCompletionRequest, tenantId?: string): string {
     const parts = [
@@ -92,7 +113,9 @@ class CacheStore<T> {
       JSON.stringify(request.tool_choice || ''),
       String(request.user || ''),
     ];
-    return parts.join('|');
+    // 使用不可见分隔符避免与用户内容冲突
+    const normalized = parts.join('\0');
+    return createHash('sha256').update(normalized).digest('hex');
   }
 
   /**
@@ -126,93 +149,34 @@ class CacheStore<T> {
   }
 
   /**
-   * 从请求中提取文本内容
-   */
-  private extractTextFromRequest(request: ChatCompletionRequest): string {
-    return request.messages.map((m) => m.content).join(' ');
-  }
-
-  /**
-   * 语义查找 - 基于 Jaccard 相似度查找缓存
-   * 搜索顺序：内存（快）→ Redis（慢但更完整）
-   * Redis 命中时自动提升到内存缓存
+   * 语义查找 - 基于 Jaccard 相似度在内存缓存中查找
+   * 注意：不再扫描 Redis，避免 keys('*') 性能问题。
+   * 跨存储的语义匹配由向量语义缓存（SemanticCacheService）负责。
    */
   async semanticFind(request: ChatCompletionRequest): Promise<T | null> {
     if (!this.semanticConfig.enabled) return null;
 
-    const requestTokens = this.tokenize(this.extractTextFromRequest(request));
+    const requestTokens = this.tokenize(extractTextFromRequest(request));
 
     let bestMatch: { entry: CacheEntry<T>; similarity: number } | null = null;
     const now = Date.now();
 
     for (const entry of this.cache.values()) {
       if (now > entry.expires_at) continue;
+      if (entry.model !== request.model) continue;
 
-      const keyParts = entry.key.split('|');
-      if (keyParts.length < 2) continue;
+      const cachedTokens = this.tokenize(entry.request_text);
+      const similarity = this.jaccardSimilarity(requestTokens, cachedTokens);
 
-      const cachedModel = keyParts[1];
-      if (cachedModel !== request.model) continue;
-
-      try {
-        const messages = JSON.parse(keyParts[2]);
-        const cachedText = messages.map((m: { content: string }) => m.content).join(' ');
-        const cachedTokens = this.tokenize(cachedText);
-        const similarity = this.jaccardSimilarity(requestTokens, cachedTokens);
-
-        if (similarity >= this.semanticConfig.threshold && (!bestMatch || similarity > bestMatch.similarity)) {
-          bestMatch = { entry, similarity };
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    if (this.useStorage && this.store) {
-      try {
-        const redisKeys = await this.store.keys('*');
-
-        for (const key of redisKeys) {
-          if (this.cache.has(key)) continue;
-
-          const keyParts = key.split('|');
-          if (keyParts.length < 2) continue;
-          if (keyParts[1] !== request.model) continue;
-
-          const stored = await this.store.get(key);
-          if (!stored) continue;
-
-          try {
-            const entry = JSON.parse(stored) as CacheEntry<T>;
-            if (now > entry.expires_at) continue;
-
-            const messages = JSON.parse(keyParts[2]);
-            const cachedText = messages.map((m: { content: string }) => m.content).join(' ');
-            const cachedTokens = this.tokenize(cachedText);
-            const similarity = this.jaccardSimilarity(requestTokens, cachedTokens);
-
-            if (similarity >= this.semanticConfig.threshold && (!bestMatch || similarity > bestMatch.similarity)) {
-              bestMatch = { entry, similarity };
-            }
-          } catch {
-            continue;
-          }
-        }
-      } catch {
-        writeLog('warn', 'Redis semantic search failed, falling back to memory-only results');
+      if (similarity >= this.semanticConfig.threshold && (!bestMatch || similarity > bestMatch.similarity)) {
+        bestMatch = { entry, similarity };
       }
     }
 
     if (bestMatch) {
       bestMatch.entry.hit_count++;
+      bestMatch.entry.last_accessed_at = Date.now();
       this.hits++;
-
-      if (!this.cache.has(bestMatch.entry.key)) {
-        if (this.cache.size >= this.maxSize) {
-          this.evictLeastUsed();
-        }
-        this.cache.set(bestMatch.entry.key, bestMatch.entry);
-      }
 
       writeLog('debug', 'Semantic cache hit', { similarity: bestMatch.similarity });
       return bestMatch.entry.value;
@@ -234,6 +198,7 @@ class CacheStore<T> {
         return null;
       }
       memEntry.hit_count++;
+      memEntry.last_accessed_at = Date.now();
       this.hits++;
       return memEntry.value;
     }
@@ -250,6 +215,7 @@ class CacheStore<T> {
             return null;
           }
           // 同步到内存
+          entry.last_accessed_at = Date.now();
           this.cache.set(key, entry);
           this.hits++;
           return entry.value;
@@ -266,19 +232,22 @@ class CacheStore<T> {
   /**
    * 异步设置 - 优先写入存储，用于确保持久化
    */
-  async setAsync(key: string, value: T, ttl?: number): Promise<void> {
+  async setAsync(key: string, value: T, metadata: CacheEntryMetadata, ttl?: number): Promise<void> {
     const now = Date.now();
     const entry: CacheEntry<T> = {
       key,
       value,
+      request_text: metadata.request_text,
+      model: metadata.model,
       created_at: now,
       expires_at: now + (ttl || this.ttl),
       hit_count: 0,
+      last_accessed_at: now,
     };
 
     // 内存更新
     if (this.cache.size >= this.maxSize) {
-      this.evictLeastUsed();
+      this.evictLRU();
     }
     this.cache.set(key, entry);
 
@@ -291,19 +260,22 @@ class CacheStore<T> {
   /**
    * 设置 - 同步接口，Redis 写入在后台异步执行
    */
-  set(key: string, value: T, ttl?: number): void {
+  set(key: string, value: T, metadata: CacheEntryMetadata, ttl?: number): void {
     const now = Date.now();
     const entry: CacheEntry<T> = {
       key,
       value,
+      request_text: metadata.request_text,
+      model: metadata.model,
       created_at: now,
       expires_at: now + (ttl || this.ttl),
       hit_count: 0,
+      last_accessed_at: now,
     };
 
     // 先写入内存
     if (this.cache.size >= this.maxSize) {
-      this.evictLeastUsed();
+      this.evictLRU();
     }
     this.cache.set(key, entry);
 
@@ -316,21 +288,21 @@ class CacheStore<T> {
   }
 
   /**
-   * 删除最少使用的条目
+   * 删除最久未访问的条目（LRU）
    */
-  private evictLeastUsed(): void {
-    let minKey: string | null = null;
-    let minHits = Infinity;
+  private evictLRU(): void {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
 
     for (const [key, entry] of this.cache.entries()) {
-      if (entry.hit_count < minHits) {
-        minHits = entry.hit_count;
-        minKey = key;
+      if (entry.last_accessed_at < oldestTime) {
+        oldestTime = entry.last_accessed_at;
+        oldestKey = key;
       }
     }
 
-    if (minKey) {
-      this.cache.delete(minKey);
+    if (oldestKey) {
+      this.cache.delete(oldestKey);
     }
   }
 
@@ -342,7 +314,8 @@ class CacheStore<T> {
   }
 
   /**
-   * 清理过期条目
+   * 清理过期条目（内存层）
+   * Redis 中的过期条目由其 TTL 机制自动处理。
    */
   clean(): number {
     const now = Date.now();
@@ -359,8 +332,32 @@ class CacheStore<T> {
   }
 
   /**
+   * 清空所有缓存条目（内存 + Redis），并重置统计
+   */
+  async flushAsync(): Promise<number> {
+    let count = this.cache.size;
+    this.cache.clear();
+
+    if (this.useStorage && this.store) {
+      try {
+        const redisCount = await this.store.delByPattern('*');
+        count += redisCount;
+      } catch {
+        writeLog('warn', 'Failed to flush Redis cache entries');
+      }
+    }
+
+    // 重置统计
+    this.hits = 0;
+    this.misses = 0;
+
+    return count;
+  }
+
+  /**
    * 获取统计
    * hit_rate 为真正的缓存命中率：hits / (hits + misses)
+   * 注意：hits/misses 为进程级内存计数器，多实例部署时仅反映当前进程。
    */
   getStats(): { size: number; hit_rate: number; hits: number; misses: number } {
     const total = this.hits + this.misses;
@@ -441,7 +438,7 @@ export async function getCache(request: ChatCompletionRequest, tenantId?: string
       }
     }
 
-    // 2b. Jaccard 语义查找（更快，无需 API 调用）
+    // 2b. Jaccard 语义查找（更快，无需 API 调用，仅在内存层）
     const jaccardMatch = await cacheStore.semanticFind(request);
     if (jaccardMatch) {
       lastCacheHitType = 'semantic';
@@ -464,7 +461,11 @@ export async function setCache(
   ttl?: number
 ): Promise<void> {
   const key = generateCacheKey(request, tenantId);
-  await cacheStore.setAsync(key, response || '', ttl);
+  const metadata: CacheEntryMetadata = {
+    request_text: extractTextFromRequest(request),
+    model: request.model,
+  };
+  await cacheStore.setAsync(key, response || '', metadata, ttl);
 
   const semanticCache = getSemanticCache();
   if (semanticCache?.isInitialized()) {
@@ -481,10 +482,17 @@ export function deleteCache(request: ChatCompletionRequest, tenantId?: string): 
 }
 
 /**
- * 清理过期缓存
+ * 清理过期缓存（仅内存层；Redis 过期由 TTL 自动处理）
  */
 export function cleanCache(): number {
   return cacheStore.clean();
+}
+
+/**
+ * 清空所有缓存（内存 + Redis）
+ */
+export async function flushCache(): Promise<number> {
+  return cacheStore.flushAsync();
 }
 
 /**
