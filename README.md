@@ -104,8 +104,10 @@ npm install
 
 ### 启动
 
+#### 后端服务
+
 ```bash
-# 开发模式（热重载）
+# 开发模式（热重载，端口 3000）
 npm run dev
 
 # 构建
@@ -113,6 +115,23 @@ npm run build
 
 # 生产模式
 npm start
+```
+
+#### 前端管理后台
+
+管理后台位于 `ai-gateway-admin/` 目录，使用 pnpm：
+
+```bash
+cd ai-gateway-admin
+
+# 安装依赖
+pnpm install
+
+# 开发模式（端口 3001，代理 /api → localhost:3000）
+pnpm dev
+
+# 构建
+pnpm build
 ```
 
 ### 验证
