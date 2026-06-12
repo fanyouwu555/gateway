@@ -64,9 +64,23 @@ export class OpenAICompatibleProvider extends BaseProvider {
    * 根据字段配置构建请求体
    */
   protected buildChatBody(request: ChatCompletionRequest, stream: boolean): Record<string, unknown> {
+    // 兼容 Kimi/火山 thinking 模式：给缺少 reasoning_content 的 assistant message 补空字符串
+    // 防止标准 OpenAI 客户端回传对话历史时触发上游 400
+    let patchedCount = 0;
+    const messages = request.messages.map((msg) => {
+      if (msg.role === 'assistant' && (msg.reasoning_content === undefined || msg.reasoning_content === null)) {
+        patchedCount++;
+        return { ...msg, reasoning_content: '' };
+      }
+      return msg;
+    });
+    if (patchedCount > 0) {
+      console.log(`[${this.name}] Patched ${patchedCount}/${request.messages.length} assistant messages with reasoning_content=''`);
+    }
+
     const body: Record<string, unknown> = {
       model: request.model,
-      messages: request.messages,
+      messages,
       stream,
     };
 
@@ -104,11 +118,23 @@ export class OpenAICompatibleProvider extends BaseProvider {
     const url = `${config.base_url}/chat/completions`;
     const body = this.buildChatBody(request, false);
 
-    return this.fetch<ChatCompletionResponse>(url, {
+    const response = await this.fetch<ChatCompletionResponse>(url, {
       method: 'POST',
       headers: { ...this.buildHeaders(config), ...this.extraHeaders },
       body: JSON.stringify(body),
     }, config.timeout);
+
+    // 兼容 thinking 模式：给缺少 reasoning_content 的 assistant message 补空字符串
+    // 防止下游（如 OpenCode）把 tool call message 回传时触发上游 400
+    if (response.choices) {
+      for (const choice of response.choices) {
+        if (choice.message && choice.message.role === 'assistant' && choice.message.reasoning_content === undefined) {
+          choice.message.reasoning_content = '';
+        }
+      }
+    }
+
+    return response;
   }
 
   /**

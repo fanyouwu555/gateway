@@ -127,6 +127,20 @@ export abstract class BaseProvider implements IProvider {
           }
           try {
             const parsed = JSON.parse(data);
+            // 兼容 thinking 模式：给缺少 reasoning_content 的 assistant delta 补空字符串
+            // 防止下游（如 OpenCode）把 tool call message 回传时触发上游 400
+            if (parsed.choices && Array.isArray(parsed.choices)) {
+              for (const choice of parsed.choices) {
+                const delta = choice.delta;
+                if (delta && delta.role === 'assistant' && delta.reasoning_content === undefined) {
+                  delta.reasoning_content = '';
+                }
+                const msg = choice.message;
+                if (msg && msg.role === 'assistant' && msg.reasoning_content === undefined) {
+                  msg.reasoning_content = '';
+                }
+              }
+            }
             const chunk = {
               ...parsed,
               id: parsed.id || '',
