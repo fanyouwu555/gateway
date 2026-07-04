@@ -11,8 +11,15 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate }
 })
 
+vi.mock('@/services/api', async () => {
+  const actual = await vi.importActual<typeof import('@/services/api')>('@/services/api')
+  return { ...actual, verifyApiKey: vi.fn() }
+})
+
+import { verifyApiKey } from '@/services/api'
+
 beforeEach(() => {
-  localStorage.clear()
+  sessionStorage.clear()
   vi.restoreAllMocks()
   mockNavigate.mockClear()
 })
@@ -35,11 +42,7 @@ describe('LoginPage', () => {
   })
 
   it('calls login and navigates on successful verification', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ is_admin: true }),
-    })
-    globalThis.fetch = mockFetch
+    vi.mocked(verifyApiKey).mockResolvedValue({ is_admin: true })
 
     renderLogin()
     const input = screen.getByPlaceholderText('请输入管理员 API Key')
@@ -49,16 +52,14 @@ describe('LoginPage', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/v1/auth/verify', {
-        headers: { Authorization: 'Bearer valid-key' }
-      })
+      expect(verifyApiKey).toHaveBeenCalledWith('valid-key')
     })
-    expect(localStorage.getItem('api_token')).toBe('valid-key')
+    expect(sessionStorage.getItem('api_token')).toBe('valid-key')
     expect(mockNavigate).toHaveBeenCalledWith('/dashboard')
   })
 
   it('shows error message on failed verification', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({}) })
+    vi.mocked(verifyApiKey).mockRejectedValue({ response: { status: 401 } })
 
     renderLogin()
     const input = screen.getByPlaceholderText('请输入管理员 API Key')
@@ -70,12 +71,12 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByText('API Key 无效，请重试')).toBeInTheDocument()
     })
-    expect(localStorage.getItem('api_token')).toBeNull()
+    expect(sessionStorage.getItem('api_token')).toBeNull()
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
   it('shows error when server is unreachable', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'))
+    vi.mocked(verifyApiKey).mockRejectedValue(new Error('Network error'))
 
     renderLogin()
     const input = screen.getByPlaceholderText('请输入管理员 API Key')
@@ -90,7 +91,7 @@ describe('LoginPage', () => {
   })
 
   it('disables button while loading', async () => {
-    globalThis.fetch = vi.fn().mockImplementation(() => new Promise(() => {})) // never resolves
+    vi.mocked(verifyApiKey).mockImplementation(() => new Promise(() => {})) // never resolves
 
     renderLogin()
     fireEvent.change(screen.getByPlaceholderText('请输入管理员 API Key'), { target: { value: 'key' } })

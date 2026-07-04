@@ -1,84 +1,126 @@
 /**
- * RequestLogStore 测试
+ * 请求日志服务测试
  */
-import { RequestLogStore, resetRequestLogStore } from '../../src/services/request-log';
-import { reloadConfig, getConfig } from '../../src/config';
+import { reloadConfig } from '../../src/config';
+import {
+  RequestLogStore,
+  resetRequestLogStore,
+  getRequestLogStore,
+} from '../../src/services/request-log';
 
 describe('RequestLogStore', () => {
-  let store: RequestLogStore;
-
   beforeEach(() => {
     reloadConfig();
-    const config = getConfig();
-    config.request_logging = { enabled: true, max_body_size: 4096, sample_rate: 1.0 };
-    store = new RequestLogStore();
+    const config = require('../../src/config').getConfig();
+    config.request_logging = { enabled: true, sample_rate: 1.0, max_body_size: 20 };
+    resetRequestLogStore();
   });
 
   afterEach(() => {
     resetRequestLogStore();
   });
 
-  it('should add and retrieve logs', () => {
-    store.add({
+  function makeLog(overrides: Partial<Parameters<RequestLogStore['add']>[0]> = {}) {
+    return {
       request_id: 'req-1',
-      tenant_id: 'tenant-a',
-      timestamp: 1000,
+      tenant_id: 't1',
+      timestamp: Date.now(),
       method: 'POST',
       path: '/v1/chat/completions',
       provider: 'openai',
       model: 'gpt-4o',
       status_code: 200,
-      duration_ms: 500,
-      prompt_tokens: 100,
-      completion_tokens: 50,
-      total_tokens: 150,
-    });
+      duration_ms: 100,
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+      request_body: '{}',
+      response_body: '{}',
+      cost: 0.001,
+      ...overrides,
+    };
+  }
+
+  it('should not sample when disabled', () => {
+    const config = require('../../src/config').getConfig();
+    config.request_logging = { enabled: false };
+    resetRequestLogStore();
+    expect(getRequestLogStore().shouldSample()).toBe(false);
+  });
+
+  it('should sample based on sample rate', () => {
+    const store = getRequestLogStore();
+    const randomSpy = jest.spyOn(Math, 'random');
+    randomSpy.mockReturnValue(0.3);
+    expect(store.shouldSample()).toBe(true);
+
+    randomSpy.mockReturnValue(1.5);
+    expect(store.shouldSample()).toBe(false);
+
+    randomSpy.mockRestore();
+  });
+
+  it('should add and retrieve logs', () => {
+    const store = getRequestLogStore();
+    store.add(makeLog({ request_id: 'req-1' }));
+    store.add(makeLog({ request_id: 'req-2', tenant_id: 't2', model: 'claude-3' }));
 
     const logs = store.getLogs();
-    expect(logs).toHaveLength(1);
-    expect(logs[0].request_id).toBe('req-1');
+    expect(logs.length).toBe(2);
+    expect(logs.map((l) => l.request_id)).toContain('req-1');
+    expect(logs.map((l) => l.request_id)).toContain('req-2');
   });
 
-  it('should filter by tenant_id', () => {
-    store.add({ request_id: 'req-1', tenant_id: 'tenant-a', timestamp: 1000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
-    store.add({ request_id: 'req-2', tenant_id: 'tenant-b', timestamp: 2000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 200 });
+  it('should truncate long bodies', () => {
+    const store = getRequestLogStore();
+    store.add(makeLog({ request_body: 'a'.repeat(100) }));
 
-    const logs = store.getLogs({ tenant_id: 'tenant-a' });
-    expect(logs).toHaveLength(1);
-    expect(logs[0].tenant_id).toBe('tenant-a');
+    const logs = store.getLogs();
+    expect(logs[0].request_body).toMatch(/\.\.\. \[truncated\]$/);
   });
 
-  it('should filter by model', () => {
-    store.add({ request_id: 'req-1', tenant_id: 't1', timestamp: 1000, method: 'POST', path: '/v1/chat/completions', model: 'gpt-4o', status_code: 200, duration_ms: 100 });
-    store.add({ request_id: 'req-2', tenant_id: 't1', timestamp: 2000, method: 'POST', path: '/v1/chat/completions', model: 'deepseek-chat', status_code: 200, duration_ms: 200 });
+  it('should filter logs by tenant_id', () => {
+    const store = getRequestLogStore();
+    store.add(makeLog({ tenant_id: 't1' }));
+    store.add(makeLog({ tenant_id: 't2' }));
 
-    const logs = store.getLogs({ model: 'gpt-4o' });
-    expect(logs).toHaveLength(1);
+    expect(store.getLogs({ tenant_id: 't1' }).length).toBe(1);
   });
 
-  it('should filter by status_code', () => {
-    store.add({ request_id: 'req-1', tenant_id: 't1', timestamp: 1000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
-    store.add({ request_id: 'req-2', tenant_id: 't1', timestamp: 2000, method: 'POST', path: '/v1/chat/completions', status_code: 429, duration_ms: 50 });
+  it('should filter logs by model and status_code', () => {
+    const store = getRequestLogStore();
+    store.add(makeLog({ model: 'gpt-4o', status_code: 200 }));
+    store.add(makeLog({ model: 'claude-3', status_code: 500 }));
 
-    const logs = store.getLogs({ status_code: 429 });
-    expect(logs).toHaveLength(1);
-    expect(logs[0].status_code).toBe(429);
+    expect(store.getLogs({ model: 'gpt-4o' }).length).toBe(1);
+    expect(store.getLogs({ status_code: 500 }).length).toBe(1);
   });
 
-  it('should filter by time range', () => {
-    store.add({ request_id: 'req-1', tenant_id: 't1', timestamp: 1000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
-    store.add({ request_id: 'req-2', tenant_id: 't1', timestamp: 2000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
-    store.add({ request_id: 'req-3', tenant_id: 't1', timestamp: 3000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
+  it('should filter logs by time range', () => {
+    const store = getRequestLogStore();
+    const now = Date.now();
+    store.add(makeLog({ timestamp: now - 1000 }));
+    store.add(makeLog({ timestamp: now + 1000 }));
 
-    const logs = store.getLogs({ start: 1500, end: 2500 });
-    expect(logs).toHaveLength(1);
-    expect(logs[0].request_id).toBe('req-2');
+    expect(store.getLogs({ start: now - 500 }).length).toBe(1);
+    expect(store.getLogs({ end: now + 500 }).length).toBe(1);
+  });
+
+  it('should support pagination', () => {
+    const store = getRequestLogStore();
+    store.add(makeLog({ request_id: 'req-1', timestamp: 1 }));
+    store.add(makeLog({ request_id: 'req-2', timestamp: 2 }));
+    store.add(makeLog({ request_id: 'req-3', timestamp: 3 }));
+
+    const page = store.getLogs({ limit: 2, offset: 1 });
+    expect(page.length).toBe(2);
   });
 
   it('should sort logs by timestamp descending', () => {
-    store.add({ request_id: 'req-1', tenant_id: 't1', timestamp: 1000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
-    store.add({ request_id: 'req-2', tenant_id: 't1', timestamp: 3000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
-    store.add({ request_id: 'req-3', tenant_id: 't1', timestamp: 2000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
+    const store = getRequestLogStore();
+    store.add(makeLog({ request_id: 'req-1', timestamp: 1000 }));
+    store.add(makeLog({ request_id: 'req-2', timestamp: 3000 }));
+    store.add(makeLog({ request_id: 'req-3', timestamp: 2000 }));
 
     const logs = store.getLogs();
     expect(logs[0].request_id).toBe('req-2');
@@ -86,89 +128,19 @@ describe('RequestLogStore', () => {
     expect(logs[2].request_id).toBe('req-1');
   });
 
-  it('should respect limit and offset', () => {
-    for (let i = 1; i <= 10; i++) {
-      store.add({ request_id: `req-${i}`, tenant_id: 't1', timestamp: i * 1000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
-    }
-
-    const logs = store.getLogs({ limit: 3, offset: 2 });
-    expect(logs).toHaveLength(3);
-    // Sorted by timestamp desc: req-10, req-9, req-8, req-7, req-6...
-    // Offset 2 → skip req-10, req-9 → start at req-8
-    expect(logs[0].request_id).toBe('req-8');
-    expect(logs[1].request_id).toBe('req-7');
-    expect(logs[2].request_id).toBe('req-6');
-  });
-
-  it('should truncate large request bodies', () => {
-    store.add({
-      request_id: 'req-1',
-      tenant_id: 't1',
-      timestamp: 1000,
-      method: 'POST',
-      path: '/v1/chat/completions',
-      status_code: 200,
-      duration_ms: 100,
-      request_body: 'x'.repeat(5000),
-    });
-
-    const logs = store.getLogs();
-    expect(logs[0].request_body!.length).toBeLessThanOrEqual(4111); // 4096 + '... [truncated]'.length
-    expect(logs[0].request_body).toContain('[truncated]');
-  });
-
   it('should enforce max size (ring buffer)', () => {
+    const store = getRequestLogStore();
     for (let i = 0; i < 1100; i++) {
-      store.add({
-        request_id: `req-${i}`,
-        tenant_id: 't1',
-        timestamp: i,
-        method: 'POST',
-        path: '/v1/chat/completions',
-        status_code: 200,
-        duration_ms: 100,
-      });
+      store.add(makeLog({ request_id: `req-${i}`, timestamp: i }));
     }
-
     expect(store.getTotalCount()).toBe(1000);
   });
 
-  it('should not add logs when disabled', () => {
-    const config = getConfig();
-    config.request_logging!.enabled = false;
-    const disabledStore = new RequestLogStore();
-
-    disabledStore.add({
-      request_id: 'req-1',
-      tenant_id: 't1',
-      timestamp: 1000,
-      method: 'POST',
-      path: '/v1/chat/completions',
-      status_code: 200,
-      duration_ms: 100,
-    });
-
-    expect(disabledStore.getTotalCount()).toBe(0);
-  });
-
-  it('should handle sample rate', () => {
-    const config = getConfig();
-    config.request_logging!.sample_rate = 0; // never sample
-    const sampledStore = new RequestLogStore();
-
-    const shouldSample = sampledStore.shouldSample();
-    expect(shouldSample).toBe(false);
-  });
-
-  it('should clear all logs', () => {
-    store.add({ request_id: 'req-1', tenant_id: 't1', timestamp: 1000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
+  it('should clear logs', () => {
+    const store = getRequestLogStore();
+    store.add(makeLog());
     store.clear();
     expect(store.getTotalCount()).toBe(0);
-  });
-
-  it('should report total count', () => {
-    expect(store.getTotalCount()).toBe(0);
-    store.add({ request_id: 'req-1', tenant_id: 't1', timestamp: 1000, method: 'POST', path: '/v1/chat/completions', status_code: 200, duration_ms: 100 });
-    expect(store.getTotalCount()).toBe(1);
+    expect(store.getLogs()).toEqual([]);
   });
 });

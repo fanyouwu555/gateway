@@ -138,43 +138,29 @@ const Providers: React.FC = () => {
     })
     
     try {
-      // 直接调用 API，不使用 axios 拦截器，手动设置认证头
-      const response = await fetch(`/api/v1/admin/discover-models?provider=${providerName}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('api_token') || ''}`
-        }
-      })
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const data = await response.json()
-      console.log('API 响应:', data)
-      
+      const data = await discoverModels(providerName) as { models?: ModelInfo[]; error?: string; cached?: boolean }
+
       if (data.models && data.models.length > 0) {
-        const transformedModels = data.models.map((model: {id: string}) => ({
+        const transformedModels = data.models.map((model) => ({
           id: model.id,
           owned_by: providerName,
           context_window: extractContextWindow(model.id),
         }))
-        
+
         setDiscoverData({
-          [providerName]: { 
+          [providerName]: {
             models: transformedModels,
-            cached: data.cached 
+            cached: data.cached,
           },
         })
       } else {
         setDiscoverData({
-          [providerName]: { models: [], cached: data.cached, error: '未返回模型数据' }
+          [providerName]: { models: [], cached: data.cached, error: data.error || '未返回模型数据' },
         })
       }
-      
     } catch (error) {
-      console.error('请求失败:', error)
       setDiscoverData({
-        [providerName]: { models: [], error: '请求失败: ' + (error as Error).message }
+        [providerName]: { models: [], error: '请求失败: ' + (error as Error).message },
       })
     } finally {
       setDiscoverLoading(false)
@@ -195,21 +181,10 @@ const Providers: React.FC = () => {
     setDefaultModel(provider.default_model || '')
     
     try {
-      // 获取该供应商的可用模型
-      const response = await fetch(`/api/v1/admin/discover-models?provider=${provider.name}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('api_token') || ''}`
-        }
-      })
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const data = await response.json()
-      
+      const data = await discoverModels(provider.name) as { models?: ModelInfo[]; error?: string; cached?: boolean }
+
       if (data.models && data.models.length > 0) {
-        const transformedModels = data.models.map((model: {id: string}) => ({
+        const transformedModels = data.models.map((model) => ({
           id: model.id,
           owned_by: provider.name,
           context_window: extractContextWindow(model.id),
@@ -217,10 +192,9 @@ const Providers: React.FC = () => {
         setAvailableModels(transformedModels)
       } else {
         setAvailableModels([])
-        message.warning('未获取到可用模型')
+        message.warning(data.error || '未获取到可用模型')
       }
     } catch (error) {
-      console.error('获取模型失败:', error)
       message.error('获取模型列表失败')
       setAvailableModels([])
     } finally {

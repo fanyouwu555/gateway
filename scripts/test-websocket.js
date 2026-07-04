@@ -4,8 +4,14 @@
  */
 import WebSocket from 'ws';
 
-const GATEWAY_URL = 'ws://localhost:3000/v1/ws?model=gpt-4o-mini';
-const API_KEY = 'gateway-test-key-123';
+const GATEWAY_URL = process.env.GATEWAY_URL || 'ws://localhost:3000/v1/ws?model=gpt-4o-mini';
+const API_KEY = process.env.API_KEY;
+
+if (!API_KEY) {
+  console.error('请设置环境变量 API_KEY 后运行本脚本');
+  console.error('示例: API_KEY=sk-xxxx node scripts/test-websocket.js');
+  process.exit(1);
+}
 
 console.log('Connecting to WebSocket...');
 

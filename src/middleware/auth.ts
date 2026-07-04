@@ -27,8 +27,10 @@ function getAllApiKeys(): IApiKeyMeta[] {
         keys.push(tk);
       }
     }
-  } catch {
-    // TenantStore 可能尚未初始化
+  } catch (err) {
+    writeLog('warn', 'Failed to load tenant API keys', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   return keys;
@@ -103,16 +105,6 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
       }
     }
   }
-  if (!apiKey) {
-    apiKey = c.req.query('api_key') || '';
-    if (apiKey) {
-      writeLog('warn', 'API key passed via query parameter — use Sec-WebSocket-Protocol header for WebSocket or x-api-key header for HTTP', {
-        request_id: c.get('request_id') || 'unknown',
-        path: c.req.path,
-      });
-    }
-  }
-
   if (!apiKey) {
     return c.json({
       error: {

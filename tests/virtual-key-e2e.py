@@ -6,8 +6,16 @@ import urllib.error
 import sys
 import time
 
-BASE = "http://localhost:3000"
-ADMIN_KEY = "admin-dashboard-key-456"
+import os
+
+BASE = os.environ.get("BASE_URL", "http://localhost:3000")
+ADMIN_KEY = os.environ.get("ADMIN_KEY")
+
+if not ADMIN_KEY:
+    print("请设置环境变量 ADMIN_KEY 后运行本脚本")
+    print("示例: ADMIN_KEY=sk-xxxx python tests/virtual-key-e2e.py")
+    sys.exit(1)
+
 AUTH_HEADER = {"x-api-key": ADMIN_KEY, "Content-Type": "application/json"}
 
 def req(method, path, body=None, headers=None):

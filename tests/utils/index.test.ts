@@ -11,6 +11,13 @@ import {
   getRetryDelay,
   safeJsonParse,
   delay,
+  formatBytes,
+  contentToString,
+  parseImageDataUrl,
+  shouldUseRedis,
+  hashApiKey,
+  verifyApiKey,
+  ensureKeyHashed,
 } from '../../src/utils';
 
 describe('Utils', () => {
@@ -142,6 +149,103 @@ describe('Utils', () => {
       const elapsed = Date.now() - start;
       expect(elapsed).toBeGreaterThanOrEqual(40);
       expect(elapsed).toBeLessThan(100);
+    });
+  });
+
+  describe('formatBytes', () => {
+    it('should format zero bytes', () => {
+      expect(formatBytes(0)).toBe('0 B');
+    });
+
+    it('should format bytes to KB/MB/GB', () => {
+      expect(formatBytes(1024)).toBe('1 KB');
+      expect(formatBytes(1024 * 1024)).toBe('1 MB');
+      expect(formatBytes(1024 * 1024 * 1024)).toBe('1 GB');
+    });
+  });
+
+  describe('contentToString', () => {
+    it('should return empty string for undefined', () => {
+      expect(contentToString(undefined)).toBe('');
+    });
+
+    it('should return string as-is', () => {
+      expect(contentToString('hello')).toBe('hello');
+    });
+
+    it('should join text parts', () => {
+      expect(contentToString([{ type: 'text', text: 'hello' }, { type: 'text', text: 'world' }])).toBe('hello\nworld');
+    });
+  });
+
+  describe('parseImageDataUrl', () => {
+    it('should parse valid data URL', () => {
+      const result = parseImageDataUrl('data:image/png;base64,abc123');
+      expect(result).toEqual({ mimeType: 'image/png', data: 'abc123' });
+    });
+
+    it('should return null for invalid URL', () => {
+      expect(parseImageDataUrl('not-a-data-url')).toBeNull();
+    });
+  });
+
+  describe('shouldUseRedis', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      jest.resetModules();
+      process.env = { ...originalEnv };
+      delete process.env.TEST_MODULE_STORAGE;
+      delete process.env.STORAGE_TYPE;
+      delete process.env.REDIS_URL;
+      delete process.env.REDIS_HOST;
+    });
+
+    afterAll(() => {
+      process.env = originalEnv;
+    });
+
+    it('should respect module env var', () => {
+      process.env.TEST_MODULE_STORAGE = 'redis';
+      expect(shouldUseRedis('TEST_MODULE_STORAGE')).toBe(true);
+      process.env.TEST_MODULE_STORAGE = 'memory';
+      expect(shouldUseRedis('TEST_MODULE_STORAGE')).toBe(false);
+    });
+
+    it('should follow global STORAGE_TYPE', () => {
+      process.env.STORAGE_TYPE = 'redis';
+      expect(shouldUseRedis()).toBe(true);
+    });
+
+    it('should detect REDIS_URL or REDIS_HOST', () => {
+      process.env.REDIS_URL = 'redis://localhost';
+      expect(shouldUseRedis()).toBe(true);
+      delete process.env.REDIS_URL;
+      process.env.REDIS_HOST = 'localhost';
+      expect(shouldUseRedis()).toBe(true);
+    });
+  });
+
+  describe('API Key hashing', () => {
+    it('should hash and verify API key', () => {
+      const key = 'sk-test-12345678';
+      const hashed = hashApiKey(key);
+      expect(hashed).toMatch(/^\$scrypt\$/);
+      expect(verifyApiKey(key, hashed)).toBe(true);
+      expect(verifyApiKey('wrong-key', hashed)).toBe(false);
+    });
+
+    it('should verify ensureKeyHashed idempotency', () => {
+      const key = 'sk-test-12345678';
+      const hashed = hashApiKey(key);
+      expect(ensureKeyHashed(hashed)).toBe(hashed);
+      expect(ensureKeyHashed(key)).not.toBe(key);
+      expect(ensureKeyHashed(key)).toMatch(/^\$scrypt\$/);
+    });
+
+    it('should reject invalid hash format', () => {
+      expect(verifyApiKey('key', 'not-a-hash')).toBe(false);
+      expect(verifyApiKey('key', '$scrypt$missing-colon')).toBe(false);
     });
   });
 });

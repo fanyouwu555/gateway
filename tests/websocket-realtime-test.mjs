@@ -3,9 +3,15 @@
 
 import WebSocket from 'ws';
 
-const WS_URL = 'ws://localhost:3000/v1/ws/admin';
-const API_URL = 'http://localhost:3000/v1/chat/completions';
-const TEST_API_KEY = 'admin-dashboard-key-456';
+const WS_URL = process.env.WS_URL || 'ws://localhost:3000/v1/ws/admin';
+const API_URL = process.env.API_URL || 'http://localhost:3000/v1/chat/completions';
+const TEST_API_KEY = process.env.ADMIN_KEY;
+
+if (!TEST_API_KEY) {
+  console.error('请设置环境变量 ADMIN_KEY 后运行本脚本');
+  console.error('示例: ADMIN_KEY=sk-xxxx node tests/websocket-realtime-test.mjs');
+  process.exit(1);
+}
 
 let receivedEvents = 0;
 let testRequestsSent = 0;

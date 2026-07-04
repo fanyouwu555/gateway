@@ -4,9 +4,15 @@
  * 测试范围：认证、Key 生命周期、Chat Completion、延迟、并发、缓存、Metrics
  */
 
-const BASE_URL = 'http://localhost:3000';
-const ADMIN_KEY = 'admin-dashboard-key-456';
-const EXISTING_USER_KEY = 'gateway-test-key-123';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const ADMIN_KEY = process.env.ADMIN_KEY;
+const EXISTING_USER_KEY = process.env.USER_KEY;
+
+if (!ADMIN_KEY || !EXISTING_USER_KEY) {
+  console.error('请设置环境变量 ADMIN_KEY 和 USER_KEY 后运行本脚本');
+  console.error('示例: ADMIN_KEY=sk-admin USER_KEY=sk-user node scripts/functional-test.mjs');
+  process.exit(1);
+}
 
 const COLORS = {
   reset: '\x1b[0m',

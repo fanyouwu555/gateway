@@ -95,7 +95,7 @@ Prometheus 格式的指标数据。
 
 | 头 | 描述 | 示例 |
 |---|---|---|
-| `Authorization` | API Key | `Bearer gateway-test-key-123` |
+| `Authorization` | API Key | `Bearer <YOUR_API_KEY>` |
 | `X-Provider` | 强制指定 Provider | `openai` |
 | `X-Routing-Strategy` | 路由策略 | `cost`, `latency`, `quality`, `balance` |
 | `X-Session-Id` | 会话 ID，用于上下文管理 | `session-123` |
@@ -1068,7 +1068,7 @@ data: [DONE]
 
 ```bash
 curl -X POST http://localhost:3000/v1/chat/completions \
-  -H "Authorization: Bearer gateway-test-key-123" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
   -H "X-Routing-Strategy: cost" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}'
@@ -1121,7 +1121,7 @@ const ws = new WebSocket(
 
 ```bash
 curl -X POST http://localhost:3000/v1/chat/completions \
-  -H "Authorization: Bearer gateway-test-key-123" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",
@@ -1134,7 +1134,7 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 
 ```bash
 curl -X POST http://localhost:3000/v1/chat/completions \
-  -H "Authorization: Bearer gateway-test-key-123" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",
@@ -1147,7 +1147,7 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 
 ```bash
 curl -X POST http://localhost:3000/v1/embeddings \
-  -H "Authorization: Bearer gateway-test-key-123" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "text-embedding-3-small",

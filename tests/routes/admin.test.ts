@@ -3,6 +3,9 @@
  */
 import { createApp } from '../../src/app';
 
+// Enable dynamic plugin registration for route tests
+process.env.ENABLE_DYNAMIC_PLUGINS = 'true';
+
 jest.mock('../../src/config', () => ({
   getConfig: jest.fn(() => ({
     port: 3000,

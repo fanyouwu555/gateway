@@ -11,18 +11,16 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [apiKey, setApiKey] = useState<string | null>(() => {
-    const stored = localStorage.getItem('api_token')
-    if (stored) return stored
-    return import.meta.env.VITE_API_KEY || null
+    return sessionStorage.getItem('api_token')
   })
 
   const login = useCallback((key: string) => {
-    localStorage.setItem('api_token', key)
+    sessionStorage.setItem('api_token', key)
     setApiKey(key)
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('api_token')
+    sessionStorage.removeItem('api_token')
     setApiKey(null)
   }, [])
 

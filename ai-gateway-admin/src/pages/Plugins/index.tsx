@@ -73,8 +73,9 @@ const Plugins: React.FC = () => {
       setRegisterModalOpen(false)
       setCodeText('')
       fetchPlugins()
-    } catch {
-      message.error('注册失败')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '注册失败'
+      message.error(msg)
     }
   }
 

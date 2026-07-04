@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { useAuth, AuthProvider } from './AuthContext'
 
 beforeEach(() => {
-  localStorage.clear()
+  sessionStorage.clear()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
 })
@@ -27,8 +27,8 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('key').textContent).toBe('none')
   })
 
-  it('reads api_token from localStorage on mount', () => {
-    localStorage.setItem('api_token', 'stored-key')
+  it('reads api_token from sessionStorage on mount', () => {
+    sessionStorage.setItem('api_token', 'stored-key')
     render(<AuthProvider><TestComponent /></AuthProvider>)
     expect(screen.getByTestId('auth').textContent).toBe('authenticated')
     expect(screen.getByTestId('key').textContent).toBe('stored-key')
@@ -41,11 +41,11 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('auth').textContent).toBe('authenticated')
     })
     expect(screen.getByTestId('key').textContent).toBe('test-key')
-    expect(localStorage.getItem('api_token')).toBe('test-key')
+    expect(sessionStorage.getItem('api_token')).toBe('test-key')
   })
 
   it('logout() clears key and sets unauthenticated', async () => {
-    localStorage.setItem('api_token', 'stored-key')
+    sessionStorage.setItem('api_token', 'stored-key')
     render(<AuthProvider><TestComponent /></AuthProvider>)
     await waitFor(() => {
       expect(screen.getByTestId('auth').textContent).toBe('authenticated')
@@ -55,18 +55,11 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('auth').textContent).toBe('unauthenticated')
     })
     expect(screen.getByTestId('key').textContent).toBe('none')
-    expect(localStorage.getItem('api_token')).toBeNull()
-  })
-
-  it('initializes with VITE_API_KEY when localStorage is empty', () => {
-    vi.stubEnv('VITE_API_KEY', 'env-key')
-    render(<AuthProvider><TestComponent /></AuthProvider>)
-    expect(screen.getByTestId('auth').textContent).toBe('authenticated')
-    expect(screen.getByTestId('key').textContent).toBe('env-key')
+    expect(sessionStorage.getItem('api_token')).toBeNull()
   })
 
   it('login() overwrites existing key', async () => {
-    localStorage.setItem('api_token', 'old-key')
+    sessionStorage.setItem('api_token', 'old-key')
     render(<AuthProvider><TestComponent /></AuthProvider>)
     await waitFor(() => {
       expect(screen.getByTestId('auth').textContent).toBe('authenticated')
@@ -75,7 +68,7 @@ describe('AuthContext', () => {
     await waitFor(() => {
       expect(screen.getByTestId('key').textContent).toBe('test-key')
     })
-    expect(localStorage.getItem('api_token')).toBe('test-key')
+    expect(sessionStorage.getItem('api_token')).toBe('test-key')
   })
 
   it('throws when useAuth is called outside AuthProvider', () => {

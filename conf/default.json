@@ -62,21 +62,7 @@
   },
   "auth": {
     "enabled": true,
-    "api_keys": [
-      {
-        "key": "gateway-test-key-123",
-        "tenant_id": "default",
-        "name": "test-key",
-        "created_at": 1735689600000
-      },
-      {
-        "key": "admin-dashboard-key-456",
-        "tenant_id": "admin",
-        "name": "admin-dashboard",
-        "created_at": 1735689600000,
-        "is_admin": true
-      }
-    ]
+    "api_keys": []
   },
   "rate_limit": {
     "enabled": true,

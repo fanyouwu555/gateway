@@ -22,7 +22,11 @@ export const options = {
 };
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
-const API_KEY = __ENV.API_KEY || 'gateway-test-key-123';
+const API_KEY = __ENV.API_KEY;
+
+if (!API_KEY) {
+  throw new Error('请设置环境变量 API_KEY 后运行本脚本。示例: API_KEY=sk-xxxx k6 run tests/perf/k6-load-test.js');
+}
 
 export default function () {
   const payload = JSON.stringify({

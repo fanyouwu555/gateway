@@ -24,6 +24,15 @@ import {
 } from '@ant-design/icons'
 import { getConversations, getConversation, deleteConversation } from '@/services/api'
 import type { ConversationSession, ConversationTurn, ConversationDetail } from '@/types'
+import DOMPurify from 'dompurify'
+
+/**
+ * 清理后端返回的文本内容，防止 XSS。
+ * 当前页面按纯文本渲染，保留此函数以符合安全规范并为后续 Markdown/HTML 渲染做准备。
+ */
+const sanitizeContent = (text: string | unknown): string => {
+  return DOMPurify.sanitize(String(text ?? ''))
+}
 
 const { RangePicker } = DatePicker
 
@@ -237,7 +246,7 @@ const Conversations: React.FC = () => {
           <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {turn.request.messages.map((msg, idx) => (
               <div key={idx} style={{ marginBottom: 8 }}>
-                {msg.content}
+                {sanitizeContent(msg.content)}
               </div>
             ))}
           </div>
@@ -286,7 +295,7 @@ const Conversations: React.FC = () => {
               borderRadius: 4,
             }}
           >
-            {turn.response.reasoning_content}
+            {sanitizeContent(turn.response.reasoning_content)}
           </div>
         ),
       })
@@ -298,7 +307,7 @@ const Conversations: React.FC = () => {
       label: <Tag color="green">助手</Tag>,
       children: (
         <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {turn.response.content}
+          {sanitizeContent(turn.response.content)}
         </div>
       ),
     })

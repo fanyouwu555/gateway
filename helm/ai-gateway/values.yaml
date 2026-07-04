@@ -65,10 +65,10 @@ config:
   log_level: "info"
   default_model: "gpt-4o-mini"
 
-# Secrets (should be overridden in production)
+# Secrets (must be overridden in production via CI/CD or sealed secrets)
 secrets:
-  apiKeys: "gateway-test-key-123"
-  adminKeys: "admin-dashboard-key-456"
+  apiKeys: "<REPLACE_IN_CI>"
+  adminKeys: "<REPLACE_IN_CI>"
   openaiApiKey: ""
   deepseekApiKey: ""
   moonshotApiKey: ""

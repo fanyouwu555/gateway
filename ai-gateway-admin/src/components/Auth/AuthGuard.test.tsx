@@ -4,7 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './AuthContext'
 import AuthGuard from './AuthGuard'
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => sessionStorage.clear())
 
 function TestPage() {
   return <div data-testid="protected-page">Protected Content</div>
@@ -16,7 +16,7 @@ function LoginPage() {
 
 describe('AuthGuard', () => {
   it('renders children when authenticated', () => {
-    localStorage.setItem('api_token', 'valid-key')
+    sessionStorage.setItem('api_token', 'valid-key')
     render(
       <MemoryRouter initialEntries={['/dashboard']}>
         <AuthProvider>

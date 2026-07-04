@@ -20,7 +20,7 @@ class WebSocketService {
   connect(tenantId: string = 'admin', options?: WebSocketServiceOptions) {
     this.options = options || {}
     const baseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:3000'
-    const apiKey = localStorage.getItem('api_token') || ''
+    const apiKey = sessionStorage.getItem('api_token') || ''
     if (!apiKey) {
       console.warn('[WebSocket] No API key available')
       return
@@ -28,6 +28,8 @@ class WebSocketService {
     this.url = `${baseUrl}/v1/ws?tenant_id=${encodeURIComponent(tenantId)}`
 
     try {
+      // 浏览器 WebSocket API 不支持自定义 header，因此通过子协议传递 token。
+      // 这是过渡方案，后续应迁移到基于 Cookie/Session 的认证。
       const protocols = [`gateway-token-${apiKey}`]
       this.ws = new WebSocket(this.url, protocols)
 

@@ -1,7 +1,13 @@
 # AI Gateway API Test Script
 $ErrorActionPreference = "Continue"
-$BaseUrl = "http://localhost:3000"
-$AdminApiKey = "admin-dashboard-key-456"
+$BaseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { "http://localhost:3000" }
+$AdminApiKey = $env:ADMIN_KEY
+
+if (-not $AdminApiKey) {
+    Write-Host "请设置环境变量 ADMIN_KEY 后运行本脚本" -ForegroundColor Red
+    Write-Host "示例: `$env:ADMIN_KEY = 'sk-xxxx'; .\api-test-runner.ps1"
+    exit 1
+}
 
 $TestsPassed = 0
 $TestsFailed = 0

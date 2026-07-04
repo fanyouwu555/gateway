@@ -11,5 +11,12 @@ declare module 'hono' {
     request_id: RequestId;
     provider: string;
     model: string;
+    key_hash: string;
+    key_rate_limit_qps: number | undefined;
+    key_rate_limit_burst: number | undefined;
+    key_metadata: Record<string, string> | undefined;
+    key_allowed_models: string[] | undefined;
+    key_monthly_budget: number | undefined;
+    key_max_tokens_per_request: number | undefined;
   }
 }

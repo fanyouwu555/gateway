@@ -140,9 +140,9 @@ pnpm build
 # 健康检查
 curl http://localhost:3000/health
 
-# 测试聊天
+# 测试聊天（需先通过 API_KEYS 环境变量配置网关 key）
 curl -X POST http://localhost:3000/v1/chat/completions \
-  -H "Authorization: Bearer gateway-test-key-123" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hello!"}]}'
 ```
@@ -214,7 +214,7 @@ npm run lint
 ```bash
 curl -X POST http://localhost:3000/v1/chat/completions \
   -H "X-Routing-Strategy: cost" \
-  -H "Authorization: Bearer gateway-test-key-123" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
   ...
 ```
 

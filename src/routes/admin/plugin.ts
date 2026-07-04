@@ -20,6 +20,17 @@ router.get('/v1/plugins', (c: Context) => {
 });
 
 router.post('/v1/plugins/register', async (c: Context) => {
+  // 默认关闭动态插件注册，防止管理员端点被攻破后任意代码执行
+  if (process.env.ENABLE_DYNAMIC_PLUGINS !== 'true') {
+    return c.json({
+      error: {
+        message: 'Dynamic plugin registration is disabled by default. Set ENABLE_DYNAMIC_PLUGINS=true to enable (not recommended in production).',
+        type: 'invalid_request_error',
+        code: 'plugin_registration_disabled',
+      },
+    }, 400);
+  }
+
   const parsed = pluginRegisterSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({

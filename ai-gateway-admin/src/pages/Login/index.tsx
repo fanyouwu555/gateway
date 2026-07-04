@@ -92,7 +92,7 @@ export default function LoginPage() {
           </Button>
           {import.meta.env.DEV && (
             <div style={{ marginTop: 12, textAlign: 'center', fontSize: 12, color: '#999' }}>
-              开发模式: 设置 VITE_API_KEY 环境变量可跳过此页
+              开发模式: 仅用于本地调试，请勿在生产环境使用
             </div>
           )}
         </div>

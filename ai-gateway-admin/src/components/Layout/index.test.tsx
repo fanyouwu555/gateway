@@ -6,11 +6,11 @@ import { AuthProvider } from '@/components/Auth/AuthContext'
 import MainLayout from './index'
 
 beforeEach(() => {
-  localStorage.setItem('api_token', 'test-key')
+  sessionStorage.setItem('api_token', 'test-key')
 })
 
 afterEach(() => {
-  localStorage.clear()
+  sessionStorage.clear()
 })
 
 describe('MainLayout', () => {
@@ -40,6 +40,6 @@ describe('MainLayout', () => {
     // Wait for dropdown to render in portal and click 退出登录
     const logoutItem = await screen.findByText('退出登录')
     await user.click(logoutItem)
-    expect(localStorage.getItem('api_token')).toBeNull()
+    expect(sessionStorage.getItem('api_token')).toBeNull()
   })
 })

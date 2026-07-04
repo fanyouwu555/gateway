@@ -23,7 +23,13 @@ const rootDir = resolve(__dirname, '..')
 
 const BACKEND_URL = 'http://localhost:3000'
 const PROXY_URL = 'http://localhost:3001'
-const ADMIN_KEY = 'admin-dashboard-key-456'
+const ADMIN_KEY = process.env.ADMIN_KEY
+
+if (!ADMIN_KEY) {
+  console.error('请设置环境变量 ADMIN_KEY 后运行本脚本')
+  console.error('示例: ADMIN_KEY=sk-xxxx node tests/frontend-backend-e2e.mjs')
+  process.exit(1)
+}
 
 const colors = {
   reset: '\x1b[0m',
@@ -234,8 +240,8 @@ async function main() {
 
   await testCase('WebSocket 连接到 /v1/ws/admin', async () => {
     return new Promise((resolve, reject) => {
-      const wsUrl = `${BACKEND_URL.replace('http', 'ws')}/v1/ws/admin?api_key=${ADMIN_KEY}`
-      const ws = new WebSocket(wsUrl)
+      const wsUrl = `${BACKEND_URL.replace('http', 'ws')}/v1/ws/admin`
+      const ws = new WebSocket(wsUrl, [`gateway-token-${ADMIN_KEY}`])
       const timer = setTimeout(() => {
         ws.close()
         reject(new Error('WebSocket 连接超时'))
