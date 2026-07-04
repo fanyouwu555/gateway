@@ -37,9 +37,9 @@ const gatewayCacheMissesTotal = new Counter({
   registers: [register],
 });
 
-const gatewayAiCostUsd = new Counter({
-  name: 'gateway_ai_cost_usd',
-  help: 'AI call cost in USD',
+const gatewayAiCostCny = new Counter({
+  name: 'gateway_ai_cost_cny',
+  help: 'AI call cost in CNY',
   labelNames: ['provider', 'model'],
   registers: [register],
 });
@@ -165,10 +165,10 @@ export function recordAiTpot(ms: number, provider: string, model: string): void 
 }
 
 /**
- * 记录 AI 调用成本 (USD)
+ * 记录 AI 调用成本 (CNY)
  */
 export function recordAiCost(cost: number, provider: string, model: string): void {
-  gatewayAiCostUsd.inc({ provider, model }, cost);
+  gatewayAiCostCny.inc({ provider, model }, cost);
 }
 
 /**

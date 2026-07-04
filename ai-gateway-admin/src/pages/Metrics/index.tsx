@@ -103,7 +103,7 @@ const Metrics: React.FC = () => {
     { title: 'Provider', dataIndex: 'provider', key: 'provider' },
     { title: '请求数', dataIndex: 'total_requests', key: 'total_requests', render: (v: number) => v.toLocaleString() },
     { title: 'Token', dataIndex: 'total_tokens', key: 'total_tokens', render: (v: number) => formatTokens(v) },
-    { title: '成本 ($)', dataIndex: 'total_cost', key: 'total_cost', render: (v: number) => `$${v.toFixed(4)}` },
+    { title: '成本', dataIndex: 'total_cost', key: 'total_cost', render: (v: number) => `¥${v.toFixed(4)}` },
     { title: '平均延迟', dataIndex: 'avg_duration_ms', key: 'avg_duration_ms', render: (v: number) => `${v}ms` },
     { title: '成功率', dataIndex: 'success_rate', key: 'success_rate', render: (v: number) => `${(v * 100).toFixed(2)}%` },
   ]
@@ -113,14 +113,14 @@ const Metrics: React.FC = () => {
     { title: '租户 ID', dataIndex: 'tenant_id', key: 'tenant_id' },
     { title: '请求数', dataIndex: 'total_requests', key: 'total_requests', render: (v: number) => v.toLocaleString() },
     { title: 'Token', dataIndex: 'total_tokens', key: 'total_tokens', render: (v: number) => formatTokens(v) },
-    { title: '成本 ($)', dataIndex: 'total_cost', key: 'total_cost', render: (v: number) => `$${v.toFixed(4)}` },
+    { title: '成本', dataIndex: 'total_cost', key: 'total_cost', render: (v: number) => `¥${v.toFixed(4)}` },
     { title: '平均延迟', dataIndex: 'avg_duration_ms', key: 'avg_duration_ms', render: (v: number) => `${v}ms` },
     { title: '成功率', dataIndex: 'success_rate', key: 'success_rate', render: (v: number) => `${(v * 100).toFixed(2)}%` },
   ]
 
   const statsData = [
     { title: '总 Token', value: formatTokens(overviewData?.total_tokens || 0), suffix: '' },
-    { title: '总成本', value: (overviewData?.total_cost || 0).toFixed(2), prefix: '$' },
+    { title: '总成本', value: (overviewData?.total_cost || 0).toFixed(2), suffix: '元' },
     { title: '总请求', value: (overviewData?.total_requests || 0).toLocaleString(), suffix: '' },
     { title: '平均延迟', value: overviewData?.avg_duration_ms?.toString() || '0', suffix: 'ms' },
   ]

@@ -33,7 +33,7 @@ router.get('/v1/router/status', (c: Context) => {
 });
 
 // === WebSocket 统计 ===
-router.get('/v1/ws', (c: Context) => {
+router.get('/v1/ws/stats', (c: Context) => {
   return c.json(getWebSocketStats());
 });
 

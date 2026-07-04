@@ -149,7 +149,13 @@ async function startServer() {
   initWebSocket();
 
   // 创建 WebSocket 服务器
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    handleProtocols: (protocols) => {
+      const token = Array.from(protocols).find((p) => p.startsWith('gateway-token-'));
+      return token || false;
+    },
+  });
 
   // 处理 WebSocket 升级
   server.on('upgrade', async (req: IncomingMessage, socket, head) => {

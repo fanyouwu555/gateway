@@ -262,7 +262,7 @@ export interface IApiKeyMeta {
   default_model?: string;                // 该 Key 的默认模型
   rate_limit_qps?: number;               // 该 Key 独立的 QPS
   rate_limit_burst?: number;             // 该 Key 独立的突发容量
-  monthly_budget?: number;               // 月度预算上限（USD）
+  monthly_budget?: number;               // 月度预算上限（元）
   max_tokens_per_request?: number;       // 单次请求最大 token 数
   metadata?: Record<string, string>;     // 自定义标签
 }
@@ -450,7 +450,7 @@ export interface IGatewayConfig {
   };
   /** 限流清理间隔（毫秒） */
   rate_limit_clean_interval?: number;
-  /** Token 定价配置 (每 1M tokens 美元价格) */
+  /** Token 定价配置 (每 1M tokens 元价格) */
   pricing?: Record<string, { input: number; output: number }>;
   /** Token 级按模型限流配置 */
   model_rate_limits?: Record<string, { tokens_per_minute: number; burst_tokens?: number }>;

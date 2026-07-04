@@ -416,7 +416,7 @@ const Tenants: React.FC = () => {
           <Form.Item label="日 Token 限制" name={['limits', 'daily_tokens']} initialValue={100000}>
             <InputNumber min={1} style={{ width: '100%' }} placeholder="100000" />
           </Form.Item>
-          <Form.Item label="月预算（USD）" name={['limits', 'monthly_cost']} initialValue={100}>
+          <Form.Item label="月预算（元）" name={['limits', 'monthly_cost']} initialValue={100}>
             <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="100" />
           </Form.Item>
           <Form.Item label="最大 API Keys" name={['limits', 'max_api_keys']} initialValue={5}>
@@ -465,7 +465,7 @@ const Tenants: React.FC = () => {
           <Form.Item label="突发容量" name="rate_limit_burst">
             <InputNumber min={1} style={{ width: '100%' }} placeholder="突发请求数" />
           </Form.Item>
-          <Form.Item label="月度预算（USD）" name="monthly_budget">
+          <Form.Item label="月度预算（元）" name="monthly_budget">
             <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="月度费用上限" />
           </Form.Item>
           <Form.Item label="单次 Max Tokens" name="max_tokens_per_request">
@@ -523,7 +523,7 @@ const Tenants: React.FC = () => {
           <Form.Item label="突发容量" name="rate_limit_burst">
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="月度预算（USD）" name="monthly_budget">
+          <Form.Item label="月度预算（元）" name="monthly_budget">
             <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label="单次 Max Tokens" name="max_tokens_per_request">
@@ -554,7 +554,7 @@ const Tenants: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="日请求限制">{currentTenant.limits?.daily_requests}</Descriptions.Item>
             <Descriptions.Item label="日 Token 限制">{currentTenant.limits?.daily_tokens}</Descriptions.Item>
-            <Descriptions.Item label="月预算">${currentTenant.limits?.monthly_cost}</Descriptions.Item>
+            <Descriptions.Item label="月预算">¥{currentTenant.limits?.monthly_cost}</Descriptions.Item>
           </Descriptions>
         )}
         {tenantStats && (
@@ -563,7 +563,7 @@ const Tenants: React.FC = () => {
             <Descriptions column={2} bordered size="small">
               <Descriptions.Item label="总请求">{tenantStats.total_requests}</Descriptions.Item>
               <Descriptions.Item label="总 Token">{tenantStats.total_tokens}</Descriptions.Item>
-              <Descriptions.Item label="总成本">${tenantStats.total_cost?.toFixed(2)}</Descriptions.Item>
+              <Descriptions.Item label="总成本">¥{tenantStats.total_cost?.toFixed(2)}</Descriptions.Item>
               <Descriptions.Item label="API Keys">{tenantStats.api_keys_count}</Descriptions.Item>
             </Descriptions>
           </>

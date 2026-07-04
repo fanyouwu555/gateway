@@ -381,7 +381,7 @@ const Providers: React.FC = () => {
               <Tag color="cyan">{(model.max_output_tokens / 1000).toFixed(0)}K out</Tag>
             )}
             {model.pricing && (
-              <Tag color="gold">${model.pricing.input}/${model.pricing.output}</Tag>
+              <Tag color="gold">¥{model.pricing.input}/¥{model.pricing.output}</Tag>
             )}
           </Space>
         }

@@ -185,7 +185,7 @@ const Dashboard: React.FC = () => {
     },
     {
       title: '成本', dataIndex: 'cost', key: 'cost', width: 100,
-      render: (v: number | undefined) => v !== undefined ? `$${v.toFixed(4)}` : '-',
+      render: (v: number | undefined) => v !== undefined ? `¥${v.toFixed(4)}` : '-',
     },
     {
       title: '用时', dataIndex: 'duration_ms', key: 'duration_ms', width: 100,

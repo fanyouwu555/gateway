@@ -269,7 +269,7 @@ export async function updateConfig(data: ConfigUpdateData): Promise<GatewayConfi
 
 // ============ WebSocket ============
 export async function getWsStats(): Promise<Record<string, unknown>> {
-  return get<Record<string, unknown>>('/v1/ws')
+  return get<Record<string, unknown>>('/v1/ws/stats')
 }
 
 export async function cleanWs(): Promise<Record<string, unknown>> {
@@ -421,6 +421,34 @@ export async function getModels(): Promise<{ object: string; data: ModelListItem
 export async function discoverModels(provider?: string): Promise<DiscoverModelsResponse | DiscoverAllResponse> {
   const params = provider ? { provider } : undefined
   return get<DiscoverModelsResponse | DiscoverAllResponse>('/v1/admin/discover-models', { params })
+}
+
+// ============ 模型别名 ============
+export async function getModelAliases(): Promise<{ aliases: Record<string, string> }> {
+  return get<{ aliases: Record<string, string> }>('/v1/config/aliases')
+}
+
+export async function updateModelAliases(aliases: Record<string, string>): Promise<{ updated: boolean }> {
+  return put<{ updated: boolean }>('/v1/config/aliases', aliases)
+}
+
+// ============ 定价管理 ============
+export async function getPricing(): Promise<{
+  prices: Record<string, { input: number; output: number }>
+  overrides: Record<string, { input: number; output: number }>
+}> {
+  return get<{
+    prices: Record<string, { input: number; output: number }>
+    overrides: Record<string, { input: number; output: number }>
+  }>('/v1/pricing')
+}
+
+export async function setPricing(model: string, input: number, output: number): Promise<Record<string, unknown>> {
+  return put<Record<string, unknown>>(`/v1/pricing/${encodeURIComponent(model)}`, { input, output })
+}
+
+export async function deletePricing(model: string): Promise<Record<string, unknown>> {
+  return del<Record<string, unknown>>(`/v1/pricing/${encodeURIComponent(model)}`)
 }
 
 export default api

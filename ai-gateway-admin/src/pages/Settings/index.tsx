@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Card, Form, Input, InputNumber, Switch, Select, Button, Tag, Space, message, Row, Col } from 'antd'
-import { SaveOutlined, ReloadOutlined } from '@ant-design/icons'
-import { getConfig as fetchGatewayConfig, updateConfig as saveGatewayConfig } from '@/services/api'
+import { Card, Form, Input, InputNumber, Switch, Select, Button, Tag, Space, message, Row, Col, Table, Popconfirm } from 'antd'
+import { SaveOutlined, ReloadOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import {
+  getConfig as fetchGatewayConfig,
+  updateConfig as saveGatewayConfig,
+  getModelAliases,
+  updateModelAliases,
+  getPricing,
+  setPricing,
+  deletePricing,
+} from '@/services/api'
 
 interface ConfigData {
   port: number
@@ -99,6 +107,104 @@ const Settings: React.FC = () => {
     form.setFieldsValue(initialValues)
     message.info('已重置为默认配置')
   }
+
+  /* ========== 模型别名管理 ========== */
+  const [aliases, setAliases] = useState<Record<string, string>>({})
+  const [aliasLoading, setAliasLoading] = useState(false)
+  const [aliasKey, setAliasKey] = useState('')
+  const [aliasValue, setAliasValue] = useState('')
+
+  const fetchAliases = async () => {
+    setAliasLoading(true)
+    try {
+      const data = await getModelAliases()
+      setAliases(data.aliases || {})
+    } catch {
+      message.error('加载模型别名失败')
+    } finally {
+      setAliasLoading(false)
+    }
+  }
+
+  const handleAddAlias = () => {
+    if (!aliasKey.trim() || !aliasValue.trim()) {
+      message.warning('请输入别名和目标模型')
+      return
+    }
+    setAliases((prev) => ({ ...prev, [aliasKey.trim()]: aliasValue.trim() }))
+    setAliasKey('')
+    setAliasValue('')
+  }
+
+  const handleRemoveAlias = (key: string) => {
+    setAliases((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  const handleSaveAliases = async () => {
+    try {
+      await updateModelAliases(aliases)
+      message.success('模型别名保存成功')
+    } catch {
+      message.error('保存模型别名失败')
+    }
+  }
+
+  /* ========== 运行时定价管理 ========== */
+  const [prices, setPrices] = useState<Record<string, { input: number; output: number }>>({})
+  const [overrides, setOverrides] = useState<Record<string, { input: number; output: number }>>({})
+  const [pricingLoading, setPricingLoading] = useState(false)
+  const [pricingModel, setPricingModel] = useState('')
+  const [pricingInput, setPricingInput] = useState<number | null>(null)
+  const [pricingOutput, setPricingOutput] = useState<number | null>(null)
+
+  const fetchPricing = async () => {
+    setPricingLoading(true)
+    try {
+      const data = await getPricing()
+      setPrices(data.prices || {})
+      setOverrides(data.overrides || {})
+    } catch {
+      message.error('加载定价失败')
+    } finally {
+      setPricingLoading(false)
+    }
+  }
+
+  const handleSavePricing = async () => {
+    if (!pricingModel.trim() || pricingInput === null || pricingOutput === null) {
+      message.warning('请填写完整定价信息')
+      return
+    }
+    try {
+      await setPricing(pricingModel.trim(), pricingInput, pricingOutput)
+      message.success('定价覆盖保存成功')
+      setPricingModel('')
+      setPricingInput(null)
+      setPricingOutput(null)
+      fetchPricing()
+    } catch {
+      message.error('保存定价覆盖失败')
+    }
+  }
+
+  const handleDeletePricing = async (model: string) => {
+    try {
+      await deletePricing(model)
+      message.success('定价覆盖已删除')
+      fetchPricing()
+    } catch {
+      message.error('删除定价覆盖失败')
+    }
+  }
+
+  useEffect(() => {
+    fetchAliases()
+    fetchPricing()
+  }, [])
 
   return (
     <div className="page-container">
@@ -347,6 +453,141 @@ const Settings: React.FC = () => {
           </Button>
         </Space>
       </Form>
+
+      {/* 模型别名管理 */}
+      <Card
+        title="模型别名管理"
+        style={{ marginBottom: 16, marginTop: 24 }}
+        extra={
+          <Button type="primary" icon={<SaveOutlined />} onClick={handleSaveAliases} loading={aliasLoading}>
+            保存别名
+          </Button>
+        }
+      >
+        <Row gutter={16} style={{ marginBottom: 16 }}>
+          <Col xs={24} sm={8}>
+            <Input
+              placeholder="别名，如 gpt-4"
+              value={aliasKey}
+              onChange={(e) => setAliasKey(e.target.value)}
+              onPressEnter={handleAddAlias}
+            />
+          </Col>
+          <Col xs={24} sm={8}>
+            <Input
+              placeholder="目标模型，如 gpt-4o"
+              value={aliasValue}
+              onChange={(e) => setAliasValue(e.target.value)}
+              onPressEnter={handleAddAlias}
+            />
+          </Col>
+          <Col xs={24} sm={8}>
+            <Button icon={<PlusOutlined />} onClick={handleAddAlias}>
+              添加别名
+            </Button>
+          </Col>
+        </Row>
+        <Table
+          dataSource={Object.entries(aliases).map(([key, value]) => ({ key, value }))}
+          rowKey="key"
+          pagination={false}
+          size="small"
+          columns={[
+            { title: '别名', dataIndex: 'key', key: 'key' },
+            { title: '目标模型', dataIndex: 'value', key: 'value' },
+            {
+              title: '操作',
+              key: 'action',
+              width: 80,
+              render: (_: unknown, record: { key: string }) => (
+                <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleRemoveAlias(record.key)}>
+                  删除
+                </Button>
+              ),
+            },
+          ]}
+          locale={{ emptyText: '暂无别名配置' }}
+        />
+      </Card>
+
+      {/* 运行时定价覆盖 */}
+      <Card
+        title="运行时定价覆盖"
+        style={{ marginBottom: 16 }}
+        extra={
+          <Button icon={<ReloadOutlined />} onClick={fetchPricing} loading={pricingLoading}>
+            刷新
+          </Button>
+        }
+      >
+        <Row gutter={16} style={{ marginBottom: 16 }}>
+          <Col xs={24} sm={8}>
+            <Input
+              placeholder="模型名称，如 gpt-4o"
+              value={pricingModel}
+              onChange={(e) => setPricingModel(e.target.value)}
+            />
+          </Col>
+          <Col xs={24} sm={5}>
+            <InputNumber
+              placeholder="Input 单价"
+              style={{ width: '100%' }}
+              min={0}
+              step={0.01}
+              value={pricingInput}
+              onChange={(v) => setPricingInput(v)}
+            />
+          </Col>
+          <Col xs={24} sm={5}>
+            <InputNumber
+              placeholder="Output 单价"
+              style={{ width: '100%' }}
+              min={0}
+              step={0.01}
+              value={pricingOutput}
+              onChange={(v) => setPricingOutput(v)}
+            />
+          </Col>
+          <Col xs={24} sm={6}>
+            <Button type="primary" icon={<SaveOutlined />} onClick={handleSavePricing}>
+              保存覆盖
+            </Button>
+          </Col>
+        </Row>
+        <Table
+          dataSource={Object.entries(prices).map(([model, price]) => ({
+            model,
+            input: price.input,
+            output: price.output,
+            isOverride: !!overrides[model],
+          }))}
+          rowKey="model"
+          pagination={false}
+          size="small"
+          columns={[
+            { title: '模型', dataIndex: 'model', key: 'model' },
+            { title: 'Input (元/百万 token)', dataIndex: 'input', key: 'input' },
+            { title: 'Output (元/百万 token)', dataIndex: 'output', key: 'output' },
+            {
+              title: '状态',
+              key: 'status',
+              width: 100,
+              render: (_: unknown, record: { isOverride: boolean; model: string }) =>
+                record.isOverride ? (
+                  <Popconfirm
+                    title="确认删除覆盖？"
+                    onConfirm={() => handleDeletePricing(record.model)}
+                  >
+                    <Tag color="orange" style={{ cursor: 'pointer' }}>已覆盖</Tag>
+                  </Popconfirm>
+                ) : (
+                  <Tag color="default">默认</Tag>
+                ),
+            },
+          ]}
+          locale={{ emptyText: '暂无定价数据' }}
+        />
+      </Card>
     </div>
   )
 }

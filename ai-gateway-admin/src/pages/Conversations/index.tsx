@@ -160,7 +160,7 @@ const Conversations: React.FC = () => {
       dataIndex: 'total_cost',
       key: 'total_cost',
       width: 100,
-      render: (cost: number) => `$${cost.toFixed(6)}`,
+      render: (cost: number) => `¥${cost.toFixed(6)}`,
     },
     {
       title: '租户',
@@ -320,7 +320,7 @@ const Conversations: React.FC = () => {
         <Descriptions size="small" column={3}>
           <Descriptions.Item label="Provider">{turn.metadata.provider}</Descriptions.Item>
           <Descriptions.Item label="耗时">{turn.metadata.duration_ms}ms</Descriptions.Item>
-          <Descriptions.Item label="成本">${turn.metadata.cost?.toFixed(6) || 0}</Descriptions.Item>
+          <Descriptions.Item label="成本">¥{turn.metadata.cost?.toFixed(6) || 0}</Descriptions.Item>
           <Descriptions.Item label="Prompt">{turn.response.usage.prompt_tokens}</Descriptions.Item>
           <Descriptions.Item label="Completion">{turn.response.usage.completion_tokens}</Descriptions.Item>
           <Descriptions.Item label="Total">{turn.response.usage.total_tokens}</Descriptions.Item>
@@ -432,7 +432,7 @@ const Conversations: React.FC = () => {
               <Descriptions.Item label="总Prompt">{detailData.session.total_prompt_tokens}</Descriptions.Item>
               <Descriptions.Item label="总Completion">{detailData.session.total_completion_tokens}</Descriptions.Item>
               <Descriptions.Item label="总Tokens">{detailData.session.total_tokens}</Descriptions.Item>
-              <Descriptions.Item label="总成本">${detailData.session.total_cost.toFixed(6)}</Descriptions.Item>
+              <Descriptions.Item label="总成本">¥{detailData.session.total_cost.toFixed(6)}</Descriptions.Item>
               <Descriptions.Item label="最后模型">{detailData.session.last_model || '-'}</Descriptions.Item>
               <Descriptions.Item label="创建时间">{formatTime(detailData.session.created_at)}</Descriptions.Item>
               {detailData.session.client_info && (

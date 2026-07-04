@@ -3,8 +3,8 @@
  * 管理模型定价，支持配置加载和运行时覆盖
  */
 export interface ModelPrice {
-  input: number;   // 每 1M tokens 输入价格（美元）
-  output: number;  // 每 1M tokens 输出价格（美元）
+  input: number;   // 每 1M tokens 输入价格（元）
+  output: number;  // 每 1M tokens 输出价格（元）
 }
 
 export type PricingMap = Record<string, ModelPrice>;
