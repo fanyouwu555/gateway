@@ -100,7 +100,6 @@ export const tenantConfigSchema = z.object({
   limits: z.object({
     daily_requests: z.number().int().positive(),
     daily_tokens: z.number().int().positive(),
-    monthly_cost: z.number().positive(),
     max_api_keys: z.number().int().positive(),
     concurrent_requests: z.number().int().positive(),
   }).optional(),
@@ -120,7 +119,6 @@ export const tenantUpdateSchema = z.object({
   limits: z.object({
     daily_requests: z.number().int().positive(),
     daily_tokens: z.number().int().positive(),
-    monthly_cost: z.number().positive(),
     max_api_keys: z.number().int().positive(),
     concurrent_requests: z.number().int().positive(),
   }).optional(),
@@ -136,6 +134,9 @@ export const createApiKeySchema = z.object({
   monthly_budget: z.number().positive().optional(),
   max_tokens_per_request: z.number().int().positive().optional(),
   metadata: z.record(z.string()).optional(),
+  billing_mode: z.enum(['competition', 'subscription', 'prepaid']).optional(),
+  balance: z.number().int().nonnegative().optional(),
+  subscription_expires_at: z.number().int().positive().optional(),
 });
 
 export const updateKeyPolicySchema = z.object({
@@ -148,6 +149,9 @@ export const updateKeyPolicySchema = z.object({
   monthly_budget: z.number().positive().optional(),
   max_tokens_per_request: z.number().int().positive().optional(),
   metadata: z.record(z.string()).optional(),
+  billing_mode: z.enum(['competition', 'subscription', 'prepaid']).optional(),
+  balance: z.number().int().nonnegative().optional(),
+  subscription_expires_at: z.number().int().positive().optional(),
 });
 
 // ===== Gateway Config Update =====
@@ -220,10 +224,6 @@ export const configUpdateSchema = z.object({
     threshold: z.number().min(0).max(1).optional(),
     backend: z.enum(['memory', 'redis_vector']).optional(),
     max_entries: z.number().positive().optional(),
-  }).optional(),
-  cost_control: z.object({
-    monthly_budget: z.number().positive().optional(),
-    warn_threshold: z.number().positive().optional(),
   }).optional(),
   request_logging: z.object({
     enabled: z.boolean().optional(),
@@ -311,3 +311,11 @@ export const pluginRegisterSchema = z.object({
 // ===== Model Aliases =====
 
 export const modelAliasesSchema = z.record(z.string());
+
+// ===== Wallet Recharge =====
+
+export const rechargeSchema = z.object({
+  amount: z.number().positive('Recharge amount must be positive'),
+  reason: z.string().optional(),
+  metadata: z.record(z.string()).optional(),
+});

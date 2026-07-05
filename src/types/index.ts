@@ -252,10 +252,6 @@ export interface IApiKeyMeta {
   created_at: number;
   expires_at?: number;
   is_admin?: boolean;
-  limits?: {
-    daily_requests?: number;
-    daily_tokens?: number;
-  };
 
   // 虚拟 Key 策略（可选 — 现有 Key 不受影响）
   allowed_models?: string[];             // 允许的模型列表，空/不设 = 不限制
@@ -265,6 +261,10 @@ export interface IApiKeyMeta {
   monthly_budget?: number;               // 月度预算上限（元）
   max_tokens_per_request?: number;       // 单次请求最大 token 数
   metadata?: Record<string, string>;     // 自定义标签
+
+  // 计费模式（新增）
+  billing_mode?: 'competition' | 'subscription' | 'prepaid';
+  subscription_expires_at?: number;      // 包月过期时间戳（ms）
 }
 
 /** 鉴权结果 */
@@ -273,6 +273,19 @@ export interface IAuthResult {
   tenant_id?: TenantId;
   api_key_meta?: IApiKeyMeta;
   error?: string;
+}
+
+/** 钱包交易流水 */
+export interface IWalletTransaction {
+  id: string;
+  key_hash: string;
+  tenant_id: string;
+  type: 'recharge' | 'deduct' | 'refund';
+  amount_micro_yuan: number;
+  balance_after_micro_yuan: number;
+  reason?: string;
+  created_at: number;
+  metadata?: Record<string, string>;
 }
 
 // ===== 日志类型 =====
@@ -400,10 +413,6 @@ export interface IGatewayConfig {
     enabled?: boolean;
     qps?: number;
     burst?: number;
-  };
-  cost_control?: {
-    monthly_budget?: number;
-    warn_threshold?: number;
   };
   failover?: {
     enabled?: boolean;

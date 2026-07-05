@@ -23,6 +23,8 @@ import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { initTenantStore, flushTenantStore } from './services/tenant';
+import { initWalletStore, flushWalletStore } from './services/wallet';
+import { initBillingCostTracker, flushBillingCostTracker } from './services/billing';
 import { initMetricsStore } from './services/metrics';
 import { startAlertEngine } from './services/alert';
 import { initConversationLogService } from './services/conversation-log';
@@ -134,6 +136,12 @@ async function startServer() {
   // 初始化租户存储（从 Redis 加载历史数据）
   await initTenantStore();
 
+  // 初始化钱包存储（从 Redis 加载余额数据）
+  await initWalletStore();
+
+  // 初始化计费成本追踪器（从 Redis 加载 Key 级月度成本）
+  await initBillingCostTracker();
+
   // 初始化指标存储（从 Redis 加载历史数据）
   await initMetricsStore();
 
@@ -141,6 +149,8 @@ async function startServer() {
   setInterval(() => {
     flushQuotaStore().catch(() => {});
     flushTenantStore().catch(() => {});
+    flushWalletStore().catch(() => {});
+    flushBillingCostTracker().catch(() => {});
   }, 60000).unref();
 
   const server = createServer();
@@ -315,6 +325,7 @@ async function startServer() {
     Promise.all([
       flushQuotaStore().catch(() => {}),
       flushTenantStore().catch(() => {}),
+      flushWalletStore().catch(() => {}),
     ]).then(() => {
       server.close(() => {
         writeLog('info', 'HTTP server closed');

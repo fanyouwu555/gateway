@@ -18,5 +18,8 @@ declare module 'hono' {
     key_allowed_models: string[] | undefined;
     key_monthly_budget: number | undefined;
     key_max_tokens_per_request: number | undefined;
+    key_billing_mode: 'competition' | 'subscription' | 'prepaid' | undefined;
+    key_balance_micro_yuan: number | undefined;
+    key_subscription_expires_at: number | undefined;
   }
 }
