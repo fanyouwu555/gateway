@@ -23,7 +23,6 @@ describe('Tenant Service', () => {
     limits: {
       daily_requests: 1000,
       daily_tokens: 100000,
-      monthly_cost: 100,
       max_api_keys: 5,
       concurrent_requests: 10,
     },

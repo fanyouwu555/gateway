@@ -38,7 +38,6 @@ jest.mock('../src/config', () => ({
     },
     auth: { enabled: true, api_keys: [] },
     rate_limit: { enabled: true, qps: 10, burst: 20 },
-    cost_control: { monthly_budget: 100, warn_threshold: 0.8 },
   })),
   getProviderConfig: jest.fn((name) => {
     if (name === 'openai') {
@@ -120,13 +119,13 @@ describe('Integration Tests', () => {
     });
 
     it('should record usage', () => {
-      expect(() => recordUsage('test-tenant', 100, 0.01)).not.toThrow();
+      expect(() => recordUsage('test-tenant', 100)).not.toThrow();
     });
   });
 
   describe('Tenant Integration', () => {
     it('should create and get tenant', async () => {
-      const tenant = await createTenant({ name: 'Integration Test', plan: 'pro', status: 'active', settings: {}, limits: { daily_requests: 100, daily_tokens: 10000, monthly_cost: 10, max_api_keys: 3, concurrent_requests: 5 } });
+      const tenant = await createTenant({ name: 'Integration Test', plan: 'pro', status: 'active', settings: {}, limits: { daily_requests: 100, daily_tokens: 10000, max_api_keys: 3, concurrent_requests: 5 } });
       expect(tenant.tenant_id).toMatch(/^tenant_/);
 
       // Should find by generated ID

@@ -148,7 +148,6 @@ describe('DefaultModel Alias End-to-End', () => {
         limits: {
           daily_requests: 5000,
           daily_tokens: 500000,
-          monthly_cost: 100,
           max_api_keys: 10,
           concurrent_requests: 20,
         },

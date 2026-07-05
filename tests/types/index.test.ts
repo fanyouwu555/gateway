@@ -101,7 +101,6 @@ describe('Types', () => {
         name: 'Test Key',
         created_at: Date.now(),
         expires_at: Date.now() + 86400000,
-        limits: { daily_requests: 1000, daily_tokens: 100000 },
       };
       expect(keyMeta.tenant_id).toBe('tenant-1');
     });

@@ -12,13 +12,15 @@ import {
   getTenantApiKeys,
 } from '../../src/services/tenant';
 import { getKeyUsage, resetMetricsStore, recordMetric } from '../../src/services/metrics';
-import { resetQuotaStore, recordUsage, checkKeyQuota, getKeyCost } from '../../src/services/quota';
+import { resetQuotaStore } from '../../src/services/quota';
+import { resetBillingCostTracker, recordKeyCost, checkKeyBudget, getKeyCost } from '../../src/services/billing';
 
 describe('Virtual Key System', () => {
   beforeEach(() => {
     resetTenantStore();
     resetMetricsStore();
     resetQuotaStore();
+    resetBillingCostTracker();
   });
 
   describe('Create API Key with policy', () => {
@@ -269,9 +271,9 @@ describe('Virtual Key System', () => {
       const keyHash = 'test-hash-1';
       const budget = 100;
       // Simulate some cost
-      recordUsage('default', 0, 10, keyHash);
+      recordKeyCost(keyHash, 10);
 
-      const check = checkKeyQuota(keyHash, budget);
+      const check = checkKeyBudget(keyHash, budget);
       expect(check.allowed).toBe(true);
       expect(check.current_cost).toBe(10);
     });
@@ -279,9 +281,9 @@ describe('Virtual Key System', () => {
     it('should reject requests that exceed budget', () => {
       const keyHash = 'test-hash-2';
       const budget = 50;
-      recordUsage('default', 0, 60, keyHash);
+      recordKeyCost(keyHash, 60);
 
-      const check = checkKeyQuota(keyHash, budget);
+      const check = checkKeyBudget(keyHash, budget);
       expect(check.allowed).toBe(false);
       expect(check.reason).toBe('Key monthly budget exceeded');
     });
@@ -289,29 +291,29 @@ describe('Virtual Key System', () => {
     it('should return correct current cost at boundary', () => {
       const keyHash = 'test-hash-3';
       const budget = 100;
-      recordUsage('default', 0, 100, keyHash);
+      recordKeyCost(keyHash, 100);
 
-      const check = checkKeyQuota(keyHash, budget);
+      const check = checkKeyBudget(keyHash, budget);
       expect(check.allowed).toBe(false);
       expect(check.current_cost).toBe(100);
     });
 
     it('should return zero cost for unknown key', () => {
-      const check = checkKeyQuota('unknown-key', 100);
+      const check = checkKeyBudget('unknown-key', 100);
       expect(check.allowed).toBe(true);
       expect(check.current_cost).toBe(0);
     });
 
     it('should track accumulating cost across multiple records', () => {
       const keyHash = 'test-hash-4';
-      recordUsage('default', 0, 10, keyHash);
-      recordUsage('default', 0, 20, keyHash);
-      recordUsage('default', 0, 30, keyHash);
+      recordKeyCost(keyHash, 10);
+      recordKeyCost(keyHash, 20);
+      recordKeyCost(keyHash, 30);
 
       const cost = getKeyCost(keyHash);
       expect(cost).toBe(60);
 
-      const check = checkKeyQuota(keyHash, 50);
+      const check = checkKeyBudget(keyHash, 50);
       expect(check.allowed).toBe(false);
     });
   });

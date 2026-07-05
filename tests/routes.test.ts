@@ -32,7 +32,6 @@ jest.mock('../src/config', () => ({
     },
     auth: { enabled: false, api_keys: [] },
     rate_limit: { enabled: false, qps: 1000, burst: 1000 },
-    cost_control: { monthly_budget: 100, warn_threshold: 0.8 },
   })),
   getProviderConfig: jest.fn((name: string) => {
     if (name === 'openai') {
