@@ -16,16 +16,18 @@ import { resolveRequestModel, resolveProviderForRequest } from '../services/chat
 import { getCache, setCache, getLastCacheHitType } from '../services/cache';
 import { getConfig } from '../config';
 import { templateToMessages } from '../services/prompt';
-import { checkQuota, recordUsage, checkKeyQuota } from '../services/quota';
+import { checkQuota, recordUsage } from '../services/quota';
+import { recordKeyCost } from '../services/billing';
 import { createChildSpan, endSpan } from '../utils/tracing';
 import { recordAiTtfb, recordAiTpot, recordAiCost, recordAiTokens } from '../middleware/metrics';
 import { recordMetric } from '../services/metrics';
 import { getPricingService } from '../services/pricing';
 import { countCompletionTokens, countPromptTokens, accumulateStreamContent } from '../services/token-counter';
 import { getTokenRateLimit } from '../services/token-ratelimit';
+import { deductBalance } from '../services/wallet';
 import { getRequestLogStore } from '../services/request-log';
 import { getConversationLogService } from '../services/conversation-log';
-import type { ChatMessage, ChatCompletionChunk, ChatCompletionRequest } from '../types';
+import type { ChatMessage, ChatCompletionChunk, ChatCompletionRequest, IApiKeyMeta } from '../types';
 import type { Span } from '@opentelemetry/api';
 import { extractClientInfo } from '../utils/client-info';
 import { inferRequirements, getModelCapabilities, checkCapabilityMatch, formatCapabilityError } from '../services/model-capability';
@@ -33,7 +35,7 @@ import { getProvider } from '../providers';
 
 const chatRouter = new Hono();
 
-function checkKeyPolicies(c: Context, req: ChatCompletionRequest, tenantId: string | undefined): Response | null {
+async function checkKeyPolicies(c: Context, req: ChatCompletionRequest, tenantId: string | undefined): Promise<Response | null> {
   const keyAllowedModels = c.get('key_allowed_models') as string[] | undefined;
   const apiKeyMeta = c.get('api_key_meta') as { default_model?: string } | undefined;
   if (keyAllowedModels && keyAllowedModels.length > 0 && !keyAllowedModels.includes(req.model)) {
@@ -59,31 +61,39 @@ function checkKeyPolicies(c: Context, req: ChatCompletionRequest, tenantId: stri
     }
   }
 
-  const keyMonthlyBudget = c.get('key_monthly_budget') as number | undefined;
-  if (keyMonthlyBudget !== undefined) {
-    const keyHash = c.get('key_hash') as string | undefined;
-    if (keyHash) {
-      const budgetCheck = checkKeyQuota(keyHash, keyMonthlyBudget);
-      if (!budgetCheck.allowed) {
-        recordMetric(
-          c.get('request_id') as string,
-          tenantId,
-          'gateway',
-          req.model,
-          0,
-          429,
-          { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-          keyHash,
-          c.get('key_metadata'),
-        );
-        return c.json({
-          error: {
-            message: budgetCheck.reason || 'API key monthly budget exceeded',
-            type: 'rate_limit_error',
-            code: 'budget_exceeded',
-          },
-        }, 429);
-      }
+  // 统一计费检查
+  const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
+  const keyHash = c.get('key_hash') as string | undefined;
+  if (keyHash) {
+    const { checkBilling } = await import('../services/billing');
+    const billingCheck = checkBilling(
+      keyHash,
+      billingMode,
+      c.get('key_monthly_budget'),
+      c.get('key_subscription_expires_at')
+    );
+    if (!billingCheck.allowed) {
+      const statusCode = billingCheck.code === 'subscription_expired' ? 403 : 402;
+      const errorType = billingCheck.code === 'subscription_expired' ? 'authentication_error' : 'rate_limit_error';
+      const code = billingCheck.code || 'insufficient_balance';
+      recordMetric(
+        c.get('request_id') as string,
+        tenantId,
+        'gateway',
+        req.model,
+        0,
+        statusCode,
+        { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        keyHash,
+        c.get('key_metadata'),
+      );
+      return c.json({
+        error: {
+          message: billingCheck.reason || 'Billing check failed',
+          type: errorType,
+          code,
+        },
+      }, statusCode as 402);
     }
   }
 
@@ -180,6 +190,7 @@ async function runPreProviderPipeline(
 
   const transformedReq = await runTransformPlugins(c, req) as typeof req;
 
+  // 配额检查（日请求/日Token，所有模式都生效）
   if (tenantId) {
     const quotaCheck = checkQuota(tenantId);
     if (!quotaCheck.allowed) {
@@ -260,10 +271,31 @@ async function handleStreamingResponse(
         const cost = getPricingService().calculateCost(model, promptTokens, completionTokens);
 
         const tenantId = c.get('tenant_id');
+        const keyHash = c.get('key_hash') as string | undefined;
         if (tenantId) {
-          const keyHash = c.get('key_hash') as string | undefined;
-          recordUsage(tenantId, totalTokens, cost, keyHash);
+          recordUsage(tenantId, totalTokens);
+          recordKeyCost(keyHash || '', cost);
           recordAiCost(cost, providerName, model);
+        }
+
+        // 预付模式扣费
+        const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
+        let remainingBalanceMicroYuan: number | undefined;
+        if (billingMode === 'prepaid' && keyHash) {
+          const costMicroYuan = Math.ceil(cost * 1_000_000);
+          const deductResult = deductBalance(keyHash, costMicroYuan, {
+            request_id: requestId,
+            model,
+            provider: providerName,
+          });
+          remainingBalanceMicroYuan = deductResult.newBalance;
+          if (!deductResult.success) {
+            writeLog('warn', 'Prepaid overdraft in streaming', {
+              key_hash: keyHash,
+              cost_micro_yuan: costMicroYuan,
+              new_balance: deductResult.newBalance,
+            });
+          }
         }
 
         const trl = getTokenRateLimit();
@@ -351,6 +383,7 @@ async function handleStreamingResponse(
             completion_tokens: completionTokens,
             total_tokens: totalTokens,
             cost,
+            ...(remainingBalanceMicroYuan !== undefined ? { balance_micro_yuan: remainingBalanceMicroYuan } : {}),
           },
         };
         controller.enqueue(new TextEncoder().encode('data: ' + JSON.stringify(usageChunk) + '\n\n'));
@@ -472,12 +505,34 @@ async function handleNonStreamingResponse(
   }
 
   const usageSpan = createChildSpan(rootSpan, 'usage_record');
+  let remainingBalanceMicroYuan: number | undefined;
   if (tenantId && response.usage) {
     const cost = getPricingService().calculateCost(processedReq.model, response.usage.prompt_tokens || 0, response.usage.completion_tokens || 0);
     const keyHash = c.get('key_hash') as string | undefined;
-    recordUsage(tenantId, response.usage.total_tokens || 0, cost, keyHash);
+    recordUsage(tenantId, response.usage.total_tokens || 0);
+    recordKeyCost(keyHash || '', cost);
 
     recordAiCost(cost, providerName, model);
+
+    // 预付模式扣费
+    const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
+    if (billingMode === 'prepaid' && keyHash) {
+      const { deductBalance } = await import('../services/wallet');
+      const costMicroYuan = Math.ceil(cost * 1_000_000);
+      const deductResult = deductBalance(keyHash, costMicroYuan, {
+        request_id: c.get('request_id') as string,
+        model,
+        provider: providerName,
+      });
+      remainingBalanceMicroYuan = deductResult.newBalance;
+      if (!deductResult.success) {
+        writeLog('warn', 'Prepaid overdraft in non-streaming', {
+          key_hash: keyHash,
+          cost_micro_yuan: costMicroYuan,
+          new_balance: deductResult.newBalance,
+        });
+      }
+    }
 
     const requestId = c.get('request_id') as string;
     const duration = Date.now() - providerCallStart;
@@ -567,6 +622,9 @@ async function handleNonStreamingResponse(
   }
 
   c.header('X-Gateway-Cost', totalCost.toFixed(6));
+  if (remainingBalanceMicroYuan !== undefined) {
+    c.header('X-Remaining-Balance-Micro-Yuan', remainingBalanceMicroYuan.toString());
+  }
   c.header('X-Session-Id', sessionId);
   c.header('X-Actual-Provider', providerName);
   c.header('X-Actual-Model', processedReq.model);
@@ -728,7 +786,7 @@ async function handleChatCompletion(c: Context): Promise<Response> {
     const req = request as unknown as ChatCompletionRequest;
     const tenantId = c.get('tenant_id');
 
-    const policyError = checkKeyPolicies(c, req, tenantId);
+    const policyError = await checkKeyPolicies(c, req, tenantId);
     if (policyError) return policyError;
 
     const rootSpan = c.get('span');

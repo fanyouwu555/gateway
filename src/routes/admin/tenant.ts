@@ -20,6 +20,7 @@ import { getAllTenantsStats } from '../../services/metrics';
 import { tenantConfigSchema, tenantUpdateSchema, createApiKeySchema, updateKeyPolicySchema } from '../../validation';
 import { auditAdmin } from '../../utils/audit';
 import { getKeyUsage } from '../../services/metrics';
+import { getBalance, rechargeBalance, getTransactions } from '../../services/wallet';
 
 const router = new Hono();
 
@@ -81,7 +82,11 @@ router.get('/v1/tenants/:id/stats', (c: Context) => {
 router.get('/v1/tenants/:id/keys', (c: Context) => {
   const id = c.req.param('id')!;
   const keys = getTenantApiKeys(id);
-  return c.json({ keys });
+  const enriched = keys.map((k) => ({
+    ...k,
+    ...(k.billing_mode === 'prepaid' ? { balance: getBalance(k.key) } : {}),
+  }));
+  return c.json({ keys: enriched });
 });
 
 router.post('/v1/tenants/:id/keys', async (c: Context) => {
@@ -96,16 +101,24 @@ router.post('/v1/tenants/:id/keys', async (c: Context) => {
       },
     }, 400);
   }
-  const { name, expires_at, allowed_models, default_model, rate_limit_qps, rate_limit_burst, monthly_budget, max_tokens_per_request, metadata } = parsed.data;
-  const key = await createTenantApiKey(tenantId, name, expires_at, {
-    allowed_models,
-    default_model,
-    rate_limit_qps,
-    rate_limit_burst,
-    monthly_budget,
-    max_tokens_per_request,
-    metadata,
-  });
+  const { name, expires_at, allowed_models, default_model, rate_limit_qps, rate_limit_burst, monthly_budget, max_tokens_per_request, metadata, billing_mode, balance, subscription_expires_at } = parsed.data;
+  const key = await createTenantApiKey(
+    tenantId,
+    name,
+    expires_at,
+    {
+      allowed_models,
+      default_model,
+      rate_limit_qps,
+      rate_limit_burst,
+      monthly_budget,
+      max_tokens_per_request,
+      metadata,
+      billing_mode,
+      subscription_expires_at,
+    },
+    balance
+  );
   if (!key) {
     return c.json({ error: { message: 'Failed to create API key', type: 'invalid_request_error', code: 'create_failed' } }, 400);
   }
@@ -146,7 +159,8 @@ router.put('/v1/tenants/:id/keys/:keyHash', async (c: Context) => {
       },
     }, 400);
   }
-  const updated = await updateTenantApiKeyPolicy(keyHash, parsed.data);
+  const { balance, ...policyUpdates } = parsed.data;
+  const updated = await updateTenantApiKeyPolicy(keyHash, policyUpdates, balance);
   if (!updated) {
     return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
@@ -189,6 +203,61 @@ router.delete('/v1/tenants/:id', async (c: Context) => {
     return c.json({ error: { message: 'Cannot delete tenant', type: 'invalid_request_error', code: 'delete_failed' } }, 400);
   }
   return c.json({ deleted: true });
+});
+
+// ===== Wallet / Billing Routes =====
+
+router.get('/v1/tenants/:id/keys/:keyHash/balance', (c: Context) => {
+  const keyHash = c.req.param('keyHash')!;
+  const keyMeta = findTenantApiKeyByHash(keyHash);
+  if (!keyMeta) {
+    return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+  const balance = getBalance(keyHash);
+  return c.json({ key: keyMeta, balance_micro_yuan: balance });
+});
+
+router.post('/v1/tenants/:id/keys/:keyHash/recharge', async (c: Context) => {
+  const tenantId = c.req.param('id')!;
+  const keyHash = c.req.param('keyHash')!;
+  const keyMeta = findTenantApiKeyByHash(keyHash);
+  if (!keyMeta) {
+    return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+
+  const body = await c.req.json();
+  const amountYuan = body.amount;
+  if (typeof amountYuan !== 'number' || amountYuan <= 0 || !Number.isFinite(amountYuan)) {
+    return c.json({ error: { message: 'Invalid recharge amount', type: 'invalid_request_error', code: 'invalid_amount' } }, 400);
+  }
+
+  const amountMicroYuan = Math.round(amountYuan * 1_000_000);
+  const result = rechargeBalance(keyHash, amountMicroYuan, body.reason, body.metadata);
+
+  auditAdmin({
+    tenantId,
+    ruleId: 'admin.key_recharged',
+    action: 'allow',
+    metadata: { key_hash: keyHash, amount_micro_yuan: amountMicroYuan, new_balance: result.new_balance_micro_yuan },
+    severity: 'low',
+  });
+
+  return c.json({
+    key: keyMeta,
+    new_balance_micro_yuan: result.new_balance_micro_yuan,
+    transaction: result.transaction,
+  });
+});
+
+router.get('/v1/tenants/:id/keys/:keyHash/transactions', (c: Context) => {
+  const keyHash = c.req.param('keyHash')!;
+  const keyMeta = findTenantApiKeyByHash(keyHash);
+  if (!keyMeta) {
+    return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
+  }
+  const limit = parseInt(c.req.query('limit') || '50', 10);
+  const transactions = getTransactions(keyHash, limit);
+  return c.json({ key: keyMeta, transactions });
 });
 
 export default router;

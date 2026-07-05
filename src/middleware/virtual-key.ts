@@ -39,6 +39,12 @@ export async function virtualKeyMiddleware(c: Context, next: Next): Promise<Resp
   if (keyMeta.max_tokens_per_request !== undefined) {
     c.set('key_max_tokens_per_request', keyMeta.max_tokens_per_request);
   }
+  if (keyMeta.billing_mode) {
+    c.set('key_billing_mode', keyMeta.billing_mode);
+  }
+  if (keyMeta.subscription_expires_at !== undefined) {
+    c.set('key_subscription_expires_at', keyMeta.subscription_expires_at);
+  }
 
   await next();
 }

@@ -10,15 +10,18 @@ import { embeddingRequestSchema } from '../validation';
 import { logError } from '../utils/logger';
 import { recordMetric } from '../services/metrics';
 import { recordUsage } from '../services/quota';
+import { recordKeyCost } from '../services/billing';
 import { getPricingService } from '../services/pricing';
 import { getRequestLogStore } from '../services/request-log';
-import { checkQuota, checkKeyQuota } from '../services/quota';
+import { checkQuota } from '../services/quota';
 import { getTokenRateLimit } from '../services/token-ratelimit';
 import { countCompletionTokens } from '../services/token-counter';
+import { deductBalance } from '../services/wallet';
+import type { IApiKeyMeta } from '../types';
 
 const embedRouter = new Hono();
 
-function checkEmbedKeyPolicies(c: Context, model: string): Response | null {
+async function checkEmbedKeyPolicies(c: Context, model: string): Promise<Response | null> {
   const keyAllowedModels = c.get('key_allowed_models') as string[] | undefined;
   const apiKeyMeta = c.get('api_key_meta') as { default_model?: string } | undefined;
   if (keyAllowedModels && keyAllowedModels.length > 0 && !keyAllowedModels.includes(model)) {
@@ -36,25 +39,34 @@ function checkEmbedKeyPolicies(c: Context, model: string): Response | null {
     }
   }
 
-  const keyMonthlyBudget = c.get('key_monthly_budget') as number | undefined;
-  if (keyMonthlyBudget !== undefined) {
-    const keyHash = c.get('key_hash') as string | undefined;
-    if (keyHash) {
-      const budgetCheck = checkKeyQuota(keyHash, keyMonthlyBudget);
-      if (!budgetCheck.allowed) {
-        return c.json(
-          {
-            error: {
-              message: budgetCheck.reason || 'API key monthly budget exceeded',
-              type: 'rate_limit_error',
-              code: 'budget_exceeded',
-            },
+  // 统一计费检查
+  const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
+  const keyHash = c.get('key_hash') as string | undefined;
+  if (keyHash) {
+    const { checkBilling } = await import('../services/billing');
+    const billingCheck = checkBilling(
+      keyHash,
+      billingMode,
+      c.get('key_monthly_budget'),
+      c.get('key_subscription_expires_at')
+    );
+    if (!billingCheck.allowed) {
+      const statusCode = billingCheck.code === 'subscription_expired' ? 403 : 402;
+      const errorType = billingCheck.code === 'subscription_expired' ? 'authentication_error' : 'rate_limit_error';
+      const code = billingCheck.code || 'insufficient_balance';
+      return c.json(
+        {
+          error: {
+            message: billingCheck.reason || 'Billing check failed',
+            type: errorType,
+            code,
           },
-          429,
-        );
-      }
+        },
+        statusCode,
+      );
     }
   }
+
   return null;
 }
 
@@ -105,7 +117,7 @@ async function handleEmbedding(c: Context): Promise<Response> {
     const tenantId = c.get('tenant_id');
 
     // Key policy check
-    const policyError = checkEmbedKeyPolicies(c, model);
+    const policyError = await checkEmbedKeyPolicies(c, model);
     if (policyError) return policyError;
 
     // 能力校验：确保 Provider 支持 embeddings
@@ -124,7 +136,7 @@ async function handleEmbedding(c: Context): Promise<Response> {
       );
     }
 
-    // Quota check
+    // 配额检查（日请求/日Token，所有模式都生效）
     if (tenantId) {
       const quotaCheck = checkQuota(tenantId);
       if (!quotaCheck.allowed) {
@@ -165,11 +177,25 @@ async function handleEmbedding(c: Context): Promise<Response> {
     const promptTokens = response.usage?.prompt_tokens || 0;
     const totalTokens = response.usage?.total_tokens || 0;
 
+    let remainingBalanceMicroYuan: number | undefined;
     if (tenantId && response.usage) {
       const cost = getPricingService().calculateCost(model, promptTokens, 0);
       const keyHash = c.get('key_hash') as string | undefined;
 
-      recordUsage(tenantId, totalTokens, cost, keyHash);
+      recordUsage(tenantId, totalTokens);
+      recordKeyCost(keyHash || '', cost);
+
+      // 预付模式扣费
+      const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
+      if (billingMode === 'prepaid' && keyHash) {
+        const costMicroYuan = Math.ceil(cost * 1_000_000);
+        const deductResult = deductBalance(keyHash, costMicroYuan, {
+          request_id: c.get('request_id') as string,
+          model,
+          provider: providerName,
+        });
+        remainingBalanceMicroYuan = deductResult.newBalance;
+      }
 
       const requestId = c.get('request_id') as string;
       const duration = Date.now() - providerCallStart;
@@ -216,6 +242,9 @@ async function handleEmbedding(c: Context): Promise<Response> {
     }
 
     c.header('X-Gateway-Cost', totalCost.toFixed(6));
+    if (remainingBalanceMicroYuan !== undefined) {
+      c.header('X-Remaining-Balance-Micro-Yuan', remainingBalanceMicroYuan.toString());
+    }
     return c.json(response, 200);
   } catch (error) {
     const err = error instanceof Error ? error : new Error('Unknown error');

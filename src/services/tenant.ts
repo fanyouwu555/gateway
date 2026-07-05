@@ -39,7 +39,6 @@ export interface TenantSettings {
 export interface TenantLimits {
   daily_requests: number;
   daily_tokens: number;
-  monthly_cost: number;
   max_api_keys: number;
   concurrent_requests: number;
 }
@@ -219,7 +218,6 @@ class TenantStore {
       limits: {
         daily_requests: 1000,
         daily_tokens: 10000000,
-        monthly_cost: 100,
         max_api_keys: 5,
         concurrent_requests: 10,
       },
@@ -243,7 +241,6 @@ class TenantStore {
       limits: tenant.limits || {
         daily_requests: 1000,
         daily_tokens: 100000,
-        monthly_cost: 100,
         max_api_keys: 5,
         concurrent_requests: 10,
       },
@@ -306,7 +303,8 @@ class TenantStore {
     tenantId: TenantId,
     name: string,
     expiresAt?: number,
-    policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
+    policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata' | 'billing_mode' | 'subscription_expires_at'>,
+    initialBalanceMicroYuan?: number
   ): Promise<IApiKeyMeta | null> {
     const tenant = this.tenants.get(tenantId);
     if (!tenant) return null;
@@ -335,6 +333,13 @@ class TenantStore {
     const list = this.keyPrefixIndex.get(prefix) || [];
     list.push(hashedKey);
     this.keyPrefixIndex.set(prefix, list);
+
+    // 如果是预付模式且设置了初始余额，初始化钱包
+    if (policy?.billing_mode === 'prepaid' && initialBalanceMicroYuan !== undefined) {
+      const { setBalance } = await import('../services/wallet');
+      setBalance(hashedKey, initialBalanceMicroYuan);
+    }
+
     await this.persistApiKey(hashedKey);
     // 返回明文 key（调用方需在创建时保存，之后无法再次获取）
     return { ...meta, key: plaintextKey };
@@ -426,7 +431,8 @@ class TenantStore {
    */
   async updateApiKeyPolicy(
     key: string,
-    updates: Partial<Pick<IApiKeyMeta, 'name' | 'expires_at' | 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>>
+    updates: Partial<Pick<IApiKeyMeta, 'name' | 'expires_at' | 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata' | 'billing_mode' | 'subscription_expires_at'>>,
+    balanceMicroYuan?: number
   ): Promise<IApiKeyMeta | null> {
     // 先尝试直接按哈希值查找
     let record = this.apiKeys.get(key);
@@ -440,6 +446,13 @@ class TenantStore {
       ...record.meta,
       ...updates,
     };
+
+    // 如果显式提供了余额，同步更新钱包（不存入 API Key 元数据）
+    if (balanceMicroYuan !== undefined) {
+      const { setBalance } = await import('../services/wallet');
+      setBalance(record.key, balanceMicroYuan);
+    }
+
     this.apiKeys.set(record.key, { ...record, meta: newMeta });
     await this.persistApiKey(record.key);
     return newMeta;
@@ -538,9 +551,9 @@ export async function createTenant(
 ): Promise<TenantConfig> {
   // plan 感知的默认限制
   const planDefaults: Record<string, TenantLimits> = {
-    free:       { daily_requests: 1000, daily_tokens: 100000,  monthly_cost: 100,  max_api_keys: 5,  concurrent_requests: 10 },
-    pro:        { daily_requests: 10000, daily_tokens: 1000000,  monthly_cost: 1000,  max_api_keys: 20,  concurrent_requests: 50 },
-    enterprise: { daily_requests: 100000, daily_tokens: 10000000, monthly_cost: 10000, max_api_keys: 100, concurrent_requests: 200 },
+    free:       { daily_requests: 1000,   daily_tokens: 100000,   max_api_keys: 5,   concurrent_requests: 10 },
+    pro:        { daily_requests: 10000,  daily_tokens: 1000000,  max_api_keys: 20,  concurrent_requests: 50 },
+    enterprise: { daily_requests: 100000, daily_tokens: 10000000, max_api_keys: 100, concurrent_requests: 200 },
   };
 
   const completed: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at'> = {
@@ -590,9 +603,10 @@ export async function createTenantApiKey(
   tenantId: TenantId,
   name: string,
   expiresAt?: number,
-  policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata'>
+  policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata' | 'billing_mode' | 'subscription_expires_at'>,
+  initialBalanceMicroYuan?: number
 ): Promise<IApiKeyMeta | null> {
-  return tenantStore.createApiKey(tenantId, name, expiresAt, policy);
+  return tenantStore.createApiKey(tenantId, name, expiresAt, policy, initialBalanceMicroYuan);
 }
 
 /**
@@ -607,9 +621,10 @@ export function findTenantApiKeyByHash(hash: string): IApiKeyMeta | undefined {
  */
 export async function updateTenantApiKeyPolicy(
   hash: string,
-  updates: Parameters<typeof tenantStore.updateApiKeyPolicy>[1]
+  updates: Parameters<typeof tenantStore.updateApiKeyPolicy>[1],
+  balanceMicroYuan?: number
 ): Promise<IApiKeyMeta | null> {
-  return tenantStore.updateApiKeyPolicy(hash, updates);
+  return tenantStore.updateApiKeyPolicy(hash, updates, balanceMicroYuan);
 }
 
 /**

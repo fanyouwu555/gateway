@@ -10,7 +10,9 @@ import { generateRequestId } from '../utils';
 import { getProviderForModel, getConfig, resolveModelAlias } from '../config';
 import { chatCompleteStream } from '../providers';
 import { writeLog } from '../utils/logger';
-import { checkQuota, recordUsage, checkKeyQuota } from '../services/quota';
+import { checkQuota, recordUsage } from '../services/quota';
+import { deductBalance } from '../services/wallet';
+import { checkBilling, recordKeyCost } from '../services/billing';
 import { runGuardrailPlugins, runRequestPlugins } from '../plugins';
 import { smartRoute, type RouterStrategy } from '../services/router';
 import type { ChatMessage } from '../types';
@@ -58,6 +60,8 @@ export interface WSConnection {
   key_monthly_budget?: number;
   key_max_tokens?: number;
   key_metadata?: Record<string, unknown>;
+  key_billing_mode?: 'competition' | 'subscription' | 'prepaid';
+  key_subscription_expires_at?: number;
 }
 
 /**
@@ -174,6 +178,8 @@ class WebSocketManager {
     key_monthly_budget?: number;
     key_max_tokens?: number;
     key_metadata?: Record<string, unknown>;
+    key_billing_mode?: 'competition' | 'subscription' | 'prepaid';
+    key_subscription_expires_at?: number;
   }): string {
     const id = `ws_${generateRequestId()}`;
 
@@ -476,6 +482,8 @@ export function handleWSConnection(ws: WebSocket, ctx: Context): void {
     key_monthly_budget: ctx.get('key_monthly_budget'),
     key_max_tokens: ctx.get('key_max_tokens_per_request'),
     key_metadata: ctx.get('key_metadata'),
+    key_billing_mode: ctx.get('key_billing_mode'),
+    key_subscription_expires_at: ctx.get('key_subscription_expires_at'),
   });
 
   // 消息处理
@@ -594,16 +602,23 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
       return;
     }
 
-    // 虚拟密钥策略检查：月度预算
-    if (conn.key_monthly_budget !== undefined && conn.key_hash) {
-      const budgetCheck = checkKeyQuota(conn.key_hash, conn.key_monthly_budget);
-      if (!budgetCheck.allowed) {
+    // 统一计费检查
+    if (conn.key_hash) {
+      const billingCheck = checkBilling(
+        conn.key_hash,
+        conn.key_billing_mode,
+        conn.key_monthly_budget,
+        conn.key_subscription_expires_at
+      );
+      if (!billingCheck.allowed) {
+        const errorType = billingCheck.code === 'subscription_expired' ? 'authentication_error' : 'rate_limit_error';
+        const code = billingCheck.code || 'insufficient_balance';
         wsManager.send(connectionId, {
           type: 'error',
           error: {
-            message: budgetCheck.reason || 'API key monthly budget exceeded',
-            type: 'rate_limit_error',
-            code: 'budget_exceeded',
+            message: billingCheck.reason || 'Billing check failed',
+            type: errorType,
+            code,
           },
         });
         return;
@@ -681,7 +696,7 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
       return;
     }
 
-    // 4. 配额检查
+    // 4. 配额检查（日请求/日Token，所有模式都生效）
     const quotaCheck = checkQuota(conn.tenant_id);
     if (!quotaCheck.allowed) {
       wsManager.send(connectionId, {
@@ -796,7 +811,25 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
         if (pricing) {
           cost = (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000;
         }
-        recordUsage(conn.tenant_id, totalTokens, cost);
+        recordUsage(conn.tenant_id, totalTokens);
+        recordKeyCost(conn.key_hash || '', cost);
+
+        // 预付模式扣费
+        if (conn.key_billing_mode === 'prepaid' && conn.key_hash) {
+          const costMicroYuan = Math.ceil(cost * 1_000_000);
+          const deductResult = deductBalance(conn.key_hash, costMicroYuan, {
+            request_id: connectionId,
+            model,
+            provider: providerName,
+          });
+          if (!deductResult.success) {
+            writeLog('warn', 'Prepaid overdraft in WebSocket', {
+              key_hash: conn.key_hash,
+              cost_micro_yuan: costMicroYuan,
+              new_balance: deductResult.newBalance,
+            });
+          }
+        }
       }
     }
 
