@@ -86,6 +86,8 @@ FAILOVER_STORAGE=memory       # health state persistence
 ALERT_STORAGE=memory          # alert rule state
 TENANT_STORAGE=memory         # tenant data
 QUOTA_STORAGE=memory          # quota state
+WALLET_STORAGE=memory         # wallet balances
+BILLING_STORAGE=memory        # key-level monthly cost tracking
 ```
 
 Redis config: `REDIS_URL`, or `REDIS_HOST/PORT/PASSWORD/DB`.

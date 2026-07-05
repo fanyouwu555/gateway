@@ -692,7 +692,6 @@ data: [DONE]
   "limits": {
     "daily_requests": 10000,
     "daily_tokens": 1000000,
-    "monthly_cost": 500,
     "max_api_keys": 10,
     "concurrent_requests": 100
   }

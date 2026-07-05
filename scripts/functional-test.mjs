@@ -152,7 +152,7 @@ async function testAuthAndKeyGeneration() {
       status: 'active',
       plan: 'pro',
       settings: { allowed_providers: ['volcano', 'kimi-code'] },
-      limits: { daily_requests: 1000, daily_tokens: 100000, monthly_cost: 50, max_api_keys: 5, concurrent_requests: 10 },
+      limits: { daily_requests: 1000, daily_tokens: 100000, max_api_keys: 5, concurrent_requests: 10 },
     }),
   });
   record('Create Tenant', tenantRes.status === 201, {

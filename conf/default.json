@@ -69,10 +69,6 @@
     "qps": 10,
     "burst": 20
   },
-  "cost_control": {
-    "monthly_budget": 100,
-    "warn_threshold": 0.8
-  },
   "failover": {
     "enabled": true,
     "failureThreshold": 3,
