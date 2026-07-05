@@ -41,7 +41,6 @@ export interface TenantSettings {
 export interface TenantLimits {
   daily_requests: number
   daily_tokens: number
-  monthly_cost: number
   max_api_keys: number
   concurrent_requests: number
 }
@@ -67,6 +66,22 @@ export interface ApiKey {
   rate_limit_burst?: number
   monthly_budget?: number
   max_tokens_per_request?: number
+  metadata?: Record<string, string>
+  billing_mode?: 'competition' | 'subscription' | 'prepaid'
+  /** 余额（微元），由前端通过 /balance API 填充，不来自后端 key 列表 */
+  balance?: number
+  subscription_expires_at?: number
+}
+
+export interface WalletTransaction {
+  id: string
+  key_hash: string
+  tenant_id: string
+  type: 'recharge' | 'deduct' | 'refund'
+  amount_micro_yuan: number
+  balance_after_micro_yuan: number
+  reason?: string
+  created_at: number
   metadata?: Record<string, string>
 }
 

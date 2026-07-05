@@ -93,7 +93,6 @@ describe('Tenants Page', () => {
         limits: {
           daily_requests: 1000,
           daily_tokens: 100000,
-          monthly_cost: 100,
           max_api_keys: 5,
           concurrent_requests: 10,
         },
@@ -110,7 +109,7 @@ describe('Tenants Page', () => {
           plan: 'pro',
           status: 'active',
           settings: {},
-          limits: { daily_requests: 1000, daily_tokens: 50000, monthly_cost: 10 },
+          limits: { daily_requests: 1000, daily_tokens: 50000 },
         },
       ],
     })

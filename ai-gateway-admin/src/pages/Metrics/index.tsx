@@ -148,7 +148,7 @@ const Metrics: React.FC = () => {
       <Row gutter={[16, 16]}>
         {statsData.map((item, index) => (
           <Col xs={24} sm={12} lg={6} key={index}>
-            <StatsCard title={item.title} value={item.value} suffix={item.suffix} prefix={item.prefix} />
+            <StatsCard title={item.title} value={item.value} suffix={item.suffix} />
           </Col>
         ))}
       </Row>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, Select, Drawer, Descriptions, message, Popconfirm, Typography } from 'antd'
-import { PlusOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CopyOutlined, WarningOutlined } from '@ant-design/icons'
-import { getTenants, getTenantStats, getTenantKeys, createTenant, createTenantKey, updateKeyPolicy, deleteTenant, deleteApiKey, getConfig, getModels } from '@/services/api'
+import { PlusOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CopyOutlined, WarningOutlined, WalletOutlined } from '@ant-design/icons'
+import { getTenants, getTenantStats, getTenantKeys, createTenant, createTenantKey, updateKeyPolicy, deleteTenant, deleteApiKey, getConfig, getModels, rechargeKey } from '@/services/api'
 import type { Tenant, TenantStats, ApiKey } from '@/types'
 
 const planColors: Record<string, string> = {
@@ -38,6 +38,11 @@ const Tenants: React.FC = () => {
   const [editPolicyModalVisible, setEditPolicyModalVisible] = useState(false)
   const [editingKey, setEditingKey] = useState<ApiKey | null>(null)
   const [editPolicyForm] = Form.useForm()
+
+  // Recharge modal
+  const [rechargeModalVisible, setRechargeModalVisible] = useState(false)
+  const [rechargingKey, setRechargingKey] = useState<ApiKey | null>(null)
+  const [rechargeForm] = Form.useForm()
 
   // Copy Key modal
   const [newKeyData, setNewKeyData] = useState<{ key: string; name: string } | null>(null)
@@ -110,7 +115,6 @@ const Tenants: React.FC = () => {
       const limits: Record<string, number> = {}
       if (values.limits?.daily_requests !== undefined) limits.daily_requests = values.limits.daily_requests
       if (values.limits?.daily_tokens !== undefined) limits.daily_tokens = values.limits.daily_tokens
-      if (values.limits?.monthly_cost !== undefined) limits.monthly_cost = values.limits.monthly_cost
       if (values.limits?.max_api_keys !== undefined) limits.max_api_keys = values.limits.max_api_keys
       if (values.limits?.concurrent_requests !== undefined) limits.concurrent_requests = values.limits.concurrent_requests
       if (Object.keys(limits).length > 0) payload.limits = limits
@@ -156,6 +160,9 @@ const Tenants: React.FC = () => {
       if (values.metadata_key) {
         payload.metadata = { [values.metadata_key]: values.metadata_value || '' }
       }
+      if (values.billing_mode) payload.billing_mode = values.billing_mode
+      if (values.balance !== undefined && values.balance !== null) payload.balance = Math.round(values.balance * 1_000_000)
+      if (values.subscription_expires_at) payload.subscription_expires_at = values.subscription_expires_at
       const result = await createTenantKey(currentTenant.tenant_id, payload as Parameters<typeof createTenantKey>[1])
       setNewKeyData({ key: result.key || '', name: values.name || '未命名' })
       message.success('Key 创建成功')
@@ -183,6 +190,9 @@ const Tenants: React.FC = () => {
       max_tokens_per_request: key.max_tokens_per_request,
       metadata_key: key.metadata ? Object.keys(key.metadata)[0] : '',
       metadata_value: key.metadata ? Object.values(key.metadata)[0] : '',
+      billing_mode: key.billing_mode,
+      balance: key.balance !== undefined ? key.balance / 1_000_000 : undefined,
+      subscription_expires_at: key.subscription_expires_at,
     })
     setEditPolicyModalVisible(true)
   }
@@ -204,6 +214,9 @@ const Tenants: React.FC = () => {
       if (values.metadata_key) {
         payload.metadata = { [values.metadata_key]: values.metadata_value || '' }
       }
+      if (values.billing_mode !== undefined) payload.billing_mode = values.billing_mode
+      if (values.balance !== undefined && values.balance !== null) payload.balance = Math.round(values.balance * 1_000_000)
+      if (values.subscription_expires_at !== undefined) payload.subscription_expires_at = values.subscription_expires_at
       await updateKeyPolicy(currentTenant.tenant_id, editingKey.key, payload as Parameters<typeof updateKeyPolicy>[2])
       message.success('策略更新成功')
       setEditPolicyModalVisible(false)
@@ -305,11 +318,29 @@ const Tenants: React.FC = () => {
         record.rate_limit_qps ? `${record.rate_limit_qps}/${record.rate_limit_burst || '-'}` : '-',
     },
     {
-      title: '月预算',
-      key: 'monthly_budget',
+      title: '计费模式',
+      key: 'billing_mode',
       width: 90,
       render: (_value: unknown, record: ApiKey) =>
-        record.monthly_budget ? <span>${record.monthly_budget}</span> : '-',
+        record.billing_mode ? (
+          <Tag color={record.billing_mode === 'competition' ? 'green' : record.billing_mode === 'subscription' ? 'blue' : 'orange'}>
+            {record.billing_mode === 'competition' ? '比赛' : record.billing_mode === 'subscription' ? '包月' : '预付'}
+          </Tag>
+        ) : '-',
+    },
+    {
+      title: '余额 / 过期时间',
+      key: 'balance',
+      width: 140,
+      render: (_value: unknown, record: ApiKey) => {
+        if (record.billing_mode === 'prepaid') {
+          return `¥${((record.balance || 0) / 1_000_000).toFixed(2)}`
+        }
+        if (record.billing_mode === 'subscription' && record.subscription_expires_at) {
+          return `过期: ${new Date(record.subscription_expires_at).toLocaleDateString()}`
+        }
+        return '-'
+      },
     },
     {
       title: '单次 Max Tokens',
@@ -327,9 +358,17 @@ const Tenants: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 180,
       render: (_value: unknown, record: ApiKey) => (
         <Space size="small">
+          <Button
+            size="small"
+            icon={<WalletOutlined />}
+            disabled={record.billing_mode !== 'prepaid'}
+            onClick={() => { setRechargingKey(record); rechargeForm.resetFields(); setRechargeModalVisible(true) }}
+          >
+            充值
+          </Button>
           <Button size="small" icon={<EditOutlined />} onClick={() => handleEditPolicy(record)}>
             策略
           </Button>
@@ -416,9 +455,6 @@ const Tenants: React.FC = () => {
           <Form.Item label="日 Token 限制" name={['limits', 'daily_tokens']} initialValue={100000}>
             <InputNumber min={1} style={{ width: '100%' }} placeholder="100000" />
           </Form.Item>
-          <Form.Item label="月预算（元）" name={['limits', 'monthly_cost']} initialValue={100}>
-            <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="100" />
-          </Form.Item>
           <Form.Item label="最大 API Keys" name={['limits', 'max_api_keys']} initialValue={5}>
             <InputNumber min={1} style={{ width: '100%' }} placeholder="5" />
           </Form.Item>
@@ -482,6 +518,19 @@ const Tenants: React.FC = () => {
               <Input placeholder="u123" />
             </Form.Item>
           </Space>
+          <Form.Item label="计费模式" name="billing_mode">
+            <Select placeholder="请选择计费模式" allowClear>
+              <Select.Option value="competition">比赛（免费）</Select.Option>
+              <Select.Option value="subscription">包月</Select.Option>
+              <Select.Option value="prepaid">预付</Select.Option>
+            </Select>
+          </Form.Item>
+          <Form.Item label="初始余额（元）" name="balance">
+            <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="仅预付模式有效" />
+          </Form.Item>
+          <Form.Item label="订阅过期时间（时间戳 ms）" name="subscription_expires_at">
+            <InputNumber min={Date.now()} style={{ width: '100%' }} placeholder="仅包月模式有效" />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -537,6 +586,52 @@ const Tenants: React.FC = () => {
               <Input placeholder="u123" />
             </Form.Item>
           </Space>
+          <Form.Item label="计费模式" name="billing_mode">
+            <Select placeholder="请选择计费模式" allowClear>
+              <Select.Option value="competition">比赛（免费）</Select.Option>
+              <Select.Option value="subscription">包月</Select.Option>
+              <Select.Option value="prepaid">预付</Select.Option>
+            </Select>
+          </Form.Item>
+          <Form.Item label="余额（元）" name="balance">
+            <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="仅预付模式有效，修改会覆盖余额" />
+          </Form.Item>
+          <Form.Item label="订阅过期时间（时间戳 ms）" name="subscription_expires_at">
+            <InputNumber min={Date.now()} style={{ width: '100%' }} placeholder="仅包月模式有效" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 充值弹窗 */}
+      <Modal
+        title="充值余额"
+        open={rechargeModalVisible}
+        onOk={async () => {
+          if (!currentTenant || !rechargingKey) return
+          try {
+            const values = await rechargeForm.validateFields()
+            await rechargeKey(currentTenant.tenant_id, rechargingKey.key, {
+              amount: values.amount,
+              reason: values.reason,
+            })
+            message.success('充值成功')
+            setRechargeModalVisible(false)
+            const keysData = await getTenantKeys(currentTenant.tenant_id)
+            setApiKeys(keysData.keys || [])
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+            message.error(errMsg || '充值失败')
+          }
+        }}
+        onCancel={() => setRechargeModalVisible(false)}
+      >
+        <Form form={rechargeForm} layout="vertical">
+          <Form.Item label="充值金额（元）" name="amount" rules={[{ required: true, message: '请输入充值金额' }]}>
+            <InputNumber min={0.01} step={0.01} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="备注" name="reason">
+            <Input placeholder="可选" />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -554,7 +649,6 @@ const Tenants: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="日请求限制">{currentTenant.limits?.daily_requests}</Descriptions.Item>
             <Descriptions.Item label="日 Token 限制">{currentTenant.limits?.daily_tokens}</Descriptions.Item>
-            <Descriptions.Item label="月预算">¥{currentTenant.limits?.monthly_cost}</Descriptions.Item>
           </Descriptions>
         )}
         {tenantStats && (

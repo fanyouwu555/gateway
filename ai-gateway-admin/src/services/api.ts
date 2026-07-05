@@ -6,6 +6,7 @@ import type {
   Tenant,
   TenantStats,
   ApiKey,
+  WalletTransaction,
   DashboardOverview,
   TimeSeriesPoint,
   ProviderStats,
@@ -202,7 +203,6 @@ export async function createTenant(data: {
   limits?: {
     daily_requests?: number
     daily_tokens?: number
-    monthly_cost?: number
     max_api_keys?: number
     concurrent_requests?: number
   }
@@ -220,7 +220,23 @@ export async function deleteTenant(id: string): Promise<Record<string, unknown>>
 
 // ============ API Keys ============
 export async function getTenantKeys(tenantId: string): Promise<{ keys?: ApiKey[] }> {
-  return get<{ keys?: ApiKey[] }>(`/v1/tenants/${tenantId}/keys`)
+  const result = await get<{ keys?: ApiKey[] }>(`/v1/tenants/${tenantId}/keys`)
+  const keys = result.keys || []
+  // 对预付模式 Key 单独获取余额（后端不在 key 元数据中返回余额）
+  const enriched = await Promise.all(
+    keys.map(async (key) => {
+      if (key.billing_mode === 'prepaid') {
+        try {
+          const balanceData = await getKeyBalance(tenantId, key.key)
+          return { ...key, balance: balanceData.balance_micro_yuan }
+        } catch {
+          return key
+        }
+      }
+      return key
+    })
+  )
+  return { keys: enriched }
 }
 
 export async function createTenantKey(tenantId: string, data: {
@@ -232,6 +248,9 @@ export async function createTenantKey(tenantId: string, data: {
   monthly_budget?: number
   max_tokens_per_request?: number
   metadata?: Record<string, string>
+  billing_mode?: 'competition' | 'subscription' | 'prepaid'
+  balance?: number
+  subscription_expires_at?: number
 }): Promise<{ key?: string }> {
   return post<{ key?: string }>(`/v1/tenants/${tenantId}/keys`, data)
 }
@@ -245,12 +264,31 @@ export async function updateKeyPolicy(tenantId: string, keyHash: string, data: {
   monthly_budget?: number
   max_tokens_per_request?: number
   metadata?: Record<string, string>
+  billing_mode?: 'competition' | 'subscription' | 'prepaid'
+  balance?: number
+  subscription_expires_at?: number
 }): Promise<Record<string, unknown>> {
   return put<Record<string, unknown>>(`/v1/tenants/${tenantId}/keys/${encodeURIComponent(keyHash)}`, data)
 }
 
 export async function deleteApiKey(key: string): Promise<Record<string, unknown>> {
   return del<Record<string, unknown>>(`/v1/keys/${key}`)
+}
+
+export async function getKeyBalance(tenantId: string, keyHash: string): Promise<{ key: ApiKey; balance_micro_yuan: number }> {
+  return get<{ key: ApiKey; balance_micro_yuan: number }>(`/v1/tenants/${tenantId}/keys/${encodeURIComponent(keyHash)}/balance`)
+}
+
+export async function rechargeKey(tenantId: string, keyHash: string, data: {
+  amount: number
+  reason?: string
+  metadata?: Record<string, string>
+}): Promise<{ key: ApiKey; new_balance_micro_yuan: number; transaction: WalletTransaction }> {
+  return post<{ key: ApiKey; new_balance_micro_yuan: number; transaction: WalletTransaction }>(`/v1/tenants/${tenantId}/keys/${encodeURIComponent(keyHash)}/recharge`, data)
+}
+
+export async function getKeyTransactions(tenantId: string, keyHash: string, limit = 50): Promise<{ key: ApiKey; transactions: WalletTransaction[] }> {
+  return get<{ key: ApiKey; transactions: WalletTransaction[] }>(`/v1/tenants/${tenantId}/keys/${encodeURIComponent(keyHash)}/transactions?limit=${limit}`)
 }
 
 // ============ Provider ============
