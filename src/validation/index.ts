@@ -86,23 +86,27 @@ export const embeddingRequestSchema = z.object({
 
 // ===== Tenant Config (for admin API) =====
 
+export const tenantSettingsSchema = z.object({
+  default_provider: z.string().optional(),
+  allowed_providers: z.array(z.string()).optional(),
+  allowed_models: z.array(z.string()).optional(),
+  webhook_url: z.string().url().optional(),
+  notification_email: z.string().email().optional(),
+});
+
+export const tenantLimitsSchema = z.object({
+  daily_requests: z.number().int().positive(),
+  daily_tokens: z.number().int().positive(),
+  max_api_keys: z.number().int().positive(),
+  concurrent_requests: z.number().int().positive(),
+});
+
 export const tenantConfigSchema = z.object({
   name: z.string().min(1),
   status: z.enum(['active', 'suspended', 'trial']),
   plan: z.enum(['free', 'pro', 'enterprise']),
-  settings: z.object({
-    default_provider: z.string().optional(),
-    allowed_providers: z.array(z.string()).optional(),
-    allowed_models: z.array(z.string()).optional(),
-    webhook_url: z.string().url().optional(),
-    notification_email: z.string().email().optional(),
-  }).optional(),
-  limits: z.object({
-    daily_requests: z.number().int().positive(),
-    daily_tokens: z.number().int().positive(),
-    max_api_keys: z.number().int().positive(),
-    concurrent_requests: z.number().int().positive(),
-  }).optional(),
+  settings: tenantSettingsSchema.optional(),
+  limits: tenantLimitsSchema.optional(),
 });
 
 export const tenantUpdateSchema = z.object({
