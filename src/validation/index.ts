@@ -147,6 +147,27 @@ export const updateKeyPolicySchema = z.object({
   subscription_expires_at: z.number().int().positive().optional(),
 });
 
+// ===== Tenant Template =====
+
+export const tenantTemplateSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  is_default: z.boolean().optional(),
+  tenant: z.object({
+    plan: z.enum(['free', 'pro', 'enterprise']),
+    status: z.enum(['active', 'suspended', 'trial']),
+    settings: tenantSettingsSchema.optional(),
+    limits: tenantLimitsSchema.optional(),
+  }),
+  default_key: createApiKeySchema.extend({
+    name: z.string().min(1),
+  }).optional(),
+});
+
+export const tenantTemplateUpdateSchema = tenantTemplateSchema.partial().extend({
+  name: z.string().min(1).optional(),
+});
+
 // ===== Gateway Config Update =====
 
 const providerConfigSchema = z.object({

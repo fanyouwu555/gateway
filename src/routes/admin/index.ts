@@ -11,6 +11,7 @@ import promptRouter from './prompt';
 import pluginRouter from './plugin';
 import alertRouter from './alert';
 import systemRouter from './system';
+import tenantTemplateRouter from './tenant-template';
 
 const adminRouter = new Hono();
 adminRouter.use('*', requireAdmin);
@@ -18,6 +19,7 @@ adminRouter.use('*', requireAdmin);
 // 挂载各领域的 admin 子路由
 adminRouter.route('/', usageRouter);
 adminRouter.route('/', tenantRouter);
+adminRouter.route('/', tenantTemplateRouter);
 adminRouter.route('/', configRouter);
 adminRouter.route('/', promptRouter);
 adminRouter.route('/', pluginRouter);
