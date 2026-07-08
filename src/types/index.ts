@@ -309,7 +309,7 @@ export interface ITenantTemplate {
   };
 
   default_key?: {
-    name: string;
+    name?: string;
     billing_mode?: 'competition' | 'subscription' | 'prepaid';
     balance?: number;
     allowed_models?: string[];

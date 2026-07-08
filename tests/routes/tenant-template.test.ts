@@ -140,6 +140,43 @@ describe('Tenant Template Routes', () => {
     expect(body.name).toBe('Enterprise');
   });
 
+  it('updates a template with partial nested fields', async () => {
+    const createRes = await app.request('/v1/tenant-templates', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${ADMIN_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Pro',
+        tenant: { plan: 'pro', status: 'active' },
+        default_key: { name: 'Key' },
+      }),
+    });
+    const created = await createRes.json() as { template_id: string };
+
+    const updateRes = await app.request(`/v1/tenant-templates/${created.template_id}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${ADMIN_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tenant: { plan: 'enterprise' },
+        default_key: { balance: 100 },
+      }),
+    });
+    expect(updateRes.status).toBe(200);
+    const body = await updateRes.json() as {
+      tenant: { plan: string; status: string };
+      default_key: { name: string; balance: number };
+    };
+    expect(body.tenant.plan).toBe('enterprise');
+    expect(body.tenant.status).toBe('active');
+    expect(body.default_key.name).toBe('Key');
+    expect(body.default_key.balance).toBe(100);
+  });
+
   it('returns 404 when updating missing template', async () => {
     const res = await app.request('/v1/tenant-templates/missing-id', {
       method: 'PUT',

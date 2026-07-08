@@ -149,23 +149,31 @@ export const updateKeyPolicySchema = z.object({
 
 // ===== Tenant Template =====
 
+const tenantTemplateTenantSchema = z.object({
+  plan: z.enum(['free', 'pro', 'enterprise']),
+  status: z.enum(['active', 'suspended', 'trial']),
+  settings: tenantSettingsSchema.optional(),
+  limits: tenantLimitsSchema.optional(),
+});
+
 export const tenantTemplateSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   is_default: z.boolean().optional(),
-  tenant: z.object({
-    plan: z.enum(['free', 'pro', 'enterprise']),
-    status: z.enum(['active', 'suspended', 'trial']),
-    settings: tenantSettingsSchema.optional(),
-    limits: tenantLimitsSchema.optional(),
-  }),
+  tenant: tenantTemplateTenantSchema,
   default_key: createApiKeySchema.extend({
     name: z.string().min(1),
   }).optional(),
 });
 
-export const tenantTemplateUpdateSchema = tenantTemplateSchema.partial().extend({
+export const tenantTemplateUpdateSchema = z.object({
   name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  is_default: z.boolean().optional(),
+  tenant: tenantTemplateTenantSchema.partial().optional(),
+  default_key: createApiKeySchema.extend({
+    name: z.string().min(1),
+  }).partial().optional(),
 });
 
 // ===== Gateway Config Update =====

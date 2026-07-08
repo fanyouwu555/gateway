@@ -3,6 +3,11 @@ import { generateRequestId, shouldUseRedis } from '../utils';
 import { writeLog } from '../utils/logger';
 import { createKVStore } from '../stores/factory';
 
+type TenantTemplateUpdate = Omit<Partial<Omit<ITenantTemplate, 'template_id' | 'created_at'>>, 'tenant' | 'default_key'> & {
+  tenant?: Partial<ITenantTemplate['tenant']>;
+  default_key?: Partial<NonNullable<ITenantTemplate['default_key']>>;
+};
+
 class TenantTemplateStore {
   private templates = new Map<string, ITenantTemplate>();
   private useRedis = false;
@@ -102,13 +107,15 @@ class TenantTemplateStore {
     return this.templates.get(templateId) || null;
   }
 
-  async update(templateId: string, updates: Partial<Omit<ITenantTemplate, 'template_id' | 'created_at'>>): Promise<ITenantTemplate | null> {
+  async update(templateId: string, updates: TenantTemplateUpdate): Promise<ITenantTemplate | null> {
     const template = this.templates.get(templateId);
     if (!template) return null;
 
     const updated: ITenantTemplate = {
       ...template,
       ...updates,
+      tenant: updates.tenant ? { ...template.tenant, ...updates.tenant } : template.tenant,
+      default_key: updates.default_key ? { ...(template.default_key ?? {}), ...updates.default_key } : template.default_key,
       updated_at: Date.now(),
     };
     this.templates.set(templateId, updated);
@@ -162,7 +169,7 @@ export function getTenantTemplate(templateId: string): ITenantTemplate | null {
 
 export async function updateTenantTemplate(
   templateId: string,
-  updates: Partial<Omit<ITenantTemplate, 'template_id' | 'created_at'>>
+  updates: TenantTemplateUpdate
 ): Promise<ITenantTemplate | null> {
   return store.update(templateId, updates);
 }
