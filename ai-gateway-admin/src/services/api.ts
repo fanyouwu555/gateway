@@ -25,6 +25,8 @@ import type {
   DiscoverModelsResponse,
   DiscoverAllResponse,
   ModelListItem,
+  TenantTemplate,
+  CreateTenantData,
 } from '@/types'
 
 const api = axios.create({
@@ -177,6 +179,23 @@ export async function getRouterStatus(): Promise<RouterStatusData> {
   return get<RouterStatusData>('/v1/router/status')
 }
 
+// ============ 租户模板 ============
+export async function getTenantTemplates(): Promise<{ templates: TenantTemplate[] }> {
+  return get<{ templates: TenantTemplate[] }>('/v1/tenant-templates')
+}
+
+export async function createTenantTemplate(data: Omit<TenantTemplate, 'template_id' | 'created_at' | 'updated_at'>): Promise<TenantTemplate> {
+  return post<TenantTemplate>('/v1/tenant-templates', data)
+}
+
+export async function updateTenantTemplate(id: string, data: Partial<Omit<TenantTemplate, 'template_id' | 'created_at'>>): Promise<TenantTemplate> {
+  return put<TenantTemplate>(`/v1/tenant-templates/${id}`, data)
+}
+
+export async function deleteTenantTemplate(id: string): Promise<{ deleted: boolean }> {
+  return del<{ deleted: boolean }>(`/v1/tenant-templates/${id}`)
+}
+
 // ============ 租户 ============
 export async function getTenants(): Promise<{ tenants?: Tenant[] }> {
   return get<{ tenants?: Tenant[] }>('/v1/tenants')
@@ -190,24 +209,16 @@ export async function getTenantStats(id: string): Promise<TenantStats> {
   return get<TenantStats>(`/v1/tenants/${id}/stats`)
 }
 
-export async function createTenant(data: {
-  name: string
-  plan: string
-  status: string
-  settings?: {
-    default_provider?: string
-    allowed_providers?: string[]
-    allowed_models?: string[]
-    webhook_url?: string
-  }
-  limits?: {
-    daily_requests?: number
-    daily_tokens?: number
-    max_api_keys?: number
-    concurrent_requests?: number
-  }
-}): Promise<Tenant> {
-  return post<Tenant>('/v1/tenants', data)
+export async function createTenant(data: CreateTenantData): Promise<{
+  tenant: Tenant
+  default_key?: ApiKey
+  default_key_error?: { message: string; code: string }
+}> {
+  return post<{
+    tenant: Tenant
+    default_key?: ApiKey
+    default_key_error?: { message: string; code: string }
+  }>('/v1/tenants', data)
 }
 
 export async function updateTenant(id: string, data: TenantUpdateData): Promise<Tenant> {
