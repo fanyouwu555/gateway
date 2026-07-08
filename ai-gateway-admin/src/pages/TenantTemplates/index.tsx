@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, Select, Switch, Collapse, message } from 'antd'
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import {
@@ -9,7 +9,7 @@ import {
   getConfig,
   getModels,
 } from '@/services/api'
-import type { TenantTemplate, DefaultKeyPolicy, TenantSettings, TenantLimits } from '@/types'
+import type { TenantTemplate, DefaultKeyPolicy, TenantSettings, TenantLimits, ModelListItem } from '@/types'
 
 const planColors: Record<string, string> = {
   free: 'default',
@@ -36,12 +36,52 @@ const TenantTemplates: React.FC = () => {
   const [editingTemplate, setEditingTemplate] = useState<TenantTemplate | null>(null)
   const [form] = Form.useForm()
   const [providerOptions, setProviderOptions] = useState<string[]>([])
-  const [modelOptions, setModelOptions] = useState<string[]>([])
+  const [modelList, setModelList] = useState<ModelListItem[]>([])
+  const watchedDefaultProvider = Form.useWatch('default_provider', form)
+  const watchedAllowedProviders = Form.useWatch('allowed_providers', form)
   const watchedAllowedModels = Form.useWatch('allowed_models', form)
-  const keyModelOptions = (watchedAllowedModels && watchedAllowedModels.length > 0
-    ? (watchedAllowedModels as string[])
-    : modelOptions
+
+  const selectedProviders = useMemo(() => {
+    const providers = (watchedAllowedProviders as string[] | undefined) || []
+    if (providers.length > 0) return providers
+    if (watchedDefaultProvider) return [watchedDefaultProvider as string]
+    return []
+  }, [watchedAllowedProviders, watchedDefaultProvider])
+
+  const providerFilteredModels = useMemo(() => {
+    if (selectedProviders.length === 0) return modelList
+    return modelList.filter((m) => selectedProviders.includes(m.owned_by))
+  }, [modelList, selectedProviders])
+
+  const tenantModelOptions = providerFilteredModels.map((m) => m.id)
+  const keyModelOptions = (watchedAllowedModels && (watchedAllowedModels as string[]).length > 0
+    ? (watchedAllowedModels as string[]).filter((m) => tenantModelOptions.includes(m))
+    : tenantModelOptions
   ).map((m) => ({ label: m, value: m }))
+
+  useEffect(() => {
+    if (modelList.length === 0) return
+    const values = form.getFieldsValue()
+    const next: Record<string, unknown> = {}
+    const allowedModels = (values.allowed_models as string[] | undefined) || []
+    const filteredAllowedModels = allowedModels.filter((m) => tenantModelOptions.includes(m))
+    if (filteredAllowedModels.length !== allowedModels.length) {
+      next.allowed_models = filteredAllowedModels
+    }
+    const defaultKeyAllowedModels = (values.default_key_allowed_models as string[] | undefined) || []
+    const filteredKeyAllowedModels = defaultKeyAllowedModels.filter((m) =>
+      keyModelOptions.some((opt) => opt.value === m)
+    )
+    if (filteredKeyAllowedModels.length !== defaultKeyAllowedModels.length) {
+      next.default_key_allowed_models = filteredKeyAllowedModels
+    }
+    if (values.default_model && !keyModelOptions.some((opt) => opt.value === values.default_model)) {
+      next.default_model = undefined
+    }
+    if (Object.keys(next).length > 0) {
+      form.setFieldsValue(next)
+    }
+  }, [tenantModelOptions, keyModelOptions, modelList.length, form])
 
   const fetchTemplates = async () => {
     setLoading(true)
@@ -65,8 +105,7 @@ const TenantTemplates: React.FC = () => {
       const [configData, modelsData] = await Promise.all([getConfig(), getModels()])
       const providers = Object.keys(configData.providers || {})
       setProviderOptions(providers)
-      const models = (modelsData.data || []).map((m: { id: string }) => m.id)
-      setModelOptions(models)
+      setModelList(modelsData.data || [])
     } catch {
       // 静默失败，不影响主流程
     }
@@ -339,7 +378,7 @@ const TenantTemplates: React.FC = () => {
               placeholder="请选择允许的模型"
               allowClear
               showSearch
-              options={modelOptions.map((m) => ({ label: m, value: m }))}
+              options={tenantModelOptions.map((m) => ({ label: m, value: m }))}
             />
           </Form.Item>
           <Form.Item label="Webhook URL" name="webhook_url">
