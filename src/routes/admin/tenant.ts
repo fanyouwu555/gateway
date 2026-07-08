@@ -16,8 +16,9 @@ import {
   findTenantApiKeyByHash,
   updateTenantApiKeyPolicy,
 } from '../../services/tenant';
+import { getTenantTemplate } from '../../services/tenant-template';
 import { getAllTenantsStats } from '../../services/metrics';
-import { tenantConfigSchema, tenantUpdateSchema, createApiKeySchema, updateKeyPolicySchema } from '../../validation';
+import { tenantUpdateSchema, createApiKeySchema, updateKeyPolicySchema, createTenantWithTemplateSchema } from '../../validation';
 import { auditAdmin } from '../../utils/audit';
 import { getKeyUsage } from '../../services/metrics';
 import { getBalance, rechargeBalance, getTransactions } from '../../services/wallet';
@@ -30,7 +31,7 @@ router.get('/v1/tenants', (c: Context) => {
 });
 
 router.post('/v1/tenants', async (c: Context) => {
-  const parsed = tenantConfigSchema.safeParse(await c.req.json());
+  const parsed = createTenantWithTemplateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({
       error: {
@@ -40,11 +41,83 @@ router.post('/v1/tenants', async (c: Context) => {
       },
     }, 400);
   }
-  const tenant = await createTenant(parsed.data);
+
+  const { template_id, create_default_key, ...tenantInput } = parsed.data;
+
+  let template: ReturnType<typeof getTenantTemplate> = null;
+  if (template_id) {
+    template = getTenantTemplate(template_id);
+    if (!template) {
+      return c.json({ error: { message: 'Template not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
+    }
+  }
+
+  const mergedTenant = {
+    name: tenantInput.name,
+    plan: tenantInput.plan ?? template?.tenant.plan ?? 'free',
+    status: tenantInput.status ?? template?.tenant.status ?? 'active',
+    settings: { ...template?.tenant.settings, ...tenantInput.settings },
+    limits: { ...template?.tenant.limits, ...tenantInput.limits },
+  };
+
+  const tenant = await createTenant(mergedTenant);
   if (!tenant) {
     return c.json({ error: { message: 'Failed to create tenant', type: 'invalid_request_error', code: 'create_failed' } }, 400);
   }
-  return c.json(tenant, 201);
+
+  const response: {
+    tenant: typeof tenant;
+    default_key?: Awaited<ReturnType<typeof createTenantApiKey>>;
+    default_key_error?: { message: string; code: string };
+  } = { tenant };
+
+  if (create_default_key) {
+    const keyPolicy = template?.default_key;
+    const keyName = keyPolicy?.name ?? 'default';
+    const key = await createTenantApiKey(
+      tenant.tenant_id,
+      keyName,
+      keyPolicy?.expires_at,
+      {
+        allowed_models: keyPolicy?.allowed_models,
+        default_model: keyPolicy?.default_model,
+        rate_limit_qps: keyPolicy?.rate_limit_qps,
+        rate_limit_burst: keyPolicy?.rate_limit_burst,
+        monthly_budget: keyPolicy?.monthly_budget,
+        max_tokens_per_request: keyPolicy?.max_tokens_per_request,
+        metadata: keyPolicy?.metadata,
+        billing_mode: keyPolicy?.billing_mode ?? 'competition',
+        subscription_expires_at: keyPolicy?.subscription_expires_at,
+      },
+      keyPolicy?.balance
+    );
+
+    if (key) {
+      response.default_key = key;
+      auditAdmin({
+        tenantId: tenant.tenant_id,
+        ruleId: 'admin.key_created',
+        action: 'allow',
+        metadata: { key_name: key.name, source: 'template_default', template_id },
+        severity: 'low',
+      });
+    } else {
+      response.default_key_error = {
+        message: 'Failed to create default API key. The tenant was created successfully; please create a key manually.',
+        code: 'default_key_failed',
+      };
+    }
+  }
+
+  auditAdmin({
+    ruleId: 'admin.tenant_created',
+    action: 'allow',
+    tenantId: tenant.tenant_id,
+    metadata: { template_id, create_default_key },
+    severity: 'low',
+  });
+
+  return c.json(response, 201);
 });
 
 router.get('/v1/tenants/:id', (c: Context) => {

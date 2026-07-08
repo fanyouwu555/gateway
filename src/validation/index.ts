@@ -176,6 +176,13 @@ export const tenantTemplateUpdateSchema = z.object({
   }).partial().optional(),
 });
 
+export const createTenantWithTemplateSchema = tenantConfigSchema
+  .extend({
+    template_id: z.string().optional(),
+    create_default_key: z.boolean().optional(),
+  })
+  .partial({ status: true, plan: true });
+
 // ===== Gateway Config Update =====
 
 const providerConfigSchema = z.object({

@@ -154,8 +154,8 @@ describe('DefaultModel Alias End-to-End', () => {
       }),
     });
     expect(tenantRes.status).toBe(201);
-    const tenantBody = (await tenantRes.json()) as { tenant_id: string };
-    const tenantId = tenantBody.tenant_id;
+    const tenantBody = (await tenantRes.json()) as { tenant: { tenant_id: string } };
+    const tenantId = tenantBody.tenant.tenant_id;
 
     const keyRes = await app.request(`/v1/tenants/${tenantId}/keys`, {
       method: 'POST',

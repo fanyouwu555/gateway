@@ -148,10 +148,10 @@ describe('API Key Lifecycle End-to-End', () => {
       });
 
       expect(tenantRes.status).toBe(201);
-      const tenantBody = (await tenantRes.json()) as { tenant_id: string; name: string };
-      expect(tenantBody.tenant_id).toMatch(/^tenant_/);
-      expect(tenantBody.name).toBe('My Product');
-      const tenantId = tenantBody.tenant_id;
+      const tenantBody = (await tenantRes.json()) as { tenant: { tenant_id: string; name: string } };
+      expect(tenantBody.tenant.tenant_id).toMatch(/^tenant_/);
+      expect(tenantBody.tenant.name).toBe('My Product');
+      const tenantId = tenantBody.tenant.tenant_id;
 
       // Step 2: Create an API key for this tenant
       const keyRes = await app.request(`/v1/tenants/${tenantId}/keys`, {
@@ -220,8 +220,8 @@ describe('API Key Lifecycle End-to-End', () => {
           },
         }),
       });
-      const tenantBody = (await tenantRes.json()) as { tenant_id: string };
-      const tenantId = tenantBody.tenant_id;
+      const tenantBody = (await tenantRes.json()) as { tenant: { tenant_id: string } };
+      const tenantId = tenantBody.tenant.tenant_id;
 
       const keyRes = await app.request(`/v1/tenants/${tenantId}/keys`, {
         method: 'POST',

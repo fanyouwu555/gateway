@@ -526,7 +526,7 @@ export async function flushTenantStore(): Promise<void> {
  * 创建租户
  */
 export async function createTenant(
-  tenant: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at' | 'settings' | 'limits'> & { settings?: TenantSettings; limits?: TenantLimits }
+  tenant: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at' | 'settings' | 'limits'> & { settings?: TenantSettings; limits?: Partial<TenantLimits> }
 ): Promise<TenantConfig> {
   // plan 感知的默认限制
   const planDefaults: Record<string, TenantLimits> = {
@@ -537,8 +537,8 @@ export async function createTenant(
 
   const completed: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at'> = {
     ...tenant,
-    settings: tenant.settings || { allowed_providers: ['openai'] },
-    limits: tenant.limits || planDefaults[tenant.plan] || planDefaults.free,
+    settings: { allowed_providers: ['openai'], ...tenant.settings },
+    limits: { ...planDefaults[tenant.plan], ...tenant.limits },
   };
 
   return tenantStore.create(completed);
