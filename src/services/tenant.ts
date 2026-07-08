@@ -3,7 +3,7 @@
  * 租户配置、API Key管理、配额控制
  * 支持内存存储（默认）和 Redis 持久化（可选）
  */
-import type { TenantId, IApiKeyMeta } from '../types';
+import type { TenantId, IApiKeyMeta, TenantSettings, TenantLimits } from '../types';
 import { generateRequestId, hashApiKey, verifyApiKey, generateSecureRandomString, shouldUseRedis } from '../utils';
 import { writeLog } from '../utils/logger';
 import { createKVStore } from '../stores/factory';
@@ -20,27 +20,6 @@ export interface TenantConfig {
   updated_at: number;
   settings: TenantSettings;
   limits: TenantLimits;
-}
-
-/**
- * 租户设置
- */
-export interface TenantSettings {
-  default_provider?: string;
-  allowed_providers?: string[];
-  allowed_models?: string[];
-  webhook_url?: string;
-  notification_email?: string;
-}
-
-/**
- * 租户限制
- */
-export interface TenantLimits {
-  daily_requests: number;
-  daily_tokens: number;
-  max_api_keys: number;
-  concurrent_requests: number;
 }
 
 /**

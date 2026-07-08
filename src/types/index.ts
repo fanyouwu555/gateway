@@ -275,6 +275,58 @@ export interface IAuthResult {
   error?: string;
 }
 
+// ===== 租户类型 =====
+
+/** 租户设置 */
+export interface TenantSettings {
+  default_provider?: string;
+  allowed_providers?: string[];
+  allowed_models?: string[];
+  webhook_url?: string;
+  notification_email?: string;
+}
+
+/** 租户限制 */
+export interface TenantLimits {
+  daily_requests: number;
+  daily_tokens: number;
+  max_api_keys: number;
+  concurrent_requests: number;
+}
+
+/** 租户模板 */
+export interface ITenantTemplate {
+  template_id: string;
+  name: string;
+  description?: string;
+  is_default?: boolean;
+
+  tenant: {
+    plan: 'free' | 'pro' | 'enterprise';
+    status: 'active' | 'suspended' | 'trial';
+    settings?: TenantSettings;
+    limits?: TenantLimits;
+  };
+
+  default_key?: {
+    name: string;
+    billing_mode?: 'competition' | 'subscription' | 'prepaid';
+    balance?: number;
+    allowed_models?: string[];
+    default_model?: string;
+    rate_limit_qps?: number;
+    rate_limit_burst?: number;
+    monthly_budget?: number;
+    max_tokens_per_request?: number;
+    subscription_expires_at?: number;
+    expires_at?: number;
+    metadata?: Record<string, string>;
+  };
+
+  created_at: number;
+  updated_at: number;
+}
+
 /** 钱包交易流水 */
 export interface IWalletTransaction {
   id: string;
