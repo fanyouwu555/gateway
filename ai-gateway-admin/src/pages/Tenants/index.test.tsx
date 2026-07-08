@@ -11,10 +11,11 @@ vi.mock('@/services/api', async () => {
     getTenantKeys: vi.fn(),
     createTenant: vi.fn(),
     deleteTenant: vi.fn(),
+    getTenantTemplates: vi.fn(),
   }
 })
 
-import { getTenants, getTenantStats, getTenantKeys, createTenant, deleteTenant } from '@/services/api'
+import { getTenants, getTenantStats, getTenantKeys, createTenant, deleteTenant, getTenantTemplates } from '@/services/api'
 
 describe('Tenants Page', () => {
   beforeEach(() => {
@@ -22,7 +23,8 @@ describe('Tenants Page', () => {
     ;(getTenants as ReturnType<typeof vi.fn>).mockResolvedValue({ tenants: [] })
     ;(getTenantStats as ReturnType<typeof vi.fn>).mockResolvedValue({ total_requests: 0 })
     ;(getTenantKeys as ReturnType<typeof vi.fn>).mockResolvedValue({ keys: [] })
-    ;(createTenant as ReturnType<typeof vi.fn>).mockResolvedValue({ tenant_id: 'new' })
+    ;(getTenantTemplates as ReturnType<typeof vi.fn>).mockResolvedValue({ templates: [] })
+    ;(createTenant as ReturnType<typeof vi.fn>).mockResolvedValue({ tenant: { tenant_id: 'new' } })
     ;(deleteTenant as ReturnType<typeof vi.fn>).mockResolvedValue({ deleted: true })
   })
 
@@ -98,6 +100,18 @@ describe('Tenants Page', () => {
         },
       })
     })
+  })
+
+  it('shows template selector in create modal', async () => {
+    render(<Tenants />)
+
+    fireEvent.click(screen.getByRole('button', { name: /创建租户/i }))
+    await waitFor(() => {
+      expect(screen.getByText('创建租户', { selector: '.ant-modal-title' })).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('模板（可选）')).toBeInTheDocument()
+    expect(screen.getByText('同时创建默认 API Key')).toBeInTheDocument()
   })
 
   it('opens detail drawer on view button click', async () => {

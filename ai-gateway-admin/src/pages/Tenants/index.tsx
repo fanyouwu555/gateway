@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, Select, Drawer, Descriptions, message, Popconfirm, Typography } from 'antd'
+import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, Select, Drawer, Descriptions, message, Popconfirm, Typography, Checkbox } from 'antd'
 import { PlusOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CopyOutlined, WarningOutlined, WalletOutlined } from '@ant-design/icons'
-import { getTenants, getTenantStats, getTenantKeys, createTenant, createTenantKey, updateKeyPolicy, deleteTenant, deleteApiKey, getConfig, getModels, rechargeKey } from '@/services/api'
-import type { Tenant, TenantStats, ApiKey } from '@/types'
+import { getTenants, getTenantStats, getTenantKeys, createTenant, createTenantKey, updateKeyPolicy, deleteTenant, deleteApiKey, getConfig, getModels, rechargeKey, getTenantTemplates } from '@/services/api'
+import type { Tenant, TenantStats, ApiKey, TenantTemplate } from '@/types'
 
 const planColors: Record<string, string> = {
   free: 'default',
@@ -29,6 +29,7 @@ const Tenants: React.FC = () => {
   // Provider / Model 下拉选项
   const [providerOptions, setProviderOptions] = useState<string[]>([])
   const [modelOptions, setModelOptions] = useState<string[]>([])
+  const [templates, setTemplates] = useState<TenantTemplate[]>([])
 
   // Create Key modal
   const [createKeyModalVisible, setCreateKeyModalVisible] = useState(false)
@@ -62,7 +63,17 @@ const Tenants: React.FC = () => {
   useEffect(() => {
     fetchTenants()
     fetchProviderAndModelOptions()
+    fetchTemplates()
   }, [])
+
+  const fetchTemplates = async () => {
+    try {
+      const data = await getTenantTemplates()
+      setTemplates(data.templates || [])
+    } catch {
+      // 静默失败，不影响主流程
+    }
+  }
 
   const fetchProviderAndModelOptions = async () => {
     try {
@@ -96,7 +107,9 @@ const Tenants: React.FC = () => {
       const payload: Parameters<typeof createTenant>[0] = {
         name: values.name,
         plan: values.plan,
-        status: 'active',
+        status: values.status ?? 'active',
+        template_id: values.template_id,
+        create_default_key: values.create_default_key,
       }
 
       // Build settings if any field present
@@ -119,8 +132,13 @@ const Tenants: React.FC = () => {
       if (values.limits?.concurrent_requests !== undefined) limits.concurrent_requests = values.limits.concurrent_requests
       if (Object.keys(limits).length > 0) payload.limits = limits
 
-      await createTenant(payload)
+      const result = await createTenant(payload)
       message.success('创建成功')
+      if (result.default_key?.key) {
+        setNewKeyData({ key: result.default_key.key, name: result.default_key.name })
+      } else if (result.default_key_error) {
+        message.warning(`租户已创建，但默认 Key 生成失败：${result.default_key_error.message}`)
+      }
       setCreateModalVisible(false)
       form.resetFields()
       fetchTenants()
@@ -409,8 +427,35 @@ const Tenants: React.FC = () => {
         }}
       >
         <Form form={form} layout="vertical">
+          <Form.Item label="模板（可选）" name="template_id">
+            <Select
+              placeholder="请选择模板"
+              allowClear
+              showSearch
+              options={templates.map((t) => ({ label: t.name, value: t.template_id }))}
+              onChange={(value) => {
+                const tpl = templates.find((t) => t.template_id === value)
+                if (tpl) {
+                  form.setFieldsValue({
+                    plan: tpl.tenant.plan,
+                    status: tpl.tenant.status,
+                    settings: tpl.tenant.settings,
+                    limits: tpl.tenant.limits,
+                    create_default_key: !!tpl.default_key,
+                  })
+                }
+              }}
+            />
+          </Form.Item>
           <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入租户名称' }]}>
             <Input placeholder="租户名称" />
+          </Form.Item>
+          <Form.Item label="状态" name="status" rules={[{ required: true }]} initialValue="active">
+            <Select>
+              <Select.Option value="active">Active</Select.Option>
+              <Select.Option value="suspended">Suspended</Select.Option>
+              <Select.Option value="trial">Trial</Select.Option>
+            </Select>
           </Form.Item>
           <Form.Item label="计划" name="plan" rules={[{ required: true }]} initialValue="free">
             <Select>
@@ -418,6 +463,10 @@ const Tenants: React.FC = () => {
               <Select.Option value="pro">Pro</Select.Option>
               <Select.Option value="enterprise">Enterprise</Select.Option>
             </Select>
+          </Form.Item>
+
+          <Form.Item name="create_default_key" valuePropName="checked">
+            <Checkbox>同时创建默认 API Key</Checkbox>
           </Form.Item>
 
           <Form.Item label="默认 Provider（可选）" name={['settings', 'default_provider']}>
