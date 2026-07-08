@@ -23,7 +23,7 @@ import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { initTenantStore, flushTenantStore } from './services/tenant';
-import { initTenantTemplateStore } from './services/tenant-template';
+import { initTenantTemplateStore, flushTenantTemplateStore } from './services/tenant-template';
 import { initWalletStore, flushWalletStore } from './services/wallet';
 import { initBillingCostTracker, flushBillingCostTracker } from './services/billing';
 import { initMetricsStore } from './services/metrics';
@@ -151,6 +151,7 @@ async function startServer() {
   setInterval(() => {
     flushQuotaStore().catch(() => {});
     flushTenantStore().catch(() => {});
+    flushTenantTemplateStore().catch(() => {});
     flushWalletStore().catch(() => {});
     flushBillingCostTracker().catch(() => {});
   }, 60000).unref();
@@ -327,6 +328,7 @@ async function startServer() {
     Promise.all([
       flushQuotaStore().catch(() => {}),
       flushTenantStore().catch(() => {}),
+      flushTenantTemplateStore().catch(() => {}),
       flushWalletStore().catch(() => {}),
     ]).then(() => {
       server.close(() => {

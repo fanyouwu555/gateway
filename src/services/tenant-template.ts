@@ -14,7 +14,7 @@ class TenantTemplateStore {
   private store: ReturnType<typeof createKVStore> | null = null;
 
   constructor() {
-    this.useRedis = shouldUseRedis('TENANT_STORAGE'); // 与 tenant 共用开关，或新增 TENANT_TEMPLATE_STORAGE
+    this.useRedis = shouldUseRedis('TENANT_TEMPLATE_STORAGE');
   }
 
   private async getStore(): Promise<ReturnType<typeof createKVStore>> {
@@ -115,7 +115,13 @@ class TenantTemplateStore {
       ...template,
       ...updates,
       tenant: updates.tenant ? { ...template.tenant, ...updates.tenant } : template.tenant,
-      default_key: updates.default_key ? { ...(template.default_key ?? {}), ...updates.default_key } : template.default_key,
+      default_key: updates.default_key
+        ? {
+            ...(template.default_key ?? { name: updates.default_key.name ?? '' }),
+            ...updates.default_key,
+            name: updates.default_key.name ?? template.default_key?.name ?? '',
+          }
+        : template.default_key,
       updated_at: Date.now(),
     };
     this.templates.set(templateId, updated);

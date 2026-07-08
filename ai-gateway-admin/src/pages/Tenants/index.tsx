@@ -469,6 +469,25 @@ const Tenants: React.FC = () => {
             <Checkbox>同时创建默认 API Key</Checkbox>
           </Form.Item>
 
+          <Form.Item shouldUpdate={(prev, curr) => prev.create_default_key !== curr.create_default_key || prev.template_id !== curr.template_id}>
+            {({ getFieldValue }) => {
+              const createDefaultKey = getFieldValue('create_default_key')
+              const templateId = getFieldValue('template_id')
+              const tpl = templates.find((t) => t.template_id === templateId)
+              if (!createDefaultKey || !tpl?.default_key) return null
+              const dk = tpl.default_key
+              return (
+                <div style={{ marginBottom: 16, padding: 12, background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6 }}>
+                  <div style={{ fontWeight: 500, marginBottom: 4 }}>默认 Key 策略</div>
+                  <div>名称: {dk.name}</div>
+                  {dk.billing_mode && <div>计费模式: {dk.billing_mode === 'competition' ? '比赛' : dk.billing_mode === 'subscription' ? '包月' : '预付'}</div>}
+                  {dk.balance !== undefined && <div>初始余额: ¥{(dk.balance / 1_000_000).toFixed(2)}</div>}
+                  {dk.allowed_models?.length && <div>允许模型: {dk.allowed_models.join(', ')}</div>}
+                </div>
+              )
+            }}
+          </Form.Item>
+
           <Form.Item label="默认 Provider（可选）" name={['settings', 'default_provider']}>
             <Select placeholder="留空则不指定默认 Provider" allowClear showSearch>
               {providerOptions.map((p) => (

@@ -101,6 +101,8 @@ export const tenantLimitsSchema = z.object({
   concurrent_requests: z.number().int().positive(),
 });
 
+export const tenantLimitsPartialSchema = tenantLimitsSchema.partial();
+
 export const tenantConfigSchema = z.object({
   name: z.string().min(1),
   status: z.enum(['active', 'suspended', 'trial']),
@@ -180,6 +182,7 @@ export const createTenantWithTemplateSchema = tenantConfigSchema
   .extend({
     template_id: z.string().optional(),
     create_default_key: z.boolean().optional(),
+    limits: tenantLimitsPartialSchema.optional(),
   })
   .partial({ status: true, plan: true });
 
