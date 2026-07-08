@@ -25,6 +25,7 @@ const menuItems = [
   { key: '/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
   { key: '/providers', icon: <CloudServerOutlined />, label: 'Provider 管理' },
   { key: '/tenants', icon: <TeamOutlined />, label: '租户管理' },
+  { key: '/tenant-templates', icon: <FileTextOutlined />, label: '租户模板' },
   { key: '/plugins', icon: <ApiOutlined />, label: '插件管理' },
   { key: '/router', icon: <ApartmentOutlined />, label: '路由状态' },
   { key: '/cache', icon: <DatabaseOutlined />, label: '缓存管理' },

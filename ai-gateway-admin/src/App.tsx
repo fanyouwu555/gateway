@@ -8,6 +8,7 @@ const LoginPage = lazy(() => import('./pages/Login'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Providers = lazy(() => import('./pages/Providers'))
 const Tenants = lazy(() => import('./pages/Tenants'))
+const TenantTemplates = lazy(() => import('./pages/TenantTemplates'))
 const Metrics = lazy(() => import('./pages/Metrics'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Plugins = lazy(() => import('./pages/Plugins'))
@@ -34,6 +35,7 @@ function App() {
         <Route path="dashboard" element={<Suspense fallback={<PageLoader />}><Dashboard /></Suspense>} />
         <Route path="providers" element={<Suspense fallback={<PageLoader />}><Providers /></Suspense>} />
         <Route path="tenants" element={<Suspense fallback={<PageLoader />}><Tenants /></Suspense>} />
+        <Route path="tenant-templates" element={<Suspense fallback={<PageLoader />}><TenantTemplates /></Suspense>} />
         <Route path="metrics" element={<Suspense fallback={<PageLoader />}><Metrics /></Suspense>} />
         <Route path="settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
         <Route path="plugins" element={<Suspense fallback={<PageLoader />}><Plugins /></Suspense>} />
