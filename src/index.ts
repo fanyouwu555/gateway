@@ -23,6 +23,7 @@ import { writeLog } from './utils/logger';
 import { initWebSocket, handleWSConnection, resetWebSocketConnections } from './middleware/websocket';
 import { initQuotaStore, flushQuotaStore } from './services/quota';
 import { initTenantStore, flushTenantStore } from './services/tenant';
+import { initTenantTemplateStore } from './services/tenant-template';
 import { initWalletStore, flushWalletStore } from './services/wallet';
 import { initBillingCostTracker, flushBillingCostTracker } from './services/billing';
 import { initMetricsStore } from './services/metrics';
@@ -134,7 +135,8 @@ async function startServer() {
   await initQuotaStore();
 
   // 初始化租户存储（从 Redis 加载历史数据）
-  await initTenantStore();
+  // 同时初始化租户模板存储
+  await Promise.all([initTenantStore(), initTenantTemplateStore()]);
 
   // 初始化钱包存储（从 Redis 加载余额数据）
   await initWalletStore();
