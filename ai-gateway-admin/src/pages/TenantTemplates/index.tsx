@@ -37,6 +37,11 @@ const TenantTemplates: React.FC = () => {
   const [form] = Form.useForm()
   const [providerOptions, setProviderOptions] = useState<string[]>([])
   const [modelOptions, setModelOptions] = useState<string[]>([])
+  const watchedAllowedModels = Form.useWatch('allowed_models', form)
+  const keyModelOptions = (watchedAllowedModels && watchedAllowedModels.length > 0
+    ? (watchedAllowedModels as string[])
+    : modelOptions
+  ).map((m) => ({ label: m, value: m }))
 
   const fetchTemplates = async () => {
     setLoading(true)
@@ -375,13 +380,13 @@ const TenantTemplates: React.FC = () => {
                   placeholder="请选择允许的模型"
                   allowClear
                   showSearch
-                  options={modelOptions.map((m) => ({ label: m, value: m }))}
+                  options={keyModelOptions}
                 />
               </Form.Item>
               <Form.Item label="默认模型" name="default_model">
                 <Select placeholder="请选择默认模型" allowClear showSearch>
-                  {modelOptions.map((m) => (
-                    <Select.Option key={m} value={m}>{m}</Select.Option>
+                  {keyModelOptions.map((m) => (
+                    <Select.Option key={m.value} value={m.value}>{m.label}</Select.Option>
                   ))}
                 </Select>
               </Form.Item>

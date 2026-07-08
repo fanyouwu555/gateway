@@ -274,6 +274,37 @@ class TenantStore {
   }
 
   /**
+   * 校验 Key 策略是否符合租户 settings 限制
+   * - allowed_models 必须在租户 allowed_models 范围内
+   * - default_model 必须在租户 allowed_models 范围内
+   * 返回校验通过后的 policy（已过滤交集）
+   */
+  private validateKeyPolicyAgainstTenant(
+    tenant: TenantConfig,
+    policy?: Pick<IApiKeyMeta, 'allowed_models' | 'default_model' | 'rate_limit_qps' | 'rate_limit_burst' | 'monthly_budget' | 'max_tokens_per_request' | 'metadata' | 'billing_mode' | 'subscription_expires_at'>
+  ): { valid: boolean; policy?: typeof policy } {
+    const tenantAllowedModels = tenant.settings?.allowed_models;
+    if (!tenantAllowedModels || tenantAllowedModels.length === 0) {
+      return { valid: true, policy };
+    }
+
+    let validatedPolicy = policy;
+    if (policy?.allowed_models && policy.allowed_models.length > 0) {
+      const filtered = policy.allowed_models.filter((m) => tenantAllowedModels.includes(m));
+      if (filtered.length === 0) {
+        return { valid: false };
+      }
+      validatedPolicy = { ...policy, allowed_models: filtered };
+    }
+
+    if (validatedPolicy?.default_model && !tenantAllowedModels.includes(validatedPolicy.default_model)) {
+      return { valid: false };
+    }
+
+    return { valid: true, policy: validatedPolicy };
+  }
+
+  /**
    * 为租户创建API Key
    * Key 以哈希形式存储，与认证中间件的 verifyApiKey() 兼容
    * 支持传入虚拟 Key 策略字段（allowed_models / rate_limit 等）
@@ -294,6 +325,11 @@ class TenantStore {
       return null;
     }
 
+    // 校验 Key 策略是否符合租户 settings 限制
+    const validation = this.validateKeyPolicyAgainstTenant(tenant, policy);
+    if (!validation.valid) return null;
+    const validatedPolicy = validation.policy;
+
     const plaintextKey = `sk-v1-${tenantId.slice(0, 8)}-${Date.now()}-${generateSecureRandomString(12)}`;
     // 存储哈希值，与 auth middleware 的 verifyApiKey() 兼容
     const hashedKey = hashApiKey(plaintextKey);
@@ -303,7 +339,7 @@ class TenantStore {
       name,
       created_at: Date.now(),
       expires_at: expiresAt,
-      ...policy,
+      ...validatedPolicy,
     };
 
     this.apiKeys.set(hashedKey, { key: hashedKey, tenant_id: tenantId, meta });
@@ -314,7 +350,7 @@ class TenantStore {
     this.keyPrefixIndex.set(prefix, list);
 
     // 如果是预付模式且设置了初始余额，初始化钱包
-    if (policy?.billing_mode === 'prepaid' && initialBalanceMicroYuan !== undefined) {
+    if (validatedPolicy?.billing_mode === 'prepaid' && initialBalanceMicroYuan !== undefined) {
       const { setBalance } = await import('../services/wallet');
       setBalance(hashedKey, initialBalanceMicroYuan);
     }
@@ -425,6 +461,19 @@ class TenantStore {
       ...record.meta,
       ...updates,
     };
+
+    const tenant = this.tenants.get(record.tenant_id);
+    if (tenant) {
+      const validation = this.validateKeyPolicyAgainstTenant(tenant, {
+        allowed_models: newMeta.allowed_models,
+        default_model: newMeta.default_model,
+      });
+      if (!validation.valid) return null;
+      if (validation.policy) {
+        newMeta.allowed_models = validation.policy.allowed_models;
+        newMeta.default_model = validation.policy.default_model;
+      }
+    }
 
     // 如果显式提供了余额，同步更新钱包（不存入 API Key 元数据）
     if (balanceMicroYuan !== undefined) {

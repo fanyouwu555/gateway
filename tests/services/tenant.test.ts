@@ -82,6 +82,40 @@ describe('Tenant Service', () => {
       const result = await createTenantApiKey('default', 'Test Key');
       expect(result).toBeDefined();
     });
+
+    it('should reject key with allowed_models outside tenant allowed_models', async () => {
+      const tenant = await createTenant({
+        ...createValidConfig('Restricted'),
+        settings: { allowed_models: ['gpt-4o'] },
+      });
+      const key = await createTenantApiKey(tenant.tenant_id, 'Test Key', undefined, {
+        allowed_models: ['claude-3'],
+      });
+      expect(key).toBeNull();
+    });
+
+    it('should filter key allowed_models to tenant allowed_models', async () => {
+      const tenant = await createTenant({
+        ...createValidConfig('Restricted'),
+        settings: { allowed_models: ['gpt-4o', 'claude-3'] },
+      });
+      const key = await createTenantApiKey(tenant.tenant_id, 'Test Key', undefined, {
+        allowed_models: ['gpt-4o', 'gpt-3.5-turbo'],
+      });
+      expect(key).toBeDefined();
+      expect(key!.allowed_models).toEqual(['gpt-4o']);
+    });
+
+    it('should reject key with default_model outside tenant allowed_models', async () => {
+      const tenant = await createTenant({
+        ...createValidConfig('Restricted'),
+        settings: { allowed_models: ['gpt-4o'] },
+      });
+      const key = await createTenantApiKey(tenant.tenant_id, 'Test Key', undefined, {
+        default_model: 'claude-3',
+      });
+      expect(key).toBeNull();
+    });
   });
 
   describe('deleteTenantApiKey', () => {
