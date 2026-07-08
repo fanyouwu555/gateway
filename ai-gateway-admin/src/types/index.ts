@@ -314,6 +314,47 @@ export interface TenantUpdateData {
   limits?: Partial<TenantLimits>
 }
 
+export interface TenantTemplate {
+  template_id: string
+  name: string
+  description?: string
+  is_default?: boolean
+  tenant: {
+    plan: 'free' | 'pro' | 'enterprise'
+    status: 'active' | 'suspended' | 'trial'
+    settings?: TenantSettings
+    limits?: TenantLimits
+  }
+  default_key?: DefaultKeyPolicy
+  created_at: number
+  updated_at: number
+}
+
+export interface DefaultKeyPolicy {
+  name: string
+  billing_mode?: 'competition' | 'subscription' | 'prepaid'
+  balance?: number
+  allowed_models?: string[]
+  default_model?: string
+  rate_limit_qps?: number
+  rate_limit_burst?: number
+  monthly_budget?: number
+  max_tokens_per_request?: number
+  subscription_expires_at?: number
+  expires_at?: number
+  metadata?: Record<string, string>
+}
+
+export interface CreateTenantData {
+  name: string
+  plan?: 'free' | 'pro' | 'enterprise'
+  status?: 'active' | 'suspended' | 'trial'
+  settings?: TenantSettings
+  limits?: Partial<TenantLimits>
+  template_id?: string
+  create_default_key?: boolean
+}
+
 export interface ConfigUpdateData {
   port?: number
   host?: string
