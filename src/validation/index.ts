@@ -113,19 +113,8 @@ export const tenantUpdateSchema = z.object({
   name: z.string().min(1).optional(),
   status: z.enum(['active', 'suspended', 'trial']).optional(),
   plan: z.enum(['free', 'pro', 'enterprise']).optional(),
-  settings: z.object({
-    default_provider: z.string().optional(),
-    allowed_providers: z.array(z.string()).optional(),
-    allowed_models: z.array(z.string()).optional(),
-    webhook_url: z.string().url().optional(),
-    notification_email: z.string().email().optional(),
-  }).optional(),
-  limits: z.object({
-    daily_requests: z.number().int().positive(),
-    daily_tokens: z.number().int().positive(),
-    max_api_keys: z.number().int().positive(),
-    concurrent_requests: z.number().int().positive(),
-  }).optional(),
+  settings: tenantSettingsSchema.optional(),
+  limits: tenantLimitsSchema.optional(),
 });
 
 export const createApiKeySchema = z.object({
