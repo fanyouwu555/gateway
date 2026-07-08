@@ -16,6 +16,8 @@ describe('TenantTemplates', () => {
         updated_at: Date.now(),
       }],
     })
+    vi.mocked(api.getConfig).mockResolvedValue({ providers: {} } as never)
+    vi.mocked(api.getModels).mockResolvedValue({ data: [] } as never)
     render(<TenantTemplates />)
     await waitFor(() => expect(screen.getByText('Pro')).toBeInTheDocument())
   })

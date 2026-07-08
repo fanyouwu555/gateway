@@ -6,6 +6,8 @@ import {
   createTenantTemplate,
   updateTenantTemplate,
   deleteTenantTemplate,
+  getConfig,
+  getModels,
 } from '@/services/api'
 import type { TenantTemplate, DefaultKeyPolicy, TenantSettings, TenantLimits } from '@/types'
 
@@ -33,6 +35,8 @@ const TenantTemplates: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<TenantTemplate | null>(null)
   const [form] = Form.useForm()
+  const [providerOptions, setProviderOptions] = useState<string[]>([])
+  const [modelOptions, setModelOptions] = useState<string[]>([])
 
   const fetchTemplates = async () => {
     setLoading(true)
@@ -48,7 +52,20 @@ const TenantTemplates: React.FC = () => {
 
   useEffect(() => {
     fetchTemplates()
+    fetchProviderAndModelOptions()
   }, [])
+
+  const fetchProviderAndModelOptions = async () => {
+    try {
+      const [configData, modelsData] = await Promise.all([getConfig(), getModels()])
+      const providers = Object.keys(configData.providers || {})
+      setProviderOptions(providers)
+      const models = (modelsData.data || []).map((m: { id: string }) => m.id)
+      setModelOptions(models)
+    } catch {
+      // 静默失败，不影响主流程
+    }
+  }
 
   const openCreateModal = () => {
     setEditingTemplate(null)
@@ -296,22 +313,28 @@ const TenantTemplates: React.FC = () => {
           </Form.Item>
 
           <Form.Item label="默认 Provider" name="default_provider">
-            <Input placeholder="例如 openai" />
+            <Select placeholder="请选择默认 Provider" allowClear showSearch>
+              {providerOptions.map((p) => (
+                <Select.Option key={p} value={p}>{p}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item label="允许的 Providers" name="allowed_providers">
             <Select
-              mode="tags"
-              placeholder="输入允许的 Provider，按回车确认"
+              mode="multiple"
+              placeholder="请选择允许的 Providers"
               allowClear
-              style={{ width: '100%' }}
+              showSearch
+              options={providerOptions.map((p) => ({ label: p, value: p }))}
             />
           </Form.Item>
           <Form.Item label="允许的模型" name="allowed_models">
             <Select
-              mode="tags"
-              placeholder="输入允许的模型，按回车确认"
+              mode="multiple"
+              placeholder="请选择允许的模型"
               allowClear
-              style={{ width: '100%' }}
+              showSearch
+              options={modelOptions.map((m) => ({ label: m, value: m }))}
             />
           </Form.Item>
           <Form.Item label="Webhook URL" name="webhook_url">
@@ -348,14 +371,19 @@ const TenantTemplates: React.FC = () => {
               </Form.Item>
               <Form.Item label="允许的模型" name="default_key_allowed_models">
                 <Select
-                  mode="tags"
-                  placeholder="输入允许的模型"
+                  mode="multiple"
+                  placeholder="请选择允许的模型"
                   allowClear
-                  style={{ width: '100%' }}
+                  showSearch
+                  options={modelOptions.map((m) => ({ label: m, value: m }))}
                 />
               </Form.Item>
               <Form.Item label="默认模型" name="default_model">
-                <Input placeholder="例如 gpt-4o" />
+                <Select placeholder="请选择默认模型" allowClear showSearch>
+                  {modelOptions.map((m) => (
+                    <Select.Option key={m} value={m}>{m}</Select.Option>
+                  ))}
+                </Select>
               </Form.Item>
               <Form.Item label="QPS 限制" name="rate_limit_qps">
                 <InputNumber min={1} style={{ width: '100%' }} placeholder="每秒请求数" />
