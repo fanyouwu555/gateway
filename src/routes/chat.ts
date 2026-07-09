@@ -22,12 +22,13 @@ import { createChildSpan, endSpan } from '../utils/tracing';
 import { recordAiTtfb, recordAiTpot, recordAiCost, recordAiTokens } from '../middleware/metrics';
 import { recordMetric } from '../services/metrics';
 import { getPricingService } from '../services/pricing';
-import { countCompletionTokens, countPromptTokens, accumulateStreamContent } from '../services/token-counter';
+import { countCompletionTokens, countPromptTokens } from '../services/token-counter';
+import { processSSEStream } from '../services/stream-processor';
 import { getTokenRateLimit } from '../services/token-ratelimit';
 import { deductBalance } from '../services/wallet';
 import { getRequestLogStore } from '../services/request-log';
 import { getConversationLogService } from '../services/conversation-log';
-import type { ChatMessage, ChatCompletionChunk, ChatCompletionRequest, IApiKeyMeta } from '../types';
+import type { ChatMessage, ChatCompletionRequest, IApiKeyMeta } from '../types';
 import type { Span } from '@opentelemetry/api';
 import { extractClientInfo } from '../utils/client-info';
 import { inferRequirements, getModelCapabilities, checkCapabilityMatch, formatCapabilityError } from '../services/model-capability';
@@ -237,22 +238,28 @@ async function handleStreamingResponse(
   c.set('prompt_tokens', promptTokens);
 
   const reader = streamResponse.getReader();
-  const decoder = new TextDecoder();
-  let textBuffer = '';
-  let accumulatedContent = '';
-  let accumulatedReasoning = '';
-  const accumulatedToolCalls: import('../types').ChatToolCall[] = [];
   const streamStart = Date.now();
   let streamCancelled = false;
+  const abortController = new AbortController();
 
   const wrappedStream = new ReadableStream({
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
+    async start(controller) {
+      try {
+        const result = await processSSEStream(reader, {
+          onChunk: (chunk) => {
+            controller.enqueue(new TextEncoder().encode('data: ' + JSON.stringify(chunk) + '\n\n'));
+          },
+          signal: abortController.signal,
+        });
+
         if (streamCancelled) {
           controller.close();
           return;
         }
+
+        const accumulatedContent = result.content;
+        const accumulatedReasoning = result.reasoningContent;
+        const accumulatedToolCalls = result.toolCalls || [];
 
         const completionTokens = await countCompletionTokens(accumulatedContent + accumulatedReasoning, model);
         const totalTokens = promptTokens + completionTokens;
@@ -382,51 +389,15 @@ async function handleStreamingResponse(
         controller.enqueue(new TextEncoder().encode('data: ' + JSON.stringify(usageChunk) + '\n\n'));
         controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
         controller.close();
-        return;
-      }
-
-      controller.enqueue(value);
-
-      textBuffer += decoder.decode(value, { stream: true });
-      const lines = textBuffer.split('\n');
-      textBuffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('data: ') && !trimmed.startsWith('data: [DONE]')) {
-          try {
-            const parsed = JSON.parse(trimmed.slice(6)) as ChatCompletionChunk;
-            for (const choice of parsed.choices || []) {
-              const delta = choice.delta;
-              accumulatedContent = accumulateStreamContent(accumulatedContent, delta);
-              if (delta.reasoning_content && typeof delta.reasoning_content === 'string') {
-                accumulatedReasoning += delta.reasoning_content;
-              }
-              if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
-                for (const tc of delta.tool_calls as Array<import('../types').ChatToolCall & { index?: number }>) {
-                  const idx = tc.index ?? 0;
-                  if (!accumulatedToolCalls[idx]) {
-                    accumulatedToolCalls[idx] = {
-                      id: tc.id || '',
-                      type: 'function',
-                      function: { name: '', arguments: '' },
-                    };
-                  }
-                  if (tc.id) accumulatedToolCalls[idx].id = tc.id;
-                  if (tc.function?.name) accumulatedToolCalls[idx].function.name += tc.function.name;
-                  if (tc.function?.arguments) accumulatedToolCalls[idx].function.arguments += tc.function.arguments;
-                }
-              }
-            }
-          } catch {
-            // 忽略非 JSON 行或解析错误
-          }
+      } catch (err) {
+        if (!streamCancelled) {
+          controller.error(err instanceof Error ? err : new Error(String(err)));
         }
       }
     },
     cancel() {
       streamCancelled = true;
-      reader.cancel().catch(() => {});
+      abortController.abort();
     },
   });
 
