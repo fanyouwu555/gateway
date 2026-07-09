@@ -204,7 +204,7 @@ describe('Billing Mode Integration', () => {
   describe('monthly budget safety valve', () => {
     it('should reject request when monthly budget exceeded', async () => {
       // 先累计成本超过 1 元预算
-      recordKeyCost('monthly-budget-key', 2);
+      await recordKeyCost('monthly-budget-key', 2);
       const res = await makeRequest('monthly-budget-key');
       expect(res.status).toBe(402);
       const body = await res.json() as { error: { code: string } };

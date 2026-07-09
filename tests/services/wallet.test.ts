@@ -74,9 +74,9 @@ describe('WalletService', () => {
   });
 
   describe('deductBalance', () => {
-    it('should succeed when balance is sufficient', () => {
+    it('should succeed when balance is sufficient', async () => {
       setBalance('key-1', 1_000_000);
-      const result = deductBalance('key-1', 300_000, { reason: 'test' });
+      const result = await deductBalance('key-1', 300_000, { reason: 'test' });
       expect(result.success).toBe(true);
       expect(result.newBalance).toBe(700_000);
       expect(result.transaction.type).toBe('deduct');
@@ -84,17 +84,17 @@ describe('WalletService', () => {
       expect(result.transaction.balance_after_micro_yuan).toBe(700_000);
     });
 
-    it('should fail and drain to 0 when balance is insufficient', () => {
+    it('should fail and drain to 0 when balance is insufficient', async () => {
       setBalance('key-1', 200_000);
-      const result = deductBalance('key-1', 500_000);
+      const result = await deductBalance('key-1', 500_000);
       expect(result.success).toBe(false);
       expect(result.newBalance).toBe(0);
       expect(getBalance('key-1')).toBe(0);
     });
 
-    it('should record transaction even on overdraft', () => {
+    it('should record transaction even on overdraft', async () => {
       setBalance('key-1', 100_000);
-      deductBalance('key-1', 500_000);
+      await deductBalance('key-1', 500_000);
       const txs = getTransactions('key-1');
       expect(txs.length).toBe(1);
       expect(txs[0].type).toBe('deduct');

@@ -267,31 +267,31 @@ describe('Virtual Key System', () => {
   });
 
   describe('Key-level quota (monthly budget)', () => {
-    it('should allow requests within budget', () => {
+    it('should allow requests within budget', async () => {
       const keyHash = 'test-hash-1';
       const budget = 100;
       // Simulate some cost
-      recordKeyCost(keyHash, 10);
+      await recordKeyCost(keyHash, 10);
 
       const check = checkKeyBudget(keyHash, budget);
       expect(check.allowed).toBe(true);
       expect(check.current_cost).toBe(10);
     });
 
-    it('should reject requests that exceed budget', () => {
+    it('should reject requests that exceed budget', async () => {
       const keyHash = 'test-hash-2';
       const budget = 50;
-      recordKeyCost(keyHash, 60);
+      await recordKeyCost(keyHash, 60);
 
       const check = checkKeyBudget(keyHash, budget);
       expect(check.allowed).toBe(false);
       expect(check.reason).toBe('Key monthly budget exceeded');
     });
 
-    it('should return correct current cost at boundary', () => {
+    it('should return correct current cost at boundary', async () => {
       const keyHash = 'test-hash-3';
       const budget = 100;
-      recordKeyCost(keyHash, 100);
+      await recordKeyCost(keyHash, 100);
 
       const check = checkKeyBudget(keyHash, budget);
       expect(check.allowed).toBe(false);
@@ -304,11 +304,11 @@ describe('Virtual Key System', () => {
       expect(check.current_cost).toBe(0);
     });
 
-    it('should track accumulating cost across multiple records', () => {
+    it('should track accumulating cost across multiple records', async () => {
       const keyHash = 'test-hash-4';
-      recordKeyCost(keyHash, 10);
-      recordKeyCost(keyHash, 20);
-      recordKeyCost(keyHash, 30);
+      await recordKeyCost(keyHash, 10);
+      await recordKeyCost(keyHash, 20);
+      await recordKeyCost(keyHash, 30);
 
       const cost = getKeyCost(keyHash);
       expect(cost).toBe(60);

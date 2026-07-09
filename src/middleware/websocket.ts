@@ -811,13 +811,13 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
         if (pricing) {
           cost = (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000;
         }
-        recordUsage(conn.tenant_id, totalTokens);
-        recordKeyCost(conn.key_hash || '', cost);
+        await recordUsage(conn.tenant_id, totalTokens);
+        await recordKeyCost(conn.key_hash || '', cost);
 
         // 预付模式扣费
         if (conn.key_billing_mode === 'prepaid' && conn.key_hash) {
           const costMicroYuan = Math.ceil(cost * 1_000_000);
-          const deductResult = deductBalance(conn.key_hash, costMicroYuan, {
+          const deductResult = await deductBalance(conn.key_hash, costMicroYuan, {
             request_id: connectionId,
             model,
             provider: providerName,

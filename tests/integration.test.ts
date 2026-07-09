@@ -118,8 +118,8 @@ describe('Integration Tests', () => {
       expect('allowed' in result).toBe(true);
     });
 
-    it('should record usage', () => {
-      expect(() => recordUsage('test-tenant', 100)).not.toThrow();
+    it('should record usage', async () => {
+      await recordUsage('test-tenant', 100);
     });
   });
 

@@ -2,7 +2,7 @@
  * 内存存储实现
  * 作为 Redis 不可用时的降级方案
  */
-import type { IKVStore, StorageType } from './interface';
+import type { IKVStore, StorageType, Pipeline } from './interface';
 
 interface CacheEntry {
   value: string;
@@ -16,6 +16,98 @@ interface HashEntry {
 interface ListEntry {
   head: string[];
   tail: string[];
+}
+
+class MemoryPipeline implements Pipeline {
+  private store: MemoryKVStore;
+  private ops: Array<() => Promise<unknown>> = [];
+
+  constructor(store: MemoryKVStore) {
+    this.store = store;
+  }
+
+  set(key: string, value: string, ttl?: number): Pipeline {
+    this.ops.push(() => this.store.set(key, value, ttl));
+    return this;
+  }
+
+  get(key: string): Pipeline {
+    this.ops.push(() => this.store.get(key));
+    return this;
+  }
+
+  delete(key: string): Pipeline {
+    this.ops.push(() => this.store.delete(key));
+    return this;
+  }
+
+  expire(key: string, ttl: number): Pipeline {
+    this.ops.push(() => this.store.expire(key, ttl));
+    return this;
+  }
+
+  exists(key: string): Pipeline {
+    this.ops.push(() => this.store.exists(key));
+    return this;
+  }
+
+  incr(key: string): Pipeline {
+    this.ops.push(() => this.store.incr(key));
+    return this;
+  }
+
+  hSet(key: string, field: string, value: string): Pipeline {
+    this.ops.push(() => this.store.hSet(key, field, value));
+    return this;
+  }
+
+  hGet(key: string, field: string): Pipeline {
+    this.ops.push(() => this.store.hGet(key, field));
+    return this;
+  }
+
+  hGetAll(key: string): Pipeline {
+    this.ops.push(() => this.store.hGetAll(key));
+    return this;
+  }
+
+  hDel(key: string, ...fields: string[]): Pipeline {
+    this.ops.push(() => this.store.hDel(key, ...fields));
+    return this;
+  }
+
+  lPush(key: string, ...values: string[]): Pipeline {
+    this.ops.push(() => this.store.lPush(key, ...values));
+    return this;
+  }
+
+  lRange(key: string, start: number, stop: number): Pipeline {
+    this.ops.push(() => this.store.lRange(key, start, stop));
+    return this;
+  }
+
+  lTrim(key: string, start: number, stop: number): Pipeline {
+    this.ops.push(() => this.store.lTrim(key, start, stop));
+    return this;
+  }
+
+  keys(pattern: string): Pipeline {
+    this.ops.push(() => this.store.keys(pattern));
+    return this;
+  }
+
+  delByPattern(pattern: string): Pipeline {
+    this.ops.push(() => this.store.delByPattern(pattern));
+    return this;
+  }
+
+  async exec(): Promise<unknown[]> {
+    const results: unknown[] = [];
+    for (const op of this.ops) {
+      results.push(await op());
+    }
+    return results;
+  }
 }
 
 /**
@@ -254,5 +346,9 @@ export class MemoryKVStore implements IKVStore {
     }
 
     return count;
+  }
+
+  pipeline(): Pipeline {
+    return new MemoryPipeline(this);
   }
 }

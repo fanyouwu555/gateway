@@ -85,7 +85,7 @@ describe('Wallet Redis Persistence', () => {
 
   it('should persist transactions to store', async () => {
     rechargeBalance('key1', 1_000_000, 'Initial');
-    deductBalance('key1', 300_000, { reason: 'usage' });
+    await deductBalance('key1', 300_000, { reason: 'usage' });
 
     await flushWalletStore();
 

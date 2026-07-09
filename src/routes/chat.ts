@@ -273,8 +273,8 @@ async function handleStreamingResponse(
         const tenantId = c.get('tenant_id');
         const keyHash = c.get('key_hash') as string | undefined;
         if (tenantId) {
-          recordUsage(tenantId, totalTokens);
-          recordKeyCost(keyHash || '', cost);
+          await recordUsage(tenantId, totalTokens);
+          await recordKeyCost(keyHash || '', cost);
           recordAiCost(cost, providerName, model);
         }
 
@@ -283,7 +283,7 @@ async function handleStreamingResponse(
         let remainingBalanceMicroYuan: number | undefined;
         if (billingMode === 'prepaid' && keyHash) {
           const costMicroYuan = Math.ceil(cost * 1_000_000);
-          const deductResult = deductBalance(keyHash, costMicroYuan, {
+          const deductResult = await deductBalance(keyHash, costMicroYuan, {
             request_id: requestId,
             model,
             provider: providerName,
@@ -509,8 +509,8 @@ async function handleNonStreamingResponse(
   if (tenantId && response.usage) {
     const cost = getPricingService().calculateCost(processedReq.model, response.usage.prompt_tokens || 0, response.usage.completion_tokens || 0);
     const keyHash = c.get('key_hash') as string | undefined;
-    recordUsage(tenantId, response.usage.total_tokens || 0);
-    recordKeyCost(keyHash || '', cost);
+    await recordUsage(tenantId, response.usage.total_tokens || 0);
+    await recordKeyCost(keyHash || '', cost);
 
     recordAiCost(cost, providerName, model);
 
@@ -519,7 +519,7 @@ async function handleNonStreamingResponse(
     if (billingMode === 'prepaid' && keyHash) {
       const { deductBalance } = await import('../services/wallet');
       const costMicroYuan = Math.ceil(cost * 1_000_000);
-      const deductResult = deductBalance(keyHash, costMicroYuan, {
+      const deductResult = await deductBalance(keyHash, costMicroYuan, {
         request_id: c.get('request_id') as string,
         model,
         provider: providerName,

@@ -3,7 +3,7 @@
  * 生产环境推荐使用 Redis 作为持久化层
  */
 import type { Redis } from 'ioredis';
-import type { IKVStore, StorageType } from './interface';
+import type { IKVStore, StorageType, Pipeline } from './interface';
 
 /**
  * Redis 配置
@@ -162,6 +162,86 @@ export class RedisKVStore implements IKVStore {
     if (keys.length === 0) return 0;
 
     return this.client.del(...keys.map((k) => this.fullKey(k)));
+  }
+
+  pipeline(): Pipeline {
+    const redisPipeline = this.client.pipeline();
+    const prefix = this.prefix;
+    const fullKey = (key: string) => `${prefix}:${key}`;
+
+    return {
+      set(key: string, value: string, ttl?: number) {
+        const fk = fullKey(key);
+        if (ttl) {
+          redisPipeline.setex(fk, Math.floor(ttl / 1000), value);
+        } else {
+          redisPipeline.set(fk, value);
+        }
+        return this;
+      },
+      get(key: string) {
+        redisPipeline.get(fullKey(key));
+        return this;
+      },
+      delete(key: string) {
+        redisPipeline.del(fullKey(key));
+        return this;
+      },
+      expire(key: string, ttl: number) {
+        redisPipeline.expire(fullKey(key), Math.floor(ttl / 1000));
+        return this;
+      },
+      exists(key: string) {
+        redisPipeline.exists(fullKey(key));
+        return this;
+      },
+      incr(key: string) {
+        redisPipeline.incr(fullKey(key));
+        return this;
+      },
+      hSet(key: string, field: string, value: string) {
+        redisPipeline.hset(fullKey(key), field, value);
+        return this;
+      },
+      hGet(key: string, field: string) {
+        redisPipeline.hget(fullKey(key), field);
+        return this;
+      },
+      hGetAll(key: string) {
+        redisPipeline.hgetall(fullKey(key));
+        return this;
+      },
+      hDel(key: string, ...fields: string[]) {
+        redisPipeline.hdel(fullKey(key), ...fields);
+        return this;
+      },
+      lPush(key: string, ...values: string[]) {
+        redisPipeline.lpush(fullKey(key), ...values);
+        return this;
+      },
+      lRange(key: string, start: number, stop: number) {
+        redisPipeline.lrange(fullKey(key), start, stop);
+        return this;
+      },
+      lTrim(key: string, start: number, stop: number) {
+        redisPipeline.ltrim(fullKey(key), start, stop);
+        return this;
+      },
+      keys(pattern: string) {
+        // keys 不适合 pipeline，但保持接口一致
+        redisPipeline.keys(fullKey(pattern));
+        return this;
+      },
+      delByPattern(pattern: string) {
+        // delByPattern 不适合 pipeline，但保持接口一致
+        redisPipeline.keys(fullKey(pattern));
+        return this;
+      },
+      async exec(): Promise<unknown[]> {
+        const results = await redisPipeline.exec();
+        return (results || []).map((r) => (r as unknown[])[1]);
+      },
+    };
   }
 }
 

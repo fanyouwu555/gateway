@@ -48,10 +48,28 @@ class WalletStore {
   private useRedis = false;
   private store: ReturnType<typeof createKVStore> | null = null;
 
+  private inFlight = new Map<string, Promise<unknown>>();
+
   constructor() {
     this.useRedis = shouldUseRedis('WALLET_STORAGE');
     if (this.useRedis) {
       this.store = createKVStore('wallet');
+    }
+  }
+
+  private async withLock<T>(keyHash: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.inFlight.get(keyHash);
+    const next = (async () => {
+      if (prev) await prev;
+      return fn();
+    })();
+    this.inFlight.set(keyHash, next);
+    try {
+      return await next;
+    } finally {
+      if (this.inFlight.get(keyHash) === next) {
+        this.inFlight.delete(keyHash);
+      }
     }
   }
 
@@ -99,49 +117,52 @@ class WalletStore {
   /**
    * 扣费
    */
-  deductBalance(keyHash: string, costMicroYuan: number, metadata?: Record<string, string>): DeductResult {
-    const current = this.getBalance(keyHash);
-    const amount = Math.max(0, costMicroYuan);
+  async deductBalance(
+    keyHash: string,
+    costMicroYuan: number,
+    metadata?: Record<string, string>
+  ): Promise<DeductResult> {
+    return this.withLock(keyHash, async () => {
+      const current = this.getBalance(keyHash);
+      const amount = Math.max(0, costMicroYuan);
+      let newBalance: number;
+      let success: boolean;
 
-    let newBalance: number;
-    let success: boolean;
+      if (current >= amount) {
+        newBalance = current - amount;
+        success = true;
+      } else {
+        newBalance = 0;
+        success = false;
+        writeLog('warn', 'Prepaid balance overdraft', {
+          key_hash: keyHash,
+          cost_micro_yuan: amount,
+          current_micro_yuan: current,
+        });
+      }
 
-    if (current >= amount) {
-      newBalance = current - amount;
-      success = true;
-    } else {
-      newBalance = 0;
-      success = false;
-      writeLog('warn', 'Prepaid balance overdraft', {
+      this.balances.set(keyHash, newBalance);
+
+      const transaction: IWalletTransaction = {
+        id: `tx-${Date.now()}-${generateSecureRandomString(8)}`,
         key_hash: keyHash,
-        cost_micro_yuan: amount,
-        current_micro_yuan: current,
-        new_balance_micro_yuan: newBalance,
-      });
-    }
+        tenant_id: metadata?.tenant_id || '',
+        type: 'deduct',
+        amount_micro_yuan: success ? -amount : -(current),
+        balance_after_micro_yuan: newBalance,
+        reason: metadata?.reason || 'API request deduction',
+        created_at: Date.now(),
+        metadata,
+      };
 
-    this.balances.set(keyHash, newBalance);
+      this.appendTransaction(keyHash, transaction);
 
-    const transaction: IWalletTransaction = {
-      id: `tx-${Date.now()}-${generateSecureRandomString(8)}`,
-      key_hash: keyHash,
-      tenant_id: metadata?.tenant_id || '',
-      type: 'deduct',
-      amount_micro_yuan: success ? -amount : -(current), // 记录实际扣除金额
-      balance_after_micro_yuan: newBalance,
-      reason: metadata?.reason || 'API request deduction',
-      created_at: Date.now(),
-      metadata,
-    };
+      if (this.useRedis) {
+        await this.persistBalanceAtomic(keyHash, newBalance, transaction);
+      }
 
-    this.appendTransaction(keyHash, transaction);
-
-    if (this.useRedis) {
-      this.persistBalance(keyHash).catch(() => {});
-      this.persistTransaction(keyHash, transaction).catch(() => {});
-    }
-
-    return { success, newBalance, transaction };
+      return { success, newBalance, transaction };
+    });
   }
 
   /**
@@ -227,6 +248,29 @@ class WalletStore {
       await store.lTrim(`transactions:${keyHash}`, 0, MAX_TRANSACTIONS_PER_KEY - 1);
     } catch {
       // 忽略持久化失败
+    }
+  }
+
+  /**
+   * 原子化持久化余额和交易到 Redis
+   */
+  private async persistBalanceAtomic(
+    keyHash: string,
+    newBalance: number,
+    tx: IWalletTransaction
+  ): Promise<void> {
+    try {
+      const store = await this.getStore();
+      const pipeline = store.pipeline();
+      pipeline.set(`balance:${keyHash}`, String(newBalance));
+      pipeline.lPush(`transactions:${keyHash}`, JSON.stringify(tx));
+      pipeline.lTrim(`transactions:${keyHash}`, 0, MAX_TRANSACTIONS_PER_KEY - 1);
+      await pipeline.exec();
+    } catch (err) {
+      writeLog('warn', 'Failed to persist wallet atomically', {
+        key_hash: keyHash,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -322,11 +366,11 @@ export function checkPrepaidBalance(keyHash: string, estimatedCostMicroYuan?: nu
 /**
  * 扣费
  */
-export function deductBalance(
+export async function deductBalance(
   keyHash: string,
   costMicroYuan: number,
   metadata?: Record<string, string>
-): DeductResult {
+): Promise<DeductResult> {
   return walletStore.deductBalance(keyHash, costMicroYuan, metadata);
 }
 

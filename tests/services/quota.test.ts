@@ -75,40 +75,40 @@ describe('Quota Service', () => {
       expect(result.allowed).toBe(true);
     });
 
-    it('should deny when daily request limit exceeded', () => {
+    it('should deny when daily request limit exceeded', async () => {
       setTenantLimits('test-tenant', { daily_requests: 5 });
-      recordUsage('test-tenant', 100);
-      recordUsage('test-tenant', 100);
-      recordUsage('test-tenant', 100);
-      recordUsage('test-tenant', 100);
-      recordUsage('test-tenant', 100);
-      recordUsage('test-tenant', 100); // 6th request over 5 limit
+      await recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100); // 6th request over 5 limit
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(false);
       expect(result.reason).toBe('Daily request limit exceeded');
     });
 
-    it('should deny when daily token limit exceeded', () => {
+    it('should deny when daily token limit exceeded', async () => {
       setTenantLimits('test-tenant', { daily_tokens: 100 });
-      recordUsage('test-tenant', 200);
+      await recordUsage('test-tenant', 200);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(false);
       expect(result.reason).toBe('Daily token limit exceeded');
     });
 
-    it('should return remaining requests when limit set', () => {
+    it('should return remaining requests when limit set', async () => {
       setTenantLimits('test-tenant', { daily_requests: 10 });
-      recordUsage('test-tenant', 100);
-      recordUsage('test-tenant', 100);
-      recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(true);
       expect(result.remaining_requests).toBe(7);
     });
 
-    it('should return remaining tokens when limit set', () => {
+    it('should return remaining tokens when limit set', async () => {
       setTenantLimits('test-tenant', { daily_tokens: 1000 });
-      recordUsage('test-tenant', 100);
+      await recordUsage('test-tenant', 100);
       const result = checkQuota('test-tenant');
       expect(result.allowed).toBe(true);
       expect(result.remaining_tokens).toBe(900);
@@ -129,9 +129,9 @@ describe('Quota Service', () => {
   });
 
   describe('recordUsage', () => {
-    it('should accumulate daily requests and tokens', () => {
-      recordUsage('tenant-1', 50);
-      recordUsage('tenant-1', 30);
+    it('should accumulate daily requests and tokens', async () => {
+      await recordUsage('tenant-1', 50);
+      await recordUsage('tenant-1', 30);
       setTenantLimits('tenant-1', { daily_requests: 3, daily_tokens: 100 });
       const result = checkQuota('tenant-1');
       expect(result.allowed).toBe(true);
@@ -154,9 +154,9 @@ describe('Quota Service', () => {
   });
 
   describe('resetTenantQuota', () => {
-    it('should reset daily quota counters', () => {
+    it('should reset daily quota counters', async () => {
       setTenantLimits('tenant-1', { daily_requests: 10, daily_tokens: 1000 });
-      recordUsage('tenant-1', 100);
+      await recordUsage('tenant-1', 100);
       resetTenantQuota('tenant-1');
       const result = checkQuota('tenant-1');
       expect(result.allowed).toBe(true);
@@ -170,13 +170,13 @@ describe('Quota Service', () => {
       jest.useRealTimers();
     });
 
-    it('should auto-reset daily quota when day changes', () => {
+    it('should auto-reset daily quota when day changes', async () => {
       jest.useFakeTimers();
       const now = new Date('2026-06-11T10:00:00Z').getTime();
       jest.setSystemTime(now);
 
       setTenantLimits('tenant-1', { daily_tokens: 100 });
-      recordUsage('tenant-1', 200);
+      await recordUsage('tenant-1', 200);
 
       // 当天应被拒绝
       let result = checkQuota('tenant-1');
@@ -192,13 +192,13 @@ describe('Quota Service', () => {
       expect(result.remaining_tokens).toBe(100);
     });
 
-    it('should not reset when within same day', () => {
+    it('should not reset when within same day', async () => {
       jest.useFakeTimers();
       const now = new Date('2026-06-11T10:00:00Z').getTime();
       jest.setSystemTime(now);
 
       setTenantLimits('tenant-1', { daily_tokens: 100 });
-      recordUsage('tenant-1', 200);
+      await recordUsage('tenant-1', 200);
 
       // 推进 1 小时（同一天）
       jest.setSystemTime(now + 60 * 60 * 1000);

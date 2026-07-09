@@ -182,14 +182,14 @@ async function handleEmbedding(c: Context): Promise<Response> {
       const cost = getPricingService().calculateCost(model, promptTokens, 0);
       const keyHash = c.get('key_hash') as string | undefined;
 
-      recordUsage(tenantId, totalTokens);
-      recordKeyCost(keyHash || '', cost);
+      await recordUsage(tenantId, totalTokens);
+      await recordKeyCost(keyHash || '', cost);
 
       // 预付模式扣费
       const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
       if (billingMode === 'prepaid' && keyHash) {
         const costMicroYuan = Math.ceil(cost * 1_000_000);
-        const deductResult = deductBalance(keyHash, costMicroYuan, {
+        const deductResult = await deductBalance(keyHash, costMicroYuan, {
           request_id: c.get('request_id') as string,
           model,
           provider: providerName,

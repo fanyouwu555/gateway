@@ -26,6 +26,29 @@ export interface IStorage {
 }
 
 /**
+ * Pipeline 接口
+ * 支持链式调用和批量原子执行
+ */
+export interface Pipeline {
+  set(key: string, value: string, ttl?: number): Pipeline;
+  get(key: string): Pipeline;
+  delete(key: string): Pipeline;
+  expire(key: string, ttl: number): Pipeline;
+  exists(key: string): Pipeline;
+  incr(key: string): Pipeline;
+  hSet(key: string, field: string, value: string): Pipeline;
+  hGet(key: string, field: string): Pipeline;
+  hGetAll(key: string): Pipeline;
+  hDel(key: string, ...fields: string[]): Pipeline;
+  lPush(key: string, ...values: string[]): Pipeline;
+  lRange(key: string, start: number, stop: number): Pipeline;
+  lTrim(key: string, start: number, stop: number): Pipeline;
+  keys(pattern: string): Pipeline;
+  delByPattern(pattern: string): Pipeline;
+  exec(): Promise<unknown[]>;
+}
+
+/**
  * Key-Value 存储接口
  */
 export interface IKVStore extends IStorage {
@@ -73,4 +96,7 @@ export interface IKVStore extends IStorage {
 
   /** 删除匹配的所有键 */
   delByPattern(pattern: string): Promise<number>;
+
+  /** 创建 pipeline */
+  pipeline(): Pipeline;
 }

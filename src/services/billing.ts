@@ -33,10 +33,28 @@ class BillingCostTracker {
   private useRedis = false;
   private store: ReturnType<typeof createKVStore> | null = null;
 
+  private inFlight = new Map<string, Promise<unknown>>();
+
   constructor() {
     this.useRedis = shouldUseRedis('BILLING_STORAGE');
     if (this.useRedis) {
       this.store = createKVStore('billing');
+    }
+  }
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.inFlight.get(key);
+    const next = (async () => {
+      if (prev) await prev;
+      return fn();
+    })();
+    this.inFlight.set(key, next);
+    try {
+      return await next;
+    } finally {
+      if (this.inFlight.get(key) === next) {
+        this.inFlight.delete(key);
+      }
     }
   }
 
@@ -65,18 +83,20 @@ class BillingCostTracker {
   /**
    * 记录 Key 级月度成本
    */
-  recordKeyCost(keyHash: string, cost: number): void {
-    let keyCost = this.keyMonthlyCosts.get(keyHash);
-    if (!keyCost) {
-      keyCost = { cost: 0, last_reset: Date.now() };
-      this.keyMonthlyCosts.set(keyHash, keyCost);
-    }
-    this.ensureKeyMonthlyReset(keyCost);
-    keyCost.cost += cost;
+  async recordKeyCost(keyHash: string, cost: number): Promise<void> {
+    return this.withLock(keyHash, async () => {
+      let keyCost = this.keyMonthlyCosts.get(keyHash);
+      if (!keyCost) {
+        keyCost = { cost: 0, last_reset: Date.now() };
+        this.keyMonthlyCosts.set(keyHash, keyCost);
+      }
+      this.ensureKeyMonthlyReset(keyCost);
+      keyCost.cost += cost;
 
-    if (this.useRedis) {
-      this.persistKeyCosts().catch(() => {});
-    }
+      if (this.useRedis) {
+        await this.persistKeyCosts();
+      }
+    });
   }
 
   /**
@@ -204,8 +224,8 @@ export async function flushBillingCostTracker(): Promise<void> {
 /**
  * 记录 Key 级月度成本
  */
-export function recordKeyCost(keyHash: string, cost: number): void {
-  billingCostTracker.recordKeyCost(keyHash, cost);
+export async function recordKeyCost(keyHash: string, cost: number): Promise<void> {
+  await billingCostTracker.recordKeyCost(keyHash, cost);
 }
 
 /**

@@ -43,10 +43,28 @@ class QuotaStore {
   private useRedis = false;
   private store: ReturnType<typeof createKVStore> | null = null;
 
+  private inFlight = new Map<string, Promise<unknown>>();
+
   constructor() {
     this.useRedis = shouldUseRedis('QUOTA_STORAGE');
     if (this.useRedis) {
       this.store = createKVStore('quota');
+    }
+  }
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.inFlight.get(key);
+    const next = (async () => {
+      if (prev) await prev;
+      return fn();
+    })();
+    this.inFlight.set(key, next);
+    try {
+      return await next;
+    } finally {
+      if (this.inFlight.get(key) === next) {
+        this.inFlight.delete(key);
+      }
     }
   }
 
@@ -106,15 +124,16 @@ class QuotaStore {
   /**
    * 增加使用量
    */
-  increment(tenantId: TenantId, tokens: number): void {
-    const quota = this.get(tenantId);
-    quota.daily_requests += 1;
-    quota.daily_tokens += tokens;
+  async increment(tenantId: TenantId, tokens: number): Promise<void> {
+    return this.withLock(tenantId, async () => {
+      const quota = this.get(tenantId);
+      quota.daily_requests += 1;
+      quota.daily_tokens += tokens;
 
-    // 异步持久化到 Redis（fire-and-forget）
-    if (this.useRedis) {
-      this.persist(tenantId).catch(() => {});
-    }
+      if (this.useRedis) {
+        await this.persist(tenantId);
+      }
+    });
   }
 
   /**
@@ -299,11 +318,11 @@ export function checkQuota(tenantId: TenantId): QuotaCheckResult {
 /**
  * 记录使用量
  */
-export function recordUsage(
+export async function recordUsage(
   tenantId: TenantId,
   tokens: number
-): void {
-  quotaStore.increment(tenantId, tokens);
+): Promise<void> {
+  await quotaStore.increment(tenantId, tokens);
 }
 
 /**
