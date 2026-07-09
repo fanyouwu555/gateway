@@ -4,7 +4,9 @@
  * 并管理 Key 级月度成本（供 monthly_budget 安全阀使用）
  * 与 QuotaService 分离：Billing = 有没有资格用，Quota = 能用多少
  */
+import type { Context } from 'hono';
 import type { IApiKeyMeta } from '../types';
+import { GatewayError } from '../middleware/error';
 import { getBalance, checkPrepaidBalance } from './wallet';
 import { createKVStore } from '../stores/factory';
 import { shouldUseRedis } from '../utils';
@@ -316,4 +318,30 @@ export function checkBilling(
     allowed: true,
     billing_info: Object.keys(info).length > 0 ? info : undefined,
   };
+}
+
+/**
+ * Shared billing check for HTTP routes and WebSocket
+ * Throws GatewayError.billingError when billing check fails
+ */
+export function checkRequestBilling(c: Context): null {
+  const keyHash = c.get('key_hash') as string | undefined;
+  const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
+  if (!keyHash) return null;
+
+  const billingCheck = checkBilling(
+    keyHash,
+    billingMode,
+    c.get('key_monthly_budget'),
+    c.get('key_subscription_expires_at')
+  );
+
+  if (!billingCheck.allowed) {
+    throw GatewayError.billingError(
+      billingCheck.reason || 'Billing check failed',
+      billingCheck.code || 'insufficient_balance'
+    );
+  }
+
+  return null;
 }

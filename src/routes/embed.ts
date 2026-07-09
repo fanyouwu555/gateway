@@ -41,21 +41,8 @@ async function checkEmbedKeyPolicies(c: Context, model: string): Promise<Respons
   }
 
   // 统一计费检查
-  const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
-  const keyHash = c.get('key_hash') as string | undefined;
-  if (keyHash) {
-    const { checkBilling } = await import('../services/billing');
-    const billingCheck = checkBilling(
-      keyHash,
-      billingMode,
-      c.get('key_monthly_budget'),
-      c.get('key_subscription_expires_at')
-    );
-    if (!billingCheck.allowed) {
-      const code = billingCheck.code || 'insufficient_balance';
-      throw GatewayError.billingError(billingCheck.reason || 'Billing check failed', code);
-    }
-  }
+  const { checkRequestBilling } = await import('../services/billing');
+  checkRequestBilling(c);
 
   return null;
 }
