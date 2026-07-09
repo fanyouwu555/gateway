@@ -20,13 +20,20 @@ let globalRedisClient: Redis | null = null;
 function getSharedRedisClient(): Redis {
   if (!globalRedisClient) {
     const cfg = getRedisConfig();
-    globalRedisClient = new Redis({
-      host: cfg.host,
-      port: cfg.port,
-      password: cfg.password,
-      db: cfg.db,
-      retryStrategy: (times) => Math.min(times * 200, 2000),
-    });
+    if (cfg.url) {
+      globalRedisClient = new Redis(cfg.url, {
+        db: cfg.db,
+        retryStrategy: (times) => Math.min(times * 200, 2000),
+      });
+    } else {
+      globalRedisClient = new Redis({
+        host: cfg.host,
+        port: cfg.port,
+        password: cfg.password,
+        db: cfg.db,
+        retryStrategy: (times) => Math.min(times * 200, 2000),
+      });
+    }
   }
   return globalRedisClient;
 }

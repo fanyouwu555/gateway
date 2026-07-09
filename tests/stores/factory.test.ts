@@ -128,5 +128,16 @@ describe('StorageFactory', () => {
         expect.objectContaining({ prefix: 'redis-test' })
       );
     });
+
+    it('should share the same Redis client across multiple createKVStore calls', () => {
+      process.env.STORAGE_TYPE = 'redis';
+      createKVStore('prefix1');
+      createKVStore('prefix2');
+      expect(MockRedisKVStore).toHaveBeenCalledTimes(2);
+      const calls = MockRedisKVStore.mock.calls as Array<[{ client: unknown; prefix: string }]>;
+      expect(calls[0][0].client).toBe(calls[1][0].client);
+      expect(calls[0][0].prefix).toBe('prefix1');
+      expect(calls[1][0].prefix).toBe('prefix2');
+    });
   });
 });
