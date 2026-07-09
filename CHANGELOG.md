@@ -2,30 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.0] - 2026-05-22
+## [1.0.0] - 2026-07-09
 
 ### Added
 
-- **Alerting Rule Engine** - Threshold-based alerting with Webhook notifications. Monitor `error_rate`, `avg_latency_ms`, and `total_requests`. Supports cooldown periods and enable/disable rules.
-- **Prompt Template Variable System** - Use `{{var}}` syntax in prompt templates. Templates can be managed via Admin API and referenced in chat requests using `template_id` and `template_variables`.
-- **Model Alias System** - Configure friendly aliases (e.g., `fast` -> `gpt-4o-mini`) via `model_aliases` in config or Admin API.
-- **HTTP Agent Connection Pool + Keep-Alive** - Explicit undici-based connection pooling for all provider HTTP requests. Configurable via `HTTP_POOL_SIZE`, `HTTP_KEEP_ALIVE`, and `HTTP_KEEP_ALIVE_TIMEOUT` environment variables.
-- **Plugin VM Sandbox** - Dynamic JavaScript plugin loading with `node:vm` sandbox for safe execution.
-- **Log Persistence** - Daily log rotation with 7-day retention.
-- **K8s + Helm Deployment** - Production-ready Kubernetes manifests and Helm chart.
-- **k6 Performance Benchmarks** - Load test scripts with SLA thresholds.
+- **Alerting Rule Engine** — Threshold-based alerting with Webhook notifications.
+- **Prompt Template Variable System** — `{{var}}` syntax with Admin API CRUD.
+- **Model Alias System** — `model_aliases` config + runtime Admin API.
+- **HTTP Agent Connection Pool + Keep-Alive** — undici-based pooling via `HTTP_POOL_SIZE` / `HTTP_KEEP_ALIVE` / `HTTP_KEEP_ALIVE_TIMEOUT` env vars.
+- **Plugin VM Sandbox** — Dynamic JS plugin loading with `node:vm` sandbox.
+- **Log Persistence** — Daily log rotation with 7-day retention.
+- **K8s + Helm Deployment** — Production-ready manifests and Helm chart.
+- **Semantic Cache** — LSH-based cosine-similarity caching.
+- **Token Rate Limiting** — Per-request token bucket rate limiting.
+- **Conversation Logging** — Session-based persistent conversation history.
+- **Request Logging** — Structured request/response logging.
+- **Pricing Service** — Per-model cost tracking.
+- **Billing Mode Refactor** — Unified prepaid/subscription billing with `checkRequestBilling`.
+- **Deployment Documentation** — `docs/deployment.md` covering Docker, K8s, Helm, and env vars.
 
 ### Changed
 
-- **Redis Cache `get()`** - Refactored to async for unified Memory/Redis behavior.
-- **Kimi Code Provider** - Switched from custom Anthropic protocol to `OpenAICompatibleProvider` to fix 403 errors.
-- **Admin API** - Added full CRUD endpoints for prompt templates, alert rules, and model aliases.
+- **Redis Cache `get()`** — Async refactor for unified Memory/Redis behavior.
+- **Kimi Code Provider** — Switched to `OpenAICompatibleProvider` to fix 403 errors.
+- **Auth Middleware** — Prefix-index lookup eliminates O(n) scrypt verification.
+- **Stream/Post Processor Extraction** — `src/services/stream-processor.ts` + `post-processor.ts` reduce `chat.ts` complexity.
+- **Embed Failover Chain** — Embedding requests now use provider failover.
+- **Hardcoded Values** — Extracted `DAY_MS`, `HOUR_MS`, `round3`, `round4` helpers across codebase.
+- **WS Timeouts** — Heartbeat/metrics/idle intervals now configurable via env vars.
 
 ### Fixed
 
 - Docker build failing due to husky prepare script in Alpine.
 - Admin route test auth failures due to scrypt hashing mismatches in mocks.
 - Type errors in route params (`c.req.param('id')` returning `undefined`).
+- Failover 4xx cascade — Only retry on 5xx/network/429, stop on 4xx.
+- Billing error semantics — Returns `billing_error` (402) instead of `rate_limit_error`/`authentication_error`.
 
 ## [1.1.0] - 2026-06-09
 
