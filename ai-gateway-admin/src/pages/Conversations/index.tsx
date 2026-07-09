@@ -442,7 +442,7 @@ const Conversations: React.FC = () => {
                     {detailData.session.client_info.version && ` v${detailData.session.client_info.version}`}
                   </Descriptions.Item>
                   <Descriptions.Item label="识别方式">
-                    {detailData.session.client_info.inferredFrom === 'header' ? '声明' : '推断'}
+                    {detailData.session.client_info.inferred_from === 'header' ? '声明' : '推断'}
                   </Descriptions.Item>
                 </>
               )}

@@ -248,7 +248,7 @@ export interface ConversationSession {
   client_info?: {
     name: string
     version?: string
-    inferredFrom: 'header' | 'user-agent' | 'unknown'
+    inferred_from: 'header' | 'user-agent' | 'unknown'
   }
   /** 原始 User-Agent */
   user_agent?: string
@@ -294,7 +294,7 @@ export interface ConversationTurn {
     client_info?: {
       name: string
       version?: string
-      inferredFrom: 'header' | 'user-agent' | 'unknown'
+      inferred_from: 'header' | 'user-agent' | 'unknown'
     }
     /** 会话标识来源 */
     session_source?: {

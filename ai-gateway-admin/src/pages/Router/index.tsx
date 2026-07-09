@@ -110,7 +110,7 @@ const RouterStatus: React.FC = () => {
                 render: (v: number | undefined) => v?.toLocaleString() || '0',
               },
               {
-                title: '错误率', dataIndex: 'errorRate', key: 'errorRate', width: 100,
+                title: '错误率', dataIndex: 'error_rate', key: 'error_rate', width: 100,
                 render: (v: number | undefined) => v ? `${(v * 100).toFixed(2)}%` : '0%',
               },
               {
