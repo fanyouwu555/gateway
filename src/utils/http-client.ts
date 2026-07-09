@@ -7,12 +7,14 @@ import { getEnv } from '.';
 
 const keepAlive = getEnv('HTTP_KEEP_ALIVE', 'true') !== 'false';
 const keepAliveTimeout = parseInt(getEnv('HTTP_KEEP_ALIVE_TIMEOUT', '60000'), 10);
+const poolSize = parseInt(getEnv('HTTP_POOL_SIZE', '100'), 10);
 
 /**
  * 共享 undici Agent
  * 支持连接池、Keep-Alive
  */
 export const sharedAgent = new Agent({
+  connections: poolSize,
   connect: {
     keepAlive,
     keepAliveInitialDelay: keepAliveTimeout,
