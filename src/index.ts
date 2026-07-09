@@ -34,6 +34,8 @@ import { failoverManager } from './services/failover';
 import { initTracing } from './utils/tracing';
 import { initStorageFactory } from './stores/factory';
 import type { StorageType } from './stores/interface';
+import { runStartup } from './utils/startup';
+import { shutdownRegistry } from './utils/shutdown';
 
 async function loadPersistedPlugins(): Promise<void> {
   try {
@@ -57,6 +59,27 @@ async function loadPersistedPlugins(): Promise<void> {
   }
 }
 
+function registerBuiltinPlugins(): void {
+  const sensitiveWords = process.env.SENSITIVE_WORDS
+    ? process.env.SENSITIVE_WORDS.split(',').filter(Boolean)
+    : [];
+  if (sensitiveWords.length > 0) {
+    const sensitiveFilter = createSensitiveWordFilterPlugin(sensitiveWords);
+    registerPlugin(sensitiveFilter);
+  }
+
+  const piiPlugin = createPiiPlugin();
+  registerPlugin(piiPlugin);
+
+  const piiBlockGuardrail = createPiiBlockGuardrail();
+  if (piiBlockGuardrail.config.enabled) {
+    registerPlugin(piiBlockGuardrail);
+  }
+
+  const injectionGuardrail = createPromptInjectionGuardrail();
+  registerPlugin(injectionGuardrail);
+}
+
 // 创建 Hono 应用实例
 const app = createApp();
 
@@ -66,86 +89,77 @@ const app = createApp();
  * CORS 由 Hono cors() 中间件处理（src/app.ts）
  */
 async function startServer() {
-  // 显式初始化存储工厂（避免延迟初始化导致配置不可控）
-  const storageType = (process.env.STORAGE_TYPE || 'memory') as StorageType;
-  initStorageFactory({ type: storageType });
-  if (storageType === 'memory') {
-    writeLog('warn', 'Running with IN-MEMORY storage — all data will be lost on restart. Set STORAGE_TYPE=redis for persistence.');
-  }
-
-  // 初始化 Providers
-  initProviders();
-
-  // 初始化 Tracing（默认关闭，需 OTEL_ENABLED=true）
-  initTracing();
-
-  // 恢复持久化的动态插件
-  await loadPersistedPlugins();
-
-  // 注册内置插件
-  const sensitiveWords = process.env.SENSITIVE_WORDS
-    ? process.env.SENSITIVE_WORDS.split(',').filter(Boolean)
-    : [];
-  if (sensitiveWords.length > 0) {
-    const sensitiveFilter = createSensitiveWordFilterPlugin(sensitiveWords);
-    registerPlugin(sensitiveFilter);
-  }
-
-  // 注册 PII 脱敏插件（默认 mask 模式）
-  const piiPlugin = createPiiPlugin();
-  registerPlugin(piiPlugin);
-
-  // 注册 PII Block Guardrail（仅在 action=block 时启用）
-  const piiBlockGuardrail = createPiiBlockGuardrail();
-  if (piiBlockGuardrail.config.enabled) {
-    registerPlugin(piiBlockGuardrail);
-  }
-
-  // 注册提示注入 Guardrail
-  const injectionGuardrail = createPromptInjectionGuardrail();
-  registerPlugin(injectionGuardrail);
-
-  // 获取配置
   const config = getConfig();
 
-  // 初始化缓存配置
-  const cacheStore = initCache(config.cache);
-  await cacheStore.initStorage();
+  // 注册关闭时的 flush 处理器
+  shutdownRegistry.register('quota', flushQuotaStore);
+  shutdownRegistry.register('tenant', flushTenantStore);
+  shutdownRegistry.register('tenant-template', flushTenantTemplateStore);
+  shutdownRegistry.register('wallet', flushWalletStore);
+  shutdownRegistry.register('billing', flushBillingCostTracker);
 
-  // 初始化语义缓存
-  initSemanticCache(config.semantic_cache);
+  await runStartup([
+    {
+      name: 'core',
+      critical: true,
+      inits: [
+        async () => {
+          const storageType = (process.env.STORAGE_TYPE || 'memory') as StorageType;
+          initStorageFactory({ type: storageType });
+          if (storageType === 'memory') {
+            writeLog('warn', 'Running with IN-MEMORY storage — all data will be lost on restart. Set STORAGE_TYPE=redis for persistence.');
+          }
+        },
+        async () => initProviders(),
+        async () => initTracing(),
+      ],
+    },
+    {
+      name: 'storage',
+      critical: true,
+      inits: [
+        async () => {
+          const cacheStore = initCache(config.cache);
+          await cacheStore.initStorage();
+        },
+        async () => initSemanticCache(config.semantic_cache),
+        async () => failoverManager.init(),
+      ],
+    },
+    {
+      name: 'services',
+      critical: true,
+      inits: [
+        async () => initConversationLogService(),
+        async () => initRequestLogStore(),
+        async () => initQuotaStore(),
+        async () => initTenantStore(),
+        async () => initTenantTemplateStore(),
+        async () => initWalletStore(),
+        async () => initBillingCostTracker(),
+        async () => initMetricsStore(),
+      ],
+    },
+    {
+      name: 'plugins',
+      critical: false,
+      inits: [
+        async () => loadPersistedPlugins(),
+        async () => registerBuiltinPlugins(),
+      ],
+    },
+    {
+      name: 'runtime',
+      critical: true,
+      inits: [
+        async () => startAlertEngine(),
+        async () => initRateLimitCleanInterval(config.rate_limit_clean_interval),
+        async () => initWebSocket(),
+      ],
+    },
+  ]);
 
-  // 初始化 FailoverManager（加载配置和持久化状态）
-  await failoverManager.init();
-
-  // 初始化限流清理间隔
-  initRateLimitCleanInterval(config.rate_limit_clean_interval);
-
-  // 初始化会话日志存储（从 Redis 预加载会话索引）
-  await initConversationLogService();
-
-  // 初始化请求日志存储（从 Redis 加载历史日志）
-  await initRequestLogStore();
-
-  // 启动告警引擎
-  await startAlertEngine();
   writeLog('info', 'Alert engine started');
-
-  // 初始化配额存储（从 Redis 加载历史数据）
-  await initQuotaStore();
-
-  // 初始化租户存储（从 Redis 加载历史数据）
-  // 同时初始化租户模板存储
-  await Promise.all([initTenantStore(), initTenantTemplateStore()]);
-
-  // 初始化钱包存储（从 Redis 加载余额数据）
-  await initWalletStore();
-
-  // 初始化计费成本追踪器（从 Redis 加载 Key 级月度成本）
-  await initBillingCostTracker();
-
-  // 初始化指标存储（从 Redis 加载历史数据）
-  await initMetricsStore();
 
   // 定期 flush 配额数据到 Redis（每 60 秒）
   setInterval(() => {
@@ -157,9 +171,6 @@ async function startServer() {
   }, 60000).unref();
 
   const server = createServer();
-
-  // 初始化 WebSocket 管理器
-  initWebSocket();
 
   // 创建 WebSocket 服务器
   const wss = new WebSocketServer({
@@ -325,12 +336,7 @@ async function startServer() {
     // 清理所有 WebSocket 连接
     resetWebSocketConnections();
     // Flush 待写入 Redis 的数据，避免优雅关闭时丢失
-    Promise.all([
-      flushQuotaStore().catch(() => {}),
-      flushTenantStore().catch(() => {}),
-      flushTenantTemplateStore().catch(() => {}),
-      flushWalletStore().catch(() => {}),
-    ]).then(() => {
+    shutdownRegistry.flushAll().then(() => {
       server.close(() => {
         writeLog('info', 'HTTP server closed');
         process.exit(0);

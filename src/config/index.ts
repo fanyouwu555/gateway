@@ -498,20 +498,13 @@ export function reloadConfig(configPath?: string): IGatewayConfig {
 /**
  * 直接更新运行中的配置（不持久化到文件）
  * 用于管理 API 的运行时配置更新
+ * 使用 deepMergeConfig 递归合并对象，数组采用替换策略
  */
 export function setConfig(updates: Partial<IGatewayConfig>): IGatewayConfig {
   if (!_config) {
     _config = initConfig();
   }
-  _config = { ..._config, ...updates };
-
-  // 深度合并 auth，避免更新 enabled 时丢失已有的 api_keys
-  if (updates.auth) {
-    _config.auth = { ..._config.auth, ...updates.auth };
-  }
-  if (updates.providers) {
-    _config.providers = { ..._config.providers, ...updates.providers };
-  }
+  _config = deepMergeConfig(_config, updates);
 
   // 自动哈希新增的 API Key
   if (updates.auth?.api_keys) {
