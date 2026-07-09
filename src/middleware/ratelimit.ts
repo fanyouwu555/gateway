@@ -21,6 +21,97 @@ let adminRateLimitStore: IRateLimitStore | null = null;
 const concurrencyLimiter = new ConcurrencyLimiter();
 
 /**
+ * 限流检查输入
+ */
+export interface RateLimitCheckInfo {
+  tenantId?: string;
+  keyHash?: string;
+  isAdminPath: boolean;
+  model?: string;
+  rateLimitQps?: number;
+  rateLimitBurst?: number;
+}
+
+/**
+ * 限流检查结果
+ */
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining?: number;
+  limit?: number;
+  retryAfter?: number;
+  reason?: string;
+}
+
+/**
+ * 可编程限流检查
+ * 返回检查结果与并发槽释放回调，供 HTTP 中间件和 WebSocket 复用
+ */
+export async function checkRateLimit(
+  info: RateLimitCheckInfo
+): Promise<{ result: RateLimitResult; release?: () => void }> {
+  const config = getConfig();
+  if (!config.rate_limit?.enabled) {
+    return { result: { allowed: true } };
+  }
+
+  const tenantId = info.tenantId;
+  const keyHash = info.keyHash;
+  const concurrencyKey = keyHash || tenantId || 'global';
+  let concurrencyLimit = 0;
+  let acquired = false;
+
+  if (tenantId) {
+    const tenant = getTenant(tenantId);
+    if (tenant?.limits?.concurrent_requests) {
+      concurrencyLimit = tenant.limits.concurrent_requests;
+    }
+  }
+
+  if (concurrencyLimit > 0) {
+    acquired = concurrencyLimiter.acquire(concurrencyKey, concurrencyLimit);
+    if (!acquired) {
+      return { result: { allowed: false, reason: 'concurrent_limit_exceeded' } };
+    }
+  }
+
+  const store = await getRateLimitStore(info.isAdminPath);
+  const limit = info.isAdminPath
+    ? (config.rate_limit.burst ?? 20) * 2
+    : (config.rate_limit.burst ?? 20);
+
+  const mockC = {
+    req: { header: () => undefined },
+    get: (key: string) => {
+      if (key === 'tenant_id') return tenantId;
+      if (key === 'key_hash') return keyHash;
+      if (key === 'key_rate_limit_qps') return info.rateLimitQps;
+      if (key === 'key_rate_limit_burst') return info.rateLimitBurst;
+      return undefined;
+    },
+  } as unknown as Context;
+
+  const allowed = await store.consume(mockC);
+  const remaining = await store.getRemainingTokens(mockC);
+
+  if (!allowed) {
+    if (acquired) {
+      concurrencyLimiter.release(concurrencyKey);
+    }
+    const qps = config.rate_limit.qps ?? 10;
+    const retryAfter = Math.max(1, Math.ceil(1 / qps));
+    return {
+      result: { allowed: false, remaining: 0, limit, retryAfter, reason: 'rate_limit_exceeded' },
+    };
+  }
+
+  return {
+    result: { allowed: true, remaining, limit },
+    release: acquired ? () => concurrencyLimiter.release(concurrencyKey) : () => {},
+  };
+}
+
+/**
  * 重置限流存储（用于测试隔离）
  */
 export function resetRateLimitStore(): void {
@@ -94,7 +185,8 @@ export async function rateLimitMiddleware(
     return;
   }
 
-  const isAdminPath = c.req.path.startsWith('/v1/tenants') ||
+  const isAdminPath =
+    c.req.path.startsWith('/v1/tenants') ||
     c.req.path.startsWith('/v1/config') ||
     c.req.path.startsWith('/v1/plugins') ||
     c.req.path.startsWith('/v1/usage') ||
@@ -106,66 +198,37 @@ export async function rateLimitMiddleware(
     c.req.path.startsWith('/v1/sessions') ||
     c.req.path.startsWith('/v1/auth/verify');
 
-  // Check concurrent request limit
-  const tenantId = c.get('tenant_id') as string | undefined;
-  const keyHash = c.get('key_hash') as string | undefined;
-  const concurrencyKey = keyHash || tenantId || 'global';
-  let concurrencyLimit = 0;
+  const { result, release } = await checkRateLimit({
+    tenantId: c.get('tenant_id'),
+    keyHash: c.get('key_hash'),
+    isAdminPath,
+    rateLimitQps: c.get('key_rate_limit_qps'),
+    rateLimitBurst: c.get('key_rate_limit_burst'),
+  });
 
-  if (tenantId) {
-    const tenant = getTenant(tenantId);
-    if (tenant?.limits?.concurrent_requests) {
-      concurrencyLimit = tenant.limits.concurrent_requests;
+  if (!result.allowed) {
+    if (result.retryAfter) {
+      c.res.headers.set('Retry-After', String(result.retryAfter));
     }
-  }
-
-  let acquired = false;
-  if (concurrencyLimit > 0) {
-    acquired = concurrencyLimiter.acquire(concurrencyKey, concurrencyLimit);
-    if (!acquired) {
-      return c.json({
+    return c.json(
+      {
         error: {
-          message: 'Concurrent request limit exceeded. Please try again later.',
+          message: 'Rate limit exceeded. Please try again later.',
           type: 'rate_limit_error',
-          code: 'concurrent_limit_exceeded',
+          code: result.reason || 'rate_limit_exceeded',
         },
-      }, 429);
-    }
+      },
+      429
+    );
   }
 
-  const store = await getRateLimitStore(isAdminPath);
-  const limit = isAdminPath ? (config.rate_limit.burst ?? 20) * 2 : (config.rate_limit.burst ?? 20);
+  c.res.headers.set('X-RateLimit-Remaining', String(result.remaining));
+  c.res.headers.set('X-RateLimit-Limit', String(result.limit));
 
-  const allowed = await store.consume(c);
-  const remaining = await store.getRemainingTokens(c);
-
-  if (allowed) {
-    c.res.headers.set('X-RateLimit-Remaining', String(remaining));
-    c.res.headers.set('X-RateLimit-Limit', String(limit));
-    if (acquired) {
-      try {
-        await next();
-      } finally {
-        concurrencyLimiter.release(concurrencyKey);
-      }
-    } else {
-      await next();
-    }
-  } else {
-    if (acquired) {
-      concurrencyLimiter.release(concurrencyKey);
-    }
-    // Calculate Retry-After based on rate limit config
-    const qps = config.rate_limit.qps ?? 10;
-    const retryAfter = Math.max(1, Math.ceil(1000 / qps / 1000));
-    c.res.headers.set('Retry-After', String(retryAfter));
-    return c.json({
-      error: {
-        message: 'Rate limit exceeded. Please try again later.',
-        type: 'rate_limit_error',
-        code: 'rate_limit_exceeded',
-      },
-    }, 429);
+  try {
+    await next();
+  } finally {
+    release?.();
   }
 }
 
