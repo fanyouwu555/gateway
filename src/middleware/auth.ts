@@ -8,6 +8,7 @@ import type { Context, Next } from 'hono';
 import { getConfig } from '../config';
 import type { IAuthResult, IApiKeyMeta } from '../types';
 import { verifyApiKey, hashApiKey, generateSecureRandomString } from '../utils';
+import { writeLog } from '../utils/logger';
 import { findApiKeyByPrefix, findTenantApiKeyByHash, getTenant } from '../services/tenant';
 
 function buildAuthResult(storedKey: IApiKeyMeta): IAuthResult {
@@ -44,13 +45,19 @@ function validateApiKey(apiKey: string): IAuthResult {
     }
   }
 
-  const prefix = apiKey.slice(0, 10);
-  const candidateHashes = findApiKeyByPrefix(prefix);
-  for (const hashedKey of candidateHashes) {
-    const keyMeta = findTenantApiKeyByHash(hashedKey);
-    if (keyMeta && verifyApiKey(apiKey, keyMeta.key)) {
-      return buildAuthResult(keyMeta);
+  try {
+    const prefix = apiKey.slice(0, 10);
+    const candidateHashes = findApiKeyByPrefix(prefix);
+    for (const hashedKey of candidateHashes) {
+      const keyMeta = findTenantApiKeyByHash(hashedKey);
+      if (keyMeta && verifyApiKey(apiKey, keyMeta.key)) {
+        return buildAuthResult(keyMeta);
+      }
     }
+  } catch (err) {
+    writeLog('warn', 'Failed to look up tenant API key by prefix', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   return { valid: false, error: 'Invalid API key' };

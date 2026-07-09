@@ -168,20 +168,21 @@ describe('authMiddleware with tenant keys', () => {
   });
 
   it('should authenticate quickly with 100 tenant keys', async () => {
+    const tenant = await createTenant({
+      name: 'Perf Tenant',
+      status: 'active',
+      plan: 'free',
+      settings: {},
+      limits: {
+        daily_requests: 100000,
+        daily_tokens: 10000000,
+        max_api_keys: 200,
+        concurrent_requests: 100,
+      },
+    });
+
     const keys: string[] = [];
     for (let i = 0; i < 100; i++) {
-      const tenant = await createTenant({
-        name: `Perf Tenant ${i}`,
-        status: 'active',
-        plan: 'free',
-        settings: {},
-        limits: {
-          daily_requests: 100000,
-          daily_tokens: 10000000,
-          max_api_keys: 200,
-          concurrent_requests: 100,
-        },
-      });
       const k = await createTenantApiKey(tenant.tenant_id, `perf-key-${i}`);
       keys.push(k!.key);
     }
@@ -193,6 +194,6 @@ describe('authMiddleware with tenant keys', () => {
     const elapsed = Date.now() - start;
 
     expect(res.status).toBe(200);
-    expect(elapsed).toBeLessThan(1000);
+    expect(elapsed).toBeLessThan(500);
   });
 });
