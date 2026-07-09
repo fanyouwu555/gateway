@@ -55,7 +55,7 @@ class QuotaStore {
   private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.inFlight.get(key);
     const next = (async () => {
-      if (prev) await prev;
+      try { if (prev) await prev; } catch { /* ignore — we only need serialization */ }
       return fn();
     })();
     this.inFlight.set(key, next);

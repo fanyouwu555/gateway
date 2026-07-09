@@ -305,7 +305,7 @@ router.post('/v1/tenants/:id/keys/:keyHash/recharge', async (c: Context) => {
   }
 
   const amountMicroYuan = Math.round(amountYuan * 1_000_000);
-  const result = rechargeBalance(keyHash, amountMicroYuan, body.reason, body.metadata);
+  const result = await rechargeBalance(keyHash, amountMicroYuan, body.reason, body.metadata);
 
   auditAdmin({
     tenantId,

@@ -42,7 +42,7 @@ describe('Wallet Redis Persistence', () => {
 
   it('should persist balances to store on flush', async () => {
     setBalance('key1', 1_000_000);
-    rechargeBalance('key1', 500_000);
+    await rechargeBalance('key1', 500_000);
 
     await flushWalletStore();
 
@@ -84,7 +84,7 @@ describe('Wallet Redis Persistence', () => {
   });
 
   it('should persist transactions to store', async () => {
-    rechargeBalance('key1', 1_000_000, 'Initial');
+    await rechargeBalance('key1', 1_000_000, 'Initial');
     await deductBalance('key1', 300_000, { reason: 'usage' });
 
     await flushWalletStore();
@@ -103,7 +103,7 @@ describe('Wallet Redis Persistence', () => {
 
   it('should keep only max 1000 transactions per key', async () => {
     for (let i = 0; i < 1005; i++) {
-      rechargeBalance('key1', 1000);
+      await rechargeBalance('key1', 1000);
     }
 
     await flushWalletStore();

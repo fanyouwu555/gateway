@@ -60,7 +60,7 @@ class WalletStore {
   private async withLock<T>(keyHash: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.inFlight.get(keyHash);
     const next = (async () => {
-      if (prev) await prev;
+      try { if (prev) await prev; } catch { /* ignore — we only need serialization */ }
       return fn();
     })();
     this.inFlight.set(keyHash, next);
@@ -168,38 +168,40 @@ class WalletStore {
   /**
    * 充值
    */
-  rechargeBalance(
+  async rechargeBalance(
     keyHash: string,
     amountMicroYuan: number,
     reason?: string,
     metadata?: Record<string, string>
-  ): RechargeResult {
-    const amount = Math.max(0, amountMicroYuan);
-    const current = this.getBalance(keyHash);
-    const newBalance = current + amount;
+  ): Promise<RechargeResult> {
+    return this.withLock(keyHash, async () => {
+      const amount = Math.max(0, amountMicroYuan);
+      const current = this.getBalance(keyHash);
+      const newBalance = current + amount;
 
-    this.balances.set(keyHash, newBalance);
+      this.balances.set(keyHash, newBalance);
 
-    const transaction: IWalletTransaction = {
-      id: `tx-${Date.now()}-${generateSecureRandomString(8)}`,
-      key_hash: keyHash,
-      tenant_id: metadata?.tenant_id || '',
-      type: 'recharge',
-      amount_micro_yuan: amount,
-      balance_after_micro_yuan: newBalance,
-      reason: reason || 'Manual recharge',
-      created_at: Date.now(),
-      metadata,
-    };
+      const transaction: IWalletTransaction = {
+        id: `tx-${Date.now()}-${generateSecureRandomString(8)}`,
+        key_hash: keyHash,
+        tenant_id: metadata?.tenant_id || '',
+        type: 'recharge',
+        amount_micro_yuan: amount,
+        balance_after_micro_yuan: newBalance,
+        reason: reason || 'Manual recharge',
+        created_at: Date.now(),
+        metadata,
+      };
 
-    this.appendTransaction(keyHash, transaction);
+      this.appendTransaction(keyHash, transaction);
 
-    if (this.useRedis) {
-      this.persistBalance(keyHash).catch(() => {});
-      this.persistTransaction(keyHash, transaction).catch(() => {});
-    }
+      if (this.useRedis) {
+        this.persistBalance(keyHash).catch(() => {});
+        this.persistTransaction(keyHash, transaction).catch(() => {});
+      }
 
-    return { success: true, new_balance_micro_yuan: newBalance, transaction };
+      return { success: true, new_balance_micro_yuan: newBalance, transaction };
+    });
   }
 
   /**
@@ -377,12 +379,12 @@ export async function deductBalance(
 /**
  * 充值
  */
-export function rechargeBalance(
+export async function rechargeBalance(
   keyHash: string,
   amountMicroYuan: number,
   reason?: string,
   metadata?: Record<string, string>
-): RechargeResult {
+): Promise<RechargeResult> {
   return walletStore.rechargeBalance(keyHash, amountMicroYuan, reason, metadata);
 }
 

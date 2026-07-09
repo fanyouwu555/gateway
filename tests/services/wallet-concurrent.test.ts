@@ -36,6 +36,6 @@ describe('WalletStore concurrent deduction', () => {
     await Promise.all(promises);
 
     const finalBalance = getBalance(keyHash);
-    expect(finalBalance).toBeGreaterThanOrEqual(0);
+    expect(finalBalance).toBe(0);
   });
 });

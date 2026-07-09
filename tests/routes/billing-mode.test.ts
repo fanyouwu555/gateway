@@ -316,8 +316,8 @@ describe('Wallet Admin API', () => {
       name: 'test',
       billing_mode: 'prepaid',
     });
-    rechargeBalance('hash123', 1_000_000, 'Initial');
-    rechargeBalance('hash123', 500_000, 'Top up');
+    await rechargeBalance('hash123', 1_000_000, 'Initial');
+    await rechargeBalance('hash123', 500_000, 'Top up');
 
     const res = await app.request('/v1/tenants/t1/keys/hash123/transactions?limit=10', { headers: adminAuth });
     expect(res.status).toBe(200);

@@ -56,8 +56,8 @@ describe('WalletService', () => {
   });
 
   describe('rechargeBalance', () => {
-    it('should increase balance and create transaction', () => {
-      const result = rechargeBalance('key-1', 1_000_000, 'Test recharge');
+    it('should increase balance and create transaction', async () => {
+      const result = await rechargeBalance('key-1', 1_000_000, 'Test recharge');
       expect(result.success).toBe(true);
       expect(result.new_balance_micro_yuan).toBe(1_000_000);
       expect(result.transaction.type).toBe('recharge');
@@ -66,9 +66,9 @@ describe('WalletService', () => {
       expect(getBalance('key-1')).toBe(1_000_000);
     });
 
-    it('should accumulate balance on multiple recharges', () => {
-      rechargeBalance('key-1', 500_000);
-      rechargeBalance('key-1', 300_000);
+    it('should accumulate balance on multiple recharges', async () => {
+      await rechargeBalance('key-1', 500_000);
+      await rechargeBalance('key-1', 300_000);
       expect(getBalance('key-1')).toBe(800_000);
     });
   });
@@ -102,18 +102,18 @@ describe('WalletService', () => {
   });
 
   describe('getTransactions', () => {
-    it('should return transactions newest-first', () => {
-      rechargeBalance('key-1', 100_000, 'first');
-      rechargeBalance('key-1', 200_000, 'second');
+    it('should return transactions newest-first', async () => {
+      await rechargeBalance('key-1', 100_000, 'first');
+      await rechargeBalance('key-1', 200_000, 'second');
       const txs = getTransactions('key-1');
       expect(txs.length).toBe(2);
       expect(txs[0].reason).toBe('second');
       expect(txs[1].reason).toBe('first');
     });
 
-    it('should respect limit', () => {
+    it('should respect limit', async () => {
       for (let i = 0; i < 5; i++) {
-        rechargeBalance('key-1', 10_000);
+        await rechargeBalance('key-1', 10_000);
       }
       expect(getTransactions('key-1', 3).length).toBe(3);
       expect(getTransactions('key-1', 10).length).toBe(5);
