@@ -3,6 +3,7 @@
  */
 import { Hono } from 'hono';
 import embedRouter from '../../src/routes/embed';
+import { GatewayError } from '../../src/middleware/error';
 
 jest.mock('../../src/config', () => ({
   getConfig: () => ({
@@ -50,6 +51,12 @@ describe('Embeddings Router', () => {
       await next();
     });
     app.route('/', embedRouter);
+    app.onError((err, c) => {
+      if (err instanceof GatewayError) {
+        return c.json(err.toResponse(), err.statusCode as 400);
+      }
+      return c.json({ error: { message: 'Internal error', type: 'internal_error' } }, 500);
+    });
   });
 
   it('should return 400 for invalid request body', async () => {

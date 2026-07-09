@@ -173,16 +173,7 @@ async function runPreProviderPipeline(
         c.get('key_hash'),
         c.get('key_metadata'),
       );
-      return c.json(
-        {
-          error: {
-            message: quotaCheck.reason || 'Quota exceeded',
-            type: 'rate_limit_error',
-            code: 'quota_exceeded',
-          },
-        },
-        429
-      );
+      throw GatewayError.rateLimitError(quotaCheck.reason || 'Quota exceeded', 'quota_exceeded');
     }
   }
 
@@ -636,15 +627,9 @@ async function handleChatCompletion(c: Context): Promise<Response> {
       );
       const estimatedTotal = promptTokens + (providerReq.max_tokens || 4096);
       if (!trl.check(providerReq.model, estimatedTotal)) {
-        return c.json(
-          {
-            error: {
-              message: `Token rate limit exceeded for model '${providerReq.model}'. Estimated tokens: ${estimatedTotal}`,
-              type: 'rate_limit_error',
-              code: 'token_rate_limit_exceeded',
-            },
-          },
-          429,
+        throw GatewayError.rateLimitError(
+          `Token rate limit exceeded for model '${providerReq.model}'. Estimated tokens: ${estimatedTotal}`,
+          'token_rate_limit_exceeded'
         );
       }
     }

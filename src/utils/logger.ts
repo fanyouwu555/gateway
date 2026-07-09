@@ -5,7 +5,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { maskApiKey } from './index';
+import { maskApiKey, DAY_MS } from './index';
 
 /**
  * 日志级别
@@ -84,7 +84,7 @@ function cleanOldLogs(): void {
     const dir = getLogDir();
     if (!existsSync(dir)) return;
     const now = Date.now();
-    const retentionMs = LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const retentionMs = LOG_RETENTION_DAYS * DAY_MS;
 
     for (const file of readdirSync(dir)) {
       if (!file.startsWith('ai-gateway-') || !file.endsWith('.log')) continue;

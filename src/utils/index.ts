@@ -19,6 +19,22 @@ export function getTimestamp(): number {
   return Date.now();
 }
 
+/** 一小时的毫秒数 */
+export const HOUR_MS = 60 * 60 * 1000;
+
+/** 一天的毫秒数 */
+export const DAY_MS = 24 * HOUR_MS;
+
+/** 四舍五入到3位小数 */
+export function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/** 四舍五入到4位小数 */
+export function round4(value: number): number {
+  return Math.round(value * 10000) / 10000;
+}
+
 /**
  * 脱敏API Key (显示前4位和后4位)
  */

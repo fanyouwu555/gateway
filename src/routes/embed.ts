@@ -117,16 +117,7 @@ async function handleEmbedding(c: Context): Promise<Response> {
     if (tenantId) {
       const quotaCheck = checkQuota(tenantId);
       if (!quotaCheck.allowed) {
-        return c.json(
-          {
-            error: {
-              message: quotaCheck.reason || 'Quota exceeded',
-              type: 'rate_limit_error',
-              code: 'quota_exceeded',
-            },
-          },
-          429,
-        );
+        throw GatewayError.rateLimitError(quotaCheck.reason || 'Quota exceeded', 'quota_exceeded');
       }
     }
 
@@ -136,15 +127,9 @@ async function handleEmbedding(c: Context): Promise<Response> {
       const inputText = Array.isArray(request.input) ? request.input.join(' ') : request.input;
       const estimatedTokens = await countCompletionTokens(inputText, model);
       if (!trl.check(model, estimatedTokens)) {
-        return c.json(
-          {
-            error: {
-              message: `Token rate limit exceeded for model '${model}'. Estimated tokens: ${estimatedTokens}`,
-              type: 'rate_limit_error',
-              code: 'token_rate_limit_exceeded',
-            },
-          },
-          429,
+        throw GatewayError.rateLimitError(
+          `Token rate limit exceeded for model '${model}'. Estimated tokens: ${estimatedTokens}`,
+          'token_rate_limit_exceeded'
         );
       }
     }

@@ -7,6 +7,7 @@ import type { IKVStore } from '../stores/interface';
 import type { IConversationTurn, ISessionMeta, IConversationFilter } from '../types';
 import { writeLog } from '../utils/logger';
 import { getConfig } from '../config';
+import { DAY_MS } from '../utils';
 
 export interface ConversationLogConfig {
   enabled: boolean;
@@ -91,7 +92,7 @@ export class ConversationLogService {
         const turnIndex = await this.getNextTurnIndex(session_id);
         const store = await this.getStore();
         await store.hSet(turnKey, `turn_${turnIndex}`, JSON.stringify(turn));
-        const ttlMs = this.config.redisTtlDays * 24 * 60 * 60 * 1000;
+        const ttlMs = this.config.redisTtlDays * DAY_MS;
         await store.expire(turnKey, ttlMs);
         await this.updateSessionMeta(turn);
         await store.hSet(INDEX_KEY, session_id, String(turn.timestamp));
@@ -283,7 +284,7 @@ export class ConversationLogService {
         };
     this.memoryMeta.set(session_id, meta);
     const metaKey = `${META_KEY_PREFIX}:${session_id}`;
-    const ttlMs = this.config.redisTtlDays * 24 * 60 * 60 * 1000;
+    const ttlMs = this.config.redisTtlDays * DAY_MS;
     const store = await this.getStore();
     await store.hSet(metaKey, 'session_id', meta.session_id);
     await store.hSet(metaKey, 'created_at', String(meta.created_at));

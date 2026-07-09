@@ -6,7 +6,7 @@
 import type { Context } from 'hono';
 import type { WebSocket } from 'ws';
 import type { ChatCompletionRequest } from '../types';
-import { generateRequestId } from '../utils';
+import { generateRequestId, HOUR_MS } from '../utils';
 import { getProviderForModel, getConfig, resolveModelAlias } from '../config';
 import { chatCompleteStream } from '../providers';
 import { writeLog } from '../utils/logger';
@@ -19,6 +19,10 @@ import type { ChatMessage } from '../types';
 import { countPromptTokens, countCompletionTokens, accumulateStreamContent } from '../services/token-counter';
 import { checkRateLimit } from '../middleware/ratelimit';
 import { getTokenRateLimit } from '../services/token-ratelimit';
+
+const WS_HEARTBEAT_INTERVAL = parseInt(process.env.WS_HEARTBEAT_INTERVAL || '30000', 10);
+const WS_METRICS_INTERVAL = parseInt(process.env.WS_METRICS_INTERVAL || '5000', 10);
+const WS_IDLE_TIMEOUT = parseInt(process.env.WS_IDLE_TIMEOUT || '300000', 10);
 
 /**
  * WebSocket 消息类型
@@ -76,9 +80,9 @@ class WebSocketManager {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private metricsInterval: NodeJS.Timeout | null = null;
   private startTime = Date.now();
-  private readonly HEARTBEAT_INTERVAL = 30000; // 30s ping
-  private readonly METRICS_INTERVAL = 5000; // 5s metrics broadcast
-  private readonly MAX_IDLE_TIME = 300000; // 5分钟超时
+  private readonly HEARTBEAT_INTERVAL = WS_HEARTBEAT_INTERVAL;
+  private readonly METRICS_INTERVAL = WS_METRICS_INTERVAL;
+  private readonly MAX_IDLE_TIME = WS_IDLE_TIMEOUT;
 
   /**
    * 启动心跳检测
@@ -134,7 +138,7 @@ class WebSocketManager {
       import('../services/metrics.js')
         .then(({ getDashboardOverview }) => {
           const now = Date.now();
-          const start = now - 60 * 60 * 1000; // 最近 1 小时
+          const start = now - HOUR_MS; // 最近 1 小时
           const overview = getDashboardOverview(start, now);
 
           const message = {

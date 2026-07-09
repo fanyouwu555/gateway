@@ -8,7 +8,7 @@ import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
 import { fetchWithAgent } from '../utils/http-client';
-import { shouldUseRedis } from '../utils';
+import { shouldUseRedis, round4 } from '../utils';
 
 /**
  * Failover 配置
@@ -352,7 +352,7 @@ class FailoverManager {
         this.startProviderHealthCheck(provider);
         writeLog('warn', 'Provider marked unhealthy', {
           provider,
-          errorRate: Math.round(errorRate * 10000) / 10000,
+          errorRate: round4(errorRate),
           avgLatencyMs: Math.round(avgLatency),
           consecutiveFailures: health.consecutive_failures,
         });
@@ -407,7 +407,7 @@ class FailoverManager {
       status[key] = {
         isHealthy: health.is_healthy,
         totalRequests: health.total_requests,
-        errorRate: Math.round(errorRate * 10000) / 10000,
+        errorRate: round4(errorRate),
         avgLatencyMs: Math.round(avgLatency),
       };
     });

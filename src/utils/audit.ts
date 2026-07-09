@@ -6,6 +6,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { createHash } from 'crypto';
+import { DAY_MS } from './index';
 
 const AUDIT_LOG_DIR = process.env.LOG_DIR || './logs';
 const AUDIT_LOG_RETENTION_DAYS = parseInt(process.env.AUDIT_LOG_RETENTION_DAYS || '90', 10);
@@ -59,7 +60,7 @@ function cleanOldAuditLogs(): void {
   try {
     if (!existsSync(AUDIT_LOG_DIR)) return;
     const now = Date.now();
-    const retentionMs = AUDIT_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const retentionMs = AUDIT_LOG_RETENTION_DAYS * DAY_MS;
 
     for (const file of readdirSync(AUDIT_LOG_DIR)) {
       if (!file.startsWith('audit-') || !file.endsWith('.log')) continue;

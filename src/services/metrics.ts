@@ -8,7 +8,7 @@ import type { IKVStore } from '../stores/interface';
 import { createKVStore } from '../stores/factory';
 import { writeLog } from '../utils/logger';
 import { getPricingService } from './pricing';
-import { shouldUseRedis } from '../utils';
+import { shouldUseRedis, HOUR_MS, DAY_MS, round3 } from '../utils';
 
 interface TokenUsage {
   prompt_tokens: number;
@@ -305,7 +305,7 @@ export function getKeyUsage(keyHash: string): {
   return {
     total_requests: totalRequests,
     total_tokens: totalTokens,
-    total_cost: Math.round(totalCost * 1000) / 1000,
+    total_cost: round3(totalCost),
     last_used: lastUsed,
   };
 }
@@ -361,7 +361,7 @@ export function getUsageByTimeRange(
   return {
     total_requests: totalRequests,
     total_tokens: totalTokens,
-    total_cost: Math.round(totalCost * 1000) / 1000,
+    total_cost: round3(totalCost),
     avg_duration_ms: Math.round(avgDuration),
     by_provider: byProvider,
     by_model: byModel,
@@ -428,7 +428,7 @@ export function getTimeSeriesMetrics(
       time_label: formatTimeLabel(timestamp, granularity),
       total_requests: totalRequests,
       total_tokens: totalTokens,
-      total_cost: Math.round(totalCost * 1000) / 1000,
+      total_cost: round3(totalCost),
       avg_duration_ms: Math.round(avgDuration),
       success_rate: Math.round(successRate * 10000) / 10000,
       error_rate: Math.round((1 - successRate) * 10000) / 10000,
@@ -495,7 +495,7 @@ export function getProviderStats(startTime: number, endTime: number): ProviderSt
       byModel[model] = {
         total_requests: modelRequests,
         total_tokens: modelTokens,
-        total_cost: Math.round(modelCost * 1000) / 1000,
+        total_cost: round3(modelCost),
         avg_duration_ms: Math.round(modelAvgDuration),
       };
     }
@@ -504,7 +504,7 @@ export function getProviderStats(startTime: number, endTime: number): ProviderSt
       provider,
       total_requests: totalRequests,
       total_tokens: totalTokens,
-      total_cost: Math.round(totalCost * 1000) / 1000,
+      total_cost: round3(totalCost),
       avg_duration_ms: Math.round(avgDuration),
       success_rate: Math.round(successRate * 10000) / 10000,
       by_model: byModel,
@@ -562,7 +562,7 @@ export function getAllTenantsStats(startTime: number, endTime: number): TenantSt
       tenant_id: tenantId,
       total_requests: totalRequests,
       total_tokens: totalTokens,
-      total_cost: Math.round(totalCost * 1000) / 1000,
+      total_cost: round3(totalCost),
       avg_duration_ms: Math.round(avgDuration),
       success_rate: Math.round(successRate * 10000) / 10000,
       by_provider: byProvider,
@@ -638,7 +638,7 @@ export function getDashboardOverview(startTime: number, endTime: number): {
   return {
     total_requests: totalRequests,
     total_tokens: totalTokens,
-    total_cost: Math.round(totalCost * 1000) / 1000,
+    total_cost: round3(totalCost),
     avg_duration_ms: Math.round(avgDuration),
     success_rate: Math.round(successRate * 10000) / 10000,
     error_rate: Math.round((1 - successRate) * 10000) / 10000,
@@ -654,17 +654,17 @@ export function getDashboardOverview(startTime: number, endTime: number): {
 function getIntervalMs(granularity: AggregationGranularity): number {
   switch (granularity) {
     case 'hour':
-      return 60 * 60 * 1000;
+      return HOUR_MS;
     case 'day':
-      return 24 * 60 * 60 * 1000;
+      return DAY_MS;
     case 'week':
-      return 7 * 24 * 60 * 60 * 1000;
+      return 7 * DAY_MS;
     case 'month':
-      return 30 * 24 * 60 * 60 * 1000;
+      return 30 * DAY_MS;
     case 'all':
       return Number.MAX_SAFE_INTEGER;
     default:
-      return 60 * 60 * 1000;
+      return HOUR_MS;
   }
 }
 

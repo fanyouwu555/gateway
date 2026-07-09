@@ -2,6 +2,7 @@
  * Admin API — 租户管理
  */
 import { Hono } from 'hono';
+import { DAY_MS } from '../../utils';
 import type { Context } from 'hono';
 import {
   listTenants,
@@ -136,7 +137,7 @@ router.get('/v1/tenants/:id/stats', (c: Context) => {
     return c.json({ error: { message: 'Tenant not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
   const end = Date.now();
-  const start = end - 30 * 24 * 60 * 60 * 1000;
+  const start = end - 30 * DAY_MS;
   const allStats = getAllTenantsStats(start, end);
   const usage = allStats.find((t) => t.tenant_id === id);
 
