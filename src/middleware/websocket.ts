@@ -17,6 +17,8 @@ import { runGuardrailPlugins, runRequestPlugins } from '../plugins';
 import { smartRoute, type RouterStrategy } from '../services/router';
 import type { ChatMessage } from '../types';
 import { countPromptTokens, countCompletionTokens, accumulateStreamContent } from '../services/token-counter';
+import { checkRateLimit } from '../middleware/ratelimit';
+import { getTokenRateLimit } from '../services/token-ratelimit';
 
 /**
  * WebSocket 消息类型
@@ -62,6 +64,8 @@ export interface WSConnection {
   key_metadata?: Record<string, unknown>;
   key_billing_mode?: 'competition' | 'subscription' | 'prepaid';
   key_subscription_expires_at?: number;
+  key_rate_limit_qps?: number;
+  key_rate_limit_burst?: number;
 }
 
 /**
@@ -180,6 +184,8 @@ class WebSocketManager {
     key_metadata?: Record<string, unknown>;
     key_billing_mode?: 'competition' | 'subscription' | 'prepaid';
     key_subscription_expires_at?: number;
+    key_rate_limit_qps?: number;
+    key_rate_limit_burst?: number;
   }): string {
     const id = `ws_${generateRequestId()}`;
 
@@ -484,6 +490,8 @@ export function handleWSConnection(ws: WebSocket, ctx: Context): void {
     key_metadata: ctx.get('key_metadata'),
     key_billing_mode: ctx.get('key_billing_mode'),
     key_subscription_expires_at: ctx.get('key_subscription_expires_at'),
+    key_rate_limit_qps: ctx.get('key_rate_limit_qps'),
+    key_rate_limit_burst: ctx.get('key_rate_limit_burst'),
   });
 
   // 消息处理
@@ -585,6 +593,8 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
   const conn = wsManager.getConnection(connectionId);
   if (!conn) return;
 
+  let releaseRateLimit: (() => void) | undefined;
+
   try {
     // 解析模型别名
     request.model = resolveModelAlias(request.model || conn.model);
@@ -597,6 +607,28 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
           message: `Model '${request.model}' is not allowed by this API key. Allowed: ${conn.key_allowed_models.join(', ')}`,
           type: 'invalid_request_error',
           code: 'model_not_allowed',
+        },
+      });
+      return;
+    }
+
+    const { result: rateLimitResult, release } = await checkRateLimit({
+      tenantId: conn.tenant_id,
+      keyHash: conn.key_hash,
+      isAdminPath: false,
+      model: request.model,
+      rateLimitQps: conn.key_rate_limit_qps,
+      rateLimitBurst: conn.key_rate_limit_burst,
+    });
+    releaseRateLimit = release;
+
+    if (!rateLimitResult.allowed) {
+      wsManager.send(connectionId, {
+        type: 'error',
+        error: {
+          message: `Rate limit exceeded: ${rateLimitResult.reason}`,
+          type: 'rate_limit_error',
+          code: rateLimitResult.reason || 'rate_limit_exceeded',
         },
       });
       return;
@@ -717,6 +749,22 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
     // 强制流式
     request.stream = true;
 
+    const trl = getTokenRateLimit();
+    if (trl && request.model) {
+      const estimatedPromptTokens = await countPromptTokens(processedReq.messages as ChatMessage[], request.model);
+      if (!trl.check(request.model, estimatedPromptTokens)) {
+        wsManager.send(connectionId, {
+          type: 'error',
+          error: {
+            message: 'Token rate limit exceeded',
+            type: 'rate_limit_error',
+            code: 'token_rate_limit_exceeded',
+          },
+        });
+        return;
+      }
+    }
+
     const stream = await chatCompleteStream(providerName, request, { signal: abortController.signal });
 
     // 流式转发到 WebSocket
@@ -830,6 +878,10 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
             });
           }
         }
+
+        if (trl && request.model && !wsClientDisconnected) {
+          trl.consume(request.model, totalTokens);
+        }
       }
     }
 
@@ -847,6 +899,8 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
         code: 'stream_failed',
       },
     });
+  } finally {
+    releaseRateLimit?.();
   }
 }
 

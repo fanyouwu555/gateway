@@ -2,6 +2,9 @@
  * WebSocket 管理测试
  * 测试 WebSocketManager 的连接管理/统计/清理
  */
+import { EventEmitter } from 'events';
+import type { WebSocket } from 'ws';
+import type { Context } from 'hono';
 import {
   addConnection,
   removeConnection,
@@ -10,6 +13,7 @@ import {
   getWebSocketStats,
   cleanWebSocketConnections,
   resetWebSocketConnections,
+  handleWSConnection,
 } from '../src/middleware/websocket';
 
 describe('WebSocketManager', () => {
@@ -156,5 +160,32 @@ describe('WebSocketManager', () => {
       ids.slice(0, 25).forEach((id) => removeConnection(id));
       expect(getWebSocketStats().total).toBe(25);
     });
+  });
+});
+
+describe('handleWSConnection', () => {
+  beforeEach(() => {
+    resetWebSocketConnections();
+  });
+
+  it('should store rate limit fields on connection', () => {
+    const fakeWS = new EventEmitter() as unknown as WebSocket;
+    const ctx = {
+      get: (key: string) => {
+        if (key === 'tenant_id') return 'tenant-rl';
+        if (key === 'key_hash') return 'hash-rl';
+        if (key === 'key_rate_limit_qps') return 10;
+        if (key === 'key_rate_limit_burst') return 20;
+        if (key === 'key_billing_mode') return 'prepaid';
+        return undefined;
+      },
+      req: { query: () => undefined, header: () => undefined },
+    } as unknown as Context;
+
+    handleWSConnection(fakeWS, ctx);
+    const conns = getConnectionsByTenant('tenant-rl');
+    expect(conns.length).toBe(1);
+    expect(conns[0].key_rate_limit_qps).toBe(10);
+    expect(conns[0].key_rate_limit_burst).toBe(20);
   });
 });
