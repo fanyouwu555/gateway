@@ -26,7 +26,7 @@ import { processSSEStream } from '../services/stream-processor';
 import { runPostProcessing } from '../services/post-processor';
 import { getTokenRateLimit } from '../services/token-ratelimit';
 import { getConversationLogService } from '../services/conversation-log';
-import type { ChatMessage, ChatCompletionRequest, IApiKeyMeta } from '../types';
+import type { ChatMessage, ChatCompletionRequest } from '../types';
 import type { Span } from '@opentelemetry/api';
 import { extractClientInfo } from '../utils/client-info';
 import { inferRequirements, getModelCapabilities, checkCapabilityMatch, formatCapabilityError } from '../services/model-capability';
@@ -62,32 +62,8 @@ async function checkKeyPolicies(c: Context, req: ChatCompletionRequest, tenantId
   }
 
   // 统一计费检查
-  const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
-  const keyHash = c.get('key_hash') as string | undefined;
-  if (keyHash) {
-    const { checkBilling } = await import('../services/billing');
-    const billingCheck = checkBilling(
-      keyHash,
-      billingMode,
-      c.get('key_monthly_budget'),
-      c.get('key_subscription_expires_at')
-    );
-    if (!billingCheck.allowed) {
-      const code = billingCheck.code || 'insufficient_balance';
-      recordMetric(
-        c.get('request_id') as string,
-        tenantId,
-        'gateway',
-        req.model,
-        0,
-        402,
-        { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-        keyHash,
-        c.get('key_metadata'),
-      );
-      throw GatewayError.billingError(billingCheck.reason || 'Billing check failed', code);
-    }
-  }
+  const { checkRequestBilling } = await import('../services/billing');
+  checkRequestBilling(c);
 
   const keyMaxTokens = c.get('key_max_tokens_per_request') as number | undefined;
   if (keyMaxTokens !== undefined && (req.max_tokens === undefined || req.max_tokens > keyMaxTokens)) {
@@ -421,6 +397,24 @@ function handleError(
   providerCallStart: number,
 ): Response {
   if (error instanceof GatewayError) {
+    try {
+      const metricRequestId = c.get('request_id') as string;
+      if (metricRequestId) {
+        recordMetric(
+          metricRequestId,
+          c.get('tenant_id'),
+          c.get('provider') || 'gateway',
+          c.get('model') || 'unknown',
+          0,
+          error.statusCode,
+          { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          c.get('key_hash'),
+          c.get('key_metadata'),
+        );
+      }
+    } catch {
+      // 静默失败
+    }
     throw error;
   }
 
