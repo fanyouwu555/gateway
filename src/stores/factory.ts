@@ -24,6 +24,7 @@ function getSharedRedisClient(): Redis {
       globalRedisClient = new Redis(cfg.url, {
         db: cfg.db,
         retryStrategy: (times) => Math.min(times * 200, 2000),
+        lazyConnect: true,
       });
     } else {
       globalRedisClient = new Redis({
@@ -32,8 +33,10 @@ function getSharedRedisClient(): Redis {
         password: cfg.password,
         db: cfg.db,
         retryStrategy: (times) => Math.min(times * 200, 2000),
+        lazyConnect: true,
       });
     }
+    globalRedisClient.on('error', (err) => writeLog('error', 'Redis shared client error', { error: err.message }));
   }
   return globalRedisClient;
 }

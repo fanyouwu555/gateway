@@ -525,7 +525,7 @@ export function setConfig(updates: Partial<IGatewayConfig>): IGatewayConfig {
 }
 
 export interface RedisConnectionConfig {
-  host: string;
+  host?: string;
   port: number;
   password?: string;
   db: number;
@@ -536,7 +536,6 @@ export function getRedisConfig(): RedisConnectionConfig {
   const url = getEnv('REDIS_URL');
   if (url) {
     return {
-      host: url,
       port: 6379,
       db: parseInt(getEnv('REDIS_DB', '0') || '0', 10),
       url,
