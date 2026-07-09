@@ -11,9 +11,6 @@ export type RequestId = string;
 /** 租户ID类型 */
 export type TenantId = string;
 
-/** API Key类型 */
-export type ApiKey = string;
-
 // ===== 请求类型 =====
 
 /** Chat Completion 请求消息 */
