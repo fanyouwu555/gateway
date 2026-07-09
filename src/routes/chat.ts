@@ -16,17 +16,15 @@ import { resolveRequestModel, resolveProviderForRequest } from '../services/chat
 import { getCache, setCache, getLastCacheHitType } from '../services/cache';
 import { getConfig } from '../config';
 import { templateToMessages } from '../services/prompt';
-import { checkQuota, recordUsage } from '../services/quota';
-import { recordKeyCost } from '../services/billing';
+import { checkQuota } from '../services/quota';
 import { createChildSpan, endSpan } from '../utils/tracing';
-import { recordAiTtfb, recordAiTpot, recordAiCost, recordAiTokens } from '../middleware/metrics';
+import { recordAiTtfb, recordAiTpot, recordAiTokens } from '../middleware/metrics';
 import { recordMetric } from '../services/metrics';
 import { getPricingService } from '../services/pricing';
 import { countCompletionTokens, countPromptTokens } from '../services/token-counter';
 import { processSSEStream } from '../services/stream-processor';
+import { runPostProcessing } from '../services/post-processor';
 import { getTokenRateLimit } from '../services/token-ratelimit';
-import { deductBalance } from '../services/wallet';
-import { getRequestLogStore } from '../services/request-log';
 import { getConversationLogService } from '../services/conversation-log';
 import type { ChatMessage, ChatCompletionRequest, IApiKeyMeta } from '../types';
 import type { Span } from '@opentelemetry/api';
@@ -230,7 +228,6 @@ async function handleStreamingResponse(
   const streamResponse = await chatCompleteStream(providerName, processedReq);
   recordLatency(providerName, Date.now() - providerCallStart);
 
-  const requestId = c.get('request_id') as string;
   const promptTokens = await countPromptTokens(
     processedReq.messages as ChatMessage[],
     model,
@@ -266,111 +263,23 @@ async function handleStreamingResponse(
         c.set('completion_tokens', completionTokens);
         c.set('total_tokens', totalTokens);
 
-        recordAiTokens(promptTokens, completionTokens, providerName, model);
-
-        const cost = getPricingService().calculateCost(model, promptTokens, completionTokens);
-
-        const tenantId = c.get('tenant_id');
-        const keyHash = c.get('key_hash') as string | undefined;
-        if (tenantId) {
-          await recordUsage(tenantId, totalTokens);
-          await recordKeyCost(keyHash || '', cost);
-          recordAiCost(cost, providerName, model);
-        }
-
-        // 预付模式扣费
-        const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
-        let remainingBalanceMicroYuan: number | undefined;
-        if (billingMode === 'prepaid' && keyHash) {
-          const costMicroYuan = Math.ceil(cost * 1_000_000);
-          const deductResult = await deductBalance(keyHash, costMicroYuan, {
-            request_id: requestId,
-            model,
-            provider: providerName,
-          });
-          remainingBalanceMicroYuan = deductResult.newBalance;
-          if (!deductResult.success) {
-            writeLog('warn', 'Prepaid overdraft in streaming', {
-              key_hash: keyHash,
-              cost_micro_yuan: costMicroYuan,
-              new_balance: deductResult.newBalance,
-            });
-          }
-        }
-
-        const trl = getTokenRateLimit();
-        if (trl) {
-          trl.consume(model, totalTokens);
-        }
-
-        const duration = Date.now() - streamStart;
-        recordMetric(
-          requestId,
-          c.get('tenant_id'),
-          providerName,
+        const { cost, remainingBalanceMicroYuan } = await runPostProcessing({
+          c,
+          tenantId: c.get('tenant_id'),
+          keyHash: c.get('key_hash'),
           model,
-          duration,
-          200,
-          { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens },
-          c.get('key_hash'),
-          c.get('key_metadata'),
-        );
-
-        const logStore = getRequestLogStore();
-        if (logStore.shouldSample()) {
-          const stringBody = JSON.stringify(processedReq);
-          const sanitizedBody = stringBody.replace(/"api_key":"[^"]+"/g, '"api_key":"***"');
-          logStore.add({
-            request_id: requestId,
-            tenant_id: c.get('tenant_id'),
-            timestamp: Date.now(),
-            method: 'POST',
-            path: '/v1/chat/completions',
-            provider: providerName,
-            model,
-            status_code: 200,
-            duration_ms: duration,
-            prompt_tokens: promptTokens,
-            completion_tokens: completionTokens,
-            total_tokens: totalTokens,
-            request_body: sanitizedBody,
-            response_body: JSON.stringify({ stream: true, usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens } }),
-            cost,
-          });
-        }
-
-        const conversationLogService = getConversationLogService();
-        const streamTurn: import('../types').IConversationTurn = {
-          turn_id: requestId,
-          session_id: sessionId,
-          timestamp: Date.now(),
-          request: {
-            messages: processedReq.messages as import('../types').ChatMessage[],
-            tools: processedReq.tools,
-            model,
-          },
-          response: {
-            content: accumulatedContent,
-            reasoning_content: accumulatedReasoning || undefined,
-            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
-            usage: {
-              prompt_tokens: promptTokens,
-              completion_tokens: completionTokens,
-              total_tokens: totalTokens,
-            },
-          },
-          metadata: {
-            provider: providerName,
-            duration_ms: duration,
-            cost,
-            status_code: 200,
-            tenant_id: c.get('tenant_id'),
-            client_info: c.get('client_info'),
-            session_source: { id: sessionId, provided_by_header: sessionSource.providedByHeader },
-            user_agent: c.get('user_agent'),
-          },
-        };
-        conversationLogService.saveTurn(streamTurn).catch(() => {});
+          provider: providerName,
+          latencyMs: Date.now() - streamStart,
+          statusCode: 200,
+          tokens: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens },
+          content: accumulatedContent,
+          reasoningContent: accumulatedReasoning,
+          toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+          requestBody: processedReq,
+          isStream: true,
+          sessionId,
+          sessionSource,
+        });
 
         const usageChunk = {
           id: c.get('request_id') || '',
@@ -452,140 +361,45 @@ async function handleNonStreamingResponse(
 
   response = await runResponsePlugins(c, response);
 
-  if (response.usage) {
-    const promptTokens = response.usage.prompt_tokens || 0;
-    const completionTokens = response.usage.completion_tokens || 0;
-    const totalTokens = response.usage.total_tokens || promptTokens + completionTokens;
-    c.set('prompt_tokens', promptTokens);
-    c.set('completion_tokens', completionTokens);
-    c.set('total_tokens', totalTokens);
+  const promptTokens = response.usage?.prompt_tokens || 0;
+  const completionTokens = response.usage?.completion_tokens || 0;
+  const totalTokens = response.usage?.total_tokens || promptTokens + completionTokens;
+  c.set('prompt_tokens', promptTokens);
+  c.set('completion_tokens', completionTokens);
+  c.set('total_tokens', totalTokens);
 
-    recordAiTokens(promptTokens, completionTokens, providerName, model);
+  recordAiTokens(promptTokens, completionTokens, providerName, model);
 
-    if (completionTokens > 0) {
-      const tpotMs = ttfbMs / completionTokens;
-      recordAiTpot(tpotMs, providerName, model);
-    }
+  if (completionTokens > 0) {
+    const tpotMs = ttfbMs / completionTokens;
+    recordAiTpot(tpotMs, providerName, model);
   }
+
+  const content = typeof response.choices[0]?.message?.content === 'string'
+    ? response.choices[0].message.content
+    : JSON.stringify(response.choices[0]?.message?.content || '');
 
   const usageSpan = createChildSpan(rootSpan, 'usage_record');
-  let remainingBalanceMicroYuan: number | undefined;
-  if (tenantId && response.usage) {
-    const cost = getPricingService().calculateCost(processedReq.model, response.usage.prompt_tokens || 0, response.usage.completion_tokens || 0);
-    const keyHash = c.get('key_hash') as string | undefined;
-    await recordUsage(tenantId, response.usage.total_tokens || 0);
-    await recordKeyCost(keyHash || '', cost);
-
-    recordAiCost(cost, providerName, model);
-
-    // 预付模式扣费
-    const billingMode = c.get('key_billing_mode') as IApiKeyMeta['billing_mode'];
-    if (billingMode === 'prepaid' && keyHash) {
-      const { deductBalance } = await import('../services/wallet');
-      const costMicroYuan = Math.ceil(cost * 1_000_000);
-      const deductResult = await deductBalance(keyHash, costMicroYuan, {
-        request_id: c.get('request_id') as string,
-        model,
-        provider: providerName,
-      });
-      remainingBalanceMicroYuan = deductResult.newBalance;
-      if (!deductResult.success) {
-        writeLog('warn', 'Prepaid overdraft in non-streaming', {
-          key_hash: keyHash,
-          cost_micro_yuan: costMicroYuan,
-          new_balance: deductResult.newBalance,
-        });
-      }
-    }
-
-    const requestId = c.get('request_id') as string;
-    const duration = Date.now() - providerCallStart;
-    recordMetric(
-      requestId,
-      tenantId,
-      providerName,
-      model,
-      duration,
-      200,
-      {
-        prompt_tokens: response.usage.prompt_tokens || 0,
-        completion_tokens: response.usage.completion_tokens || 0,
-        total_tokens: response.usage.total_tokens || 0,
-      },
-      keyHash,
-      c.get('key_metadata'),
-    );
-  }
+  const { cost, remainingBalanceMicroYuan } = await runPostProcessing({
+    c,
+    tenantId: c.get('tenant_id'),
+    keyHash: c.get('key_hash'),
+    model,
+    provider: providerName,
+    latencyMs: Date.now() - providerCallStart,
+    statusCode: 200,
+    tokens: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: totalTokens },
+    content,
+    reasoningContent: response.choices[0]?.message?.reasoning_content,
+    toolCalls: response.choices[0]?.message?.tool_calls,
+    requestBody: processedReq,
+    isStream: false,
+    sessionId,
+    sessionSource,
+  });
   endSpan(usageSpan);
 
-  const totalCost = response.usage ? getPricingService().calculateCost(model, response.usage.prompt_tokens || 0, response.usage.completion_tokens || 0) : 0;
-
-  const conversationLogService = getConversationLogService();
-  const content = response.choices[0]?.message?.content;
-  const turn: import('../types').IConversationTurn = {
-    turn_id: c.get('request_id') as string,
-    session_id: sessionId,
-    timestamp: Date.now(),
-    request: {
-      messages: processedReq.messages as import('../types').ChatMessage[],
-      tools: processedReq.tools,
-      model,
-    },
-    response: {
-      content: typeof content === 'string' ? content : JSON.stringify(content || ''),
-      reasoning_content: response.choices[0]?.message?.reasoning_content,
-      tool_calls: response.choices[0]?.message?.tool_calls,
-      usage: {
-        prompt_tokens: response.usage?.prompt_tokens || 0,
-        completion_tokens: response.usage?.completion_tokens || 0,
-        total_tokens: response.usage?.total_tokens || 0,
-      },
-    },
-    metadata: {
-      provider: providerName,
-      duration_ms: Date.now() - providerCallStart,
-      cost: totalCost,
-      status_code: 200,
-      tenant_id: c.get('tenant_id'),
-      client_info: c.get('client_info'),
-      session_source: { id: sessionId, provided_by_header: sessionSource.providedByHeader },
-      user_agent: c.get('user_agent'),
-    },
-  };
-  conversationLogService.saveTurn(turn).catch(() => {});
-
-  if (response.usage) {
-    const trl = getTokenRateLimit();
-    if (trl) {
-      trl.consume(model, response.usage.total_tokens || 0);
-    }
-  }
-
-  const logStore = getRequestLogStore();
-  if (logStore.shouldSample()) {
-    const stringBody = JSON.stringify(processedReq);
-    const sanitizedBody = stringBody.replace(/"api_key":"[^"]+"/g, '"api_key":"***"');
-    const cost = response.usage ? getPricingService().calculateCost(model, response.usage.prompt_tokens || 0, response.usage.completion_tokens || 0) : 0;
-    logStore.add({
-      request_id: c.get('request_id') as string,
-      tenant_id: c.get('tenant_id'),
-      timestamp: Date.now(),
-      method: 'POST',
-      path: '/v1/chat/completions',
-      provider: providerName,
-      model,
-      status_code: 200,
-      duration_ms: Date.now() - providerCallStart,
-      prompt_tokens: response.usage?.prompt_tokens || 0,
-      completion_tokens: response.usage?.completion_tokens || 0,
-      total_tokens: response.usage?.total_tokens || 0,
-      request_body: sanitizedBody,
-      response_body: JSON.stringify({ usage: response.usage }),
-      cost,
-    });
-  }
-
-  c.header('X-Gateway-Cost', totalCost.toFixed(6));
+  c.header('X-Gateway-Cost', cost.toFixed(6));
   if (remainingBalanceMicroYuan !== undefined) {
     c.header('X-Remaining-Balance-Micro-Yuan', remainingBalanceMicroYuan.toString());
   }
