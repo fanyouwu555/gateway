@@ -5,6 +5,7 @@
  */
 import type { TenantId, IApiKeyMeta, TenantSettings, TenantLimits } from '../types';
 import { generateRequestId, hashApiKey, verifyApiKey, generateSecureRandomString, shouldUseRedis } from '../utils';
+import { getConfig } from '../config';
 import { writeLog } from '../utils/logger';
 import { createKVStore } from '../stores/factory';
 
@@ -584,8 +585,9 @@ export async function flushTenantStore(): Promise<void> {
 export async function createTenant(
   tenant: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at' | 'settings' | 'limits'> & { settings?: TenantSettings; limits?: Partial<TenantLimits> }
 ): Promise<TenantConfig> {
-  // plan 感知的默认限制
-  const planDefaults: Record<string, TenantLimits> = {
+  // plan 感知的默认限制（从配置读取，支持运行时覆盖）
+  const config = getConfig();
+  const planDefaults = config.plan_defaults || {
     free:       { daily_requests: 1000,   daily_tokens: 100000,   max_api_keys: 5,   concurrent_requests: 10 },
     pro:        { daily_requests: 10000,  daily_tokens: 1000000,  max_api_keys: 20,  concurrent_requests: 50 },
     enterprise: { daily_requests: 100000, daily_tokens: 10000000, max_api_keys: 100, concurrent_requests: 200 },
@@ -594,7 +596,7 @@ export async function createTenant(
   const completed: Omit<TenantConfig, 'tenant_id' | 'created_at' | 'updated_at'> = {
     ...tenant,
     settings: { allowed_providers: ['openai'], ...tenant.settings },
-    limits: { ...planDefaults[tenant.plan], ...tenant.limits },
+    limits: { ...(planDefaults[tenant.plan] || planDefaults.free), ...tenant.limits },
   };
 
   return tenantStore.create(completed);

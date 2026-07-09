@@ -27,7 +27,8 @@
         { "model": "kimi-for-coding", "provider": "kimi-code", "max_tokens": 128000 },
         { "model": "kimi-k2.6", "provider": "moonshot", "max_tokens": 128000 }
       ],
-      "fallback": "volcano"
+      "fallback": "volcano",
+      "long_text_threshold": 5000
     }
   ],
   "model_pools": {
@@ -109,6 +110,11 @@
     "kimi-for-coding": {
       "volcano": "ark-code-latest"
     }
+  },
+  "plan_defaults": {
+    "free": { "daily_requests": 1000, "daily_tokens": 100000, "max_api_keys": 5, "concurrent_requests": 10 },
+    "pro": { "daily_requests": 10000, "daily_tokens": 1000000, "max_api_keys": 20, "concurrent_requests": 50 },
+    "enterprise": { "daily_requests": 100000, "daily_tokens": 10000000, "max_api_keys": 100, "concurrent_requests": 200 }
   },
   "rate_limit_clean_interval": 60000,
   "pricing": {

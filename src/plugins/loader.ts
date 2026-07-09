@@ -214,8 +214,9 @@ export function loadPluginInSandbox(code: string): PluginLoadResult {
       })(exports, module)
     `;
 
+    const pluginTimeout = parseInt(process.env.PLUGIN_TIMEOUT || '5000', 10);
     runInNewContext(wrappedCode, sandbox, {
-      timeout: 5000,
+      timeout: pluginTimeout,
       displayErrors: true,
     });
 

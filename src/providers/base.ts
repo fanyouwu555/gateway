@@ -45,7 +45,7 @@ export abstract class BaseProvider implements IProvider {
   protected async fetch<T = unknown>(
     endpoint: string,
     options: RequestInit,
-    timeout = 30000
+    timeout = parseInt(process.env.PROVIDER_DEFAULT_TIMEOUT || '30000', 10)
   ): Promise<T> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);

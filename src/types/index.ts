@@ -196,6 +196,8 @@ export interface IRoutingStrategy {
   cost_order?: string[];
   /** 条件路由规则 */
   conditional_rules?: IConditionalRoutingRule[];
+  /** 长文本阈值（字符数），超过此值使用高质量模型 */
+  long_text_threshold?: number;
 }
 
 /** 路由规则 */
@@ -532,6 +534,8 @@ export interface IGatewayConfig {
   model_capabilities?: Record<string, Partial<IProviderCapabilities>>;
   /** 动态 Provider 配置 */
   dynamicProviders?: DynamicProviderConfig[];
+  /** 租户套餐默认限额 */
+  plan_defaults?: Record<string, { daily_requests: number; daily_tokens: number; max_api_keys: number; concurrent_requests: number }>;
 }
 
 /** 动态 Provider 配置 */

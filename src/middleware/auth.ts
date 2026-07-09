@@ -7,7 +7,7 @@
 import type { Context, Next } from 'hono';
 import { getConfig } from '../config';
 import type { IAuthResult, IApiKeyMeta } from '../types';
-import { verifyApiKey, hashApiKey, generateSecureRandomString } from '../utils';
+import { verifyApiKey } from '../utils';
 import { writeLog } from '../utils/logger';
 import { findApiKeyByPrefix, findTenantApiKeyByHash, getTenant } from '../services/tenant';
 
@@ -140,24 +140,3 @@ export async function requireAdmin(c: Context, next: Next): Promise<Response | v
   await next();
 }
 
-/**
- * 生成测试用API Key（仅开发环境）
- * 返回的 key 字段已自动哈希
- */
-export function generateTestApiKey(name: string = 'test-key'): IApiKeyMeta {
-  const plaintext = `sk-test-${Date.now()}-${generateSecureRandomString(12)}`;
-  return {
-    key: hashApiKey(plaintext),
-    tenant_id: 'default',
-    name,
-    created_at: Date.now(),
-  };
-}
-
-/**
- * 生成测试用明文 API Key（配套 generateTestApiKey 使用）
- * 用于在测试请求中发送
- */
-export function generateTestPlaintextKey(): string {
-  return `sk-test-${Date.now()}-${generateSecureRandomString(12)}`;
-}

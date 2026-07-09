@@ -16,8 +16,10 @@ class WebSocketService {
   private globalHandlers: Set<MessageHandler> = new Set()
   private url: string = ''
   private options: WebSocketServiceOptions = {}
+  private tenantId: string = 'admin'
 
   connect(tenantId: string = 'admin', options?: WebSocketServiceOptions) {
+    this.tenantId = tenantId
     this.options = options || {}
     const baseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:3000'
     const apiKey = sessionStorage.getItem('api_token') || ''
@@ -74,7 +76,7 @@ class WebSocketService {
     console.log(`[WebSocket] Reconnecting... Attempt ${this.reconnectAttempts}`)
 
     setTimeout(() => {
-      this.connect()
+      this.connect(this.tenantId)
     }, this.reconnectDelay)
   }
 

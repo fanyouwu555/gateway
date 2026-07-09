@@ -79,7 +79,7 @@ class SmartRouter {
       case 'latency':
         return this.routeByLatency(request, strategyConfig.rules);
       case 'quality':
-        return this.routeByQuality(request, strategyConfig.rules);
+        return this.routeByQuality(request, strategyConfig);
       case 'balance':
       default:
         return this.routeByBalance(request, strategyConfig.rules);
@@ -215,15 +215,17 @@ class SmartRouter {
    */
   private routeByQuality(
     request: ChatCompletionRequest,
-    rules: { model: string; provider: string }[]
+    strategy: IRoutingStrategy
   ): RoutingDecision {
+    const rules = strategy.rules;
     // 检查请求长度，长请求使用更好的模型
     const totalLength = request.messages.reduce(
       (sum, m) => sum + contentToString(m.content).length,
       0
     );
 
-    if (totalLength > 5000) {
+    const threshold = strategy.long_text_threshold ?? 5000;
+    if (totalLength > threshold) {
       // 长文本，使用高质量模型
       const highQuality = rules.find(
         (r) => r.model.includes('gpt-4') || r.model.includes('claude-3-opus')

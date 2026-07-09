@@ -2,7 +2,7 @@
  * 认证中间件测试
  */
 import { Hono } from 'hono';
-import { authMiddleware, generateTestApiKey } from '../../src/../src/middleware/auth';
+import { authMiddleware } from '../../src/../src/middleware/auth';
 import {
   createTenant,
   createTenantApiKey,
@@ -44,21 +44,6 @@ jest.mock('../../src/config', () => {
 });
 
 describe('Auth Middleware', () => {
-  describe('generateTestApiKey', () => {
-    it('should generate test API key with hash', () => {
-      const key = generateTestApiKey('test-key');
-      expect(key).toBeDefined();
-      expect(key.key).toMatch(/^\$scrypt\$/); // key 已被哈希
-      expect(key.tenant_id).toBe('default');
-      expect(key.name).toBe('test-key');
-    });
-
-    it('should use default name if not provided', () => {
-      const key = generateTestApiKey();
-      expect(key.name).toBe('test-key');
-    });
-  });
-
   describe('authMiddleware with Hono app', () => {
     it('should return 401 when no API key provided', async () => {
       const res = await app.request('/test');
