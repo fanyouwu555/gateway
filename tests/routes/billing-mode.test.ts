@@ -189,16 +189,18 @@ describe('Billing Mode Integration', () => {
 
     it('should reject request when subscription expired', async () => {
       const res = await makeRequest('subscription-key-expired');
-      expect(res.status).toBe(403);
-      const body = await res.json() as { error: { code: string } };
+      expect(res.status).toBe(402);
+      const body = await res.json() as { error: { code: string; type: string } };
       expect(body.error.code).toBe('subscription_expired');
+      expect(body.error.type).toBe('billing_error');
     });
 
     it('should reject request when subscription expiration is not set', async () => {
       const res = await makeRequest('subscription-key-no-expires');
-      expect(res.status).toBe(403);
-      const body = await res.json() as { error: { code: string } };
+      expect(res.status).toBe(402);
+      const body = await res.json() as { error: { code: string; type: string } };
       expect(body.error.code).toBe('subscription_expired');
+      expect(body.error.type).toBe('billing_error');
     });
   });
 
@@ -208,8 +210,9 @@ describe('Billing Mode Integration', () => {
       await recordKeyCost('monthly-budget-key', 2);
       const res = await makeRequest('monthly-budget-key');
       expect(res.status).toBe(402);
-      const body = await res.json() as { error: { code: string } };
+      const body = await res.json() as { error: { code: string; type: string } };
       expect(body.error.code).toBe('monthly_budget_exceeded');
+      expect(body.error.type).toBe('billing_error');
     });
   });
 
@@ -218,8 +221,9 @@ describe('Billing Mode Integration', () => {
       setBalance('prepaid-key-empty', 0);
       const res = await makeRequest('prepaid-key-empty');
       expect(res.status).toBe(402);
-      const body = await res.json() as { error: { code: string } };
+      const body = await res.json() as { error: { code: string; type: string } };
       expect(body.error.code).toBe('insufficient_balance');
+      expect(body.error.type).toBe('billing_error');
     });
 
     it('should allow request and deduct balance after success', async () => {

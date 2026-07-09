@@ -643,13 +643,12 @@ async function handleChatCompletion(connectionId: string, request: ChatCompletio
         conn.key_subscription_expires_at
       );
       if (!billingCheck.allowed) {
-        const errorType = billingCheck.code === 'subscription_expired' ? 'authentication_error' : 'rate_limit_error';
         const code = billingCheck.code || 'insufficient_balance';
         wsManager.send(connectionId, {
           type: 'error',
           error: {
             message: billingCheck.reason || 'Billing check failed',
-            type: errorType,
+            type: 'billing_error',
             code,
           },
         });

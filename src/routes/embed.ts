@@ -17,6 +17,7 @@ import { checkQuota } from '../services/quota';
 import { getTokenRateLimit } from '../services/token-ratelimit';
 import { countCompletionTokens } from '../services/token-counter';
 import { deductBalance } from '../services/wallet';
+import { GatewayError } from '../middleware/error';
 import type { IApiKeyMeta } from '../types';
 
 const embedRouter = new Hono();
@@ -51,19 +52,8 @@ async function checkEmbedKeyPolicies(c: Context, model: string): Promise<Respons
       c.get('key_subscription_expires_at')
     );
     if (!billingCheck.allowed) {
-      const statusCode = billingCheck.code === 'subscription_expired' ? 403 : 402;
-      const errorType = billingCheck.code === 'subscription_expired' ? 'authentication_error' : 'rate_limit_error';
       const code = billingCheck.code || 'insufficient_balance';
-      return c.json(
-        {
-          error: {
-            message: billingCheck.reason || 'Billing check failed',
-            type: errorType,
-            code,
-          },
-        },
-        statusCode,
-      );
+      throw GatewayError.billingError(billingCheck.reason || 'Billing check failed', code);
     }
   }
 
@@ -247,6 +237,9 @@ async function handleEmbedding(c: Context): Promise<Response> {
     }
     return c.json(response, 200);
   } catch (error) {
+    if (error instanceof GatewayError) {
+      throw error;
+    }
     const err = error instanceof Error ? error : new Error('Unknown error');
     logError(c.get('request_id'), err, { component: 'embed' });
 

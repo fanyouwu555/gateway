@@ -32,6 +32,7 @@ import type { Span } from '@opentelemetry/api';
 import { extractClientInfo } from '../utils/client-info';
 import { inferRequirements, getModelCapabilities, checkCapabilityMatch, formatCapabilityError } from '../services/model-capability';
 import { getProvider } from '../providers';
+import { GatewayError } from '../middleware/error';
 
 const chatRouter = new Hono();
 
@@ -73,8 +74,6 @@ async function checkKeyPolicies(c: Context, req: ChatCompletionRequest, tenantId
       c.get('key_subscription_expires_at')
     );
     if (!billingCheck.allowed) {
-      const statusCode = billingCheck.code === 'subscription_expired' ? 403 : 402;
-      const errorType = billingCheck.code === 'subscription_expired' ? 'authentication_error' : 'rate_limit_error';
       const code = billingCheck.code || 'insufficient_balance';
       recordMetric(
         c.get('request_id') as string,
@@ -82,18 +81,12 @@ async function checkKeyPolicies(c: Context, req: ChatCompletionRequest, tenantId
         'gateway',
         req.model,
         0,
-        statusCode,
+        402,
         { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
         keyHash,
         c.get('key_metadata'),
       );
-      return c.json({
-        error: {
-          message: billingCheck.reason || 'Billing check failed',
-          type: errorType,
-          code,
-        },
-      }, statusCode as 402);
+      throw GatewayError.billingError(billingCheck.reason || 'Billing check failed', code);
     }
   }
 
@@ -642,6 +635,10 @@ function handleError(
   sessionSource: { id: string; providedByHeader?: string },
   providerCallStart: number,
 ): Response {
+  if (error instanceof GatewayError) {
+    throw error;
+  }
+
   const err = error instanceof Error ? error : new Error('Unknown error');
   writeLog('error', 'Chat completion error', {
     request_id: c.get('request_id'),
