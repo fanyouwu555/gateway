@@ -347,21 +347,93 @@ export async function chatCompleteStream(
 }
 
 /**
- * 创建 Embedding 请求
+ * 执行单次 Embedding Provider 调用（含 Key 选择 + 重试）
+ */
+async function callEmbedProvider(
+  provider: IProvider,
+  config: IProviderConfig,
+  request: EmbeddingRequest
+): Promise<EmbeddingResponse> {
+  const allKeys = getProviderApiKeys(config);
+  if (allKeys.length === 0) {
+    throw new Error(`No API keys configured for provider: ${provider.name}`);
+  }
+
+  const healthyKeys = activeFailover.getHealthyKeys(provider.name, allKeys);
+  const selection = activeLoadBalancer.selectToken(provider.name, healthyKeys);
+  const activeKey = selection?.apiKey || healthyKeys[0];
+  const callConfig: IProviderConfig = { ...config, api_key: activeKey };
+
+  return withRetry(
+    async () => {
+      try {
+        const result = await provider.embed(request, callConfig);
+        await activeFailover.recordSuccess(provider.name, activeKey);
+        return result;
+      } catch (error) {
+        await activeFailover.recordFailure(provider.name, activeKey);
+        throw error;
+      }
+    },
+    { maxRetries: config.max_retries ?? 3, baseDelay: 1000, maxDelay: 10000 }
+  );
+}
+
+/**
+ * 创建 Embedding 请求（带 Failover）
  */
 export async function createEmbedding(
   providerName: string,
   request: EmbeddingRequest
 ): Promise<EmbeddingResponse> {
-  const config = getProviderConfig(providerName);
-  if (!config) {
-    throw new Error(`Provider ${providerName} not configured`);
+  const errors: Array<{ provider: string; error: string }> = [];
+  const attemptedProviders = new Set<string>();
+  const providersToTry: string[] = [providerName];
+
+  const failoverConfig = getConfig().failover;
+  if (failoverConfig?.enabled) {
+    const fallbacks = getFallbackProviders(providerName, request.model);
+    providersToTry.push(...fallbacks);
   }
 
-  const provider = providers.get(providerName);
-  if (!provider) {
-    throw new Error(`Provider ${providerName} not registered`);
+  for (const currentProvider of providersToTry) {
+    if (attemptedProviders.has(currentProvider)) continue;
+    attemptedProviders.add(currentProvider);
+
+    const config = getProviderConfig(currentProvider);
+    if (!config) {
+      errors.push({ provider: currentProvider, error: 'Not configured' });
+      continue;
+    }
+
+    const provider = providers.get(currentProvider);
+    if (!provider) {
+      errors.push({ provider: currentProvider, error: 'Not registered' });
+      continue;
+    }
+
+    if (failoverConfig?.enabled && !activeFailover.isProviderHealthy(currentProvider)) {
+      errors.push({ provider: currentProvider, error: 'Provider unhealthy' });
+      continue;
+    }
+
+    const startTime = Date.now();
+    try {
+      const result = await callEmbedProvider(provider, config, request);
+      await activeFailover.recordProviderRequest(currentProvider, true, Date.now() - startTime);
+      return result;
+    } catch (error) {
+      await activeFailover.recordProviderRequest(currentProvider, false, Date.now() - startTime);
+      const statusCode = (error as { status?: number }).status;
+      const retryable = statusCode === 429 || (statusCode ?? 0) >= 500 || isRetryableError(error);
+      if (!retryable) {
+        throw error;
+      }
+      errors.push({ provider: currentProvider, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
-  return provider.embed(request, config);
+  throw new Error(
+    `All providers failed for embedding "${request.model}": ${errors.map((e) => `${e.provider} (${e.error})`).join('; ')}`
+  );
 }
