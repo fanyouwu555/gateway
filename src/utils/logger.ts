@@ -19,8 +19,11 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 };
 
-const LOG_DIR = process.env.LOG_DIR || './logs';
 const LOG_RETENTION_DAYS = 7;
+
+function getLogDir(): string {
+  return process.env.LOG_DIR || './logs';
+}
 
 function getSampleRate(): number {
   const rate = parseFloat(process.env.LOG_SAMPLE_RATE || '1.0');
@@ -46,13 +49,15 @@ function shouldLog(level: LogLevel): boolean {
 
 let currentLogFile = '';
 let currentLogDate = '';
+let currentLogDir = '';
 
 /**
  * 确保日志目录存在
  */
 function ensureLogDir(): void {
-  if (!existsSync(LOG_DIR)) {
-    mkdirSync(LOG_DIR, { recursive: true });
+  const dir = getLogDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
 }
 
@@ -61,9 +66,11 @@ function ensureLogDir(): void {
  */
 function getLogFileName(): string {
   const date = new Date().toISOString().slice(0, 10);
-  if (date !== currentLogDate) {
+  const dir = getLogDir();
+  if (date !== currentLogDate || dir !== currentLogDir) {
     currentLogDate = date;
-    currentLogFile = join(LOG_DIR, `ai-gateway-${date}.log`);
+    currentLogDir = dir;
+    currentLogFile = join(dir, `ai-gateway-${date}.log`);
     ensureLogDir();
   }
   return currentLogFile;
@@ -74,13 +81,14 @@ function getLogFileName(): string {
  */
 function cleanOldLogs(): void {
   try {
-    if (!existsSync(LOG_DIR)) return;
+    const dir = getLogDir();
+    if (!existsSync(dir)) return;
     const now = Date.now();
     const retentionMs = LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
-    for (const file of readdirSync(LOG_DIR)) {
+    for (const file of readdirSync(dir)) {
       if (!file.startsWith('ai-gateway-') || !file.endsWith('.log')) continue;
-      const filePath = join(LOG_DIR, file);
+      const filePath = join(dir, file);
       const stats = statSync(filePath);
       if (now - stats.mtime.getTime() > retentionMs) {
         unlinkSync(filePath);
