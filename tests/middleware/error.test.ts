@@ -45,6 +45,14 @@ describe('GatewayError', () => {
       expect(error.statusCode).toBe(500);
       expect(error.errorType).toBe('internal_error');
     });
+
+    it('should create billing error', () => {
+      const error = GatewayError.billingError('Insufficient balance', 'insufficient_balance');
+      expect(error.statusCode).toBe(402);
+      expect(error.errorType).toBe('billing_error');
+      expect(error.code).toBe('insufficient_balance');
+      expect(error.toResponse().error.type).toBe('billing_error');
+    });
   });
 
   describe('toResponse', () => {

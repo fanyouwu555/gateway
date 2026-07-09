@@ -4,7 +4,7 @@
  */
 
 // 简化错误类型
-type ErrorType = 'invalid_request_error' | 'authentication_error' | 'rate_limit_error' | 'provider_error' | 'internal_error';
+type ErrorType = 'invalid_request_error' | 'authentication_error' | 'rate_limit_error' | 'provider_error' | 'internal_error' | 'billing_error';
 
 /**
  * Gateway 错误类
@@ -73,6 +73,10 @@ export class GatewayError extends Error {
 
   static internalError(message: string): GatewayError {
     return new GatewayError(message, 'internal_error', 500, 'internal_error');
+  }
+
+  static billingError(message: string, code?: string): GatewayError {
+    return new GatewayError(message, 'billing_error', 402, code);
   }
 }
 
