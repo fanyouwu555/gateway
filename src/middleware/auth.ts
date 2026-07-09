@@ -8,32 +8,23 @@ import type { Context, Next } from 'hono';
 import { getConfig } from '../config';
 import type { IAuthResult, IApiKeyMeta } from '../types';
 import { verifyApiKey, hashApiKey, generateSecureRandomString } from '../utils';
-import { getAllTenantApiKeys, getTenant } from '../services/tenant';
-import { writeLog } from '../utils/logger';
+import { findApiKeyByPrefix, findTenantApiKeyByHash, getTenant } from '../services/tenant';
 
-/**
- * 获取所有可用的 API Key 元数据（配置 + 租户管理）
- * 确保无论通过哪种方式创建的 Key 都能通过认证
- */
-function getAllApiKeys(): IApiKeyMeta[] {
-  const config = getConfig();
-  const keys: IApiKeyMeta[] = [...(config.auth.api_keys || [])];
-
-  // 合并租户管理的 API Keys
-  try {
-    const tenantKeys = getAllTenantApiKeys();
-    for (const tk of tenantKeys) {
-      if (!keys.some((k) => k.key === tk.key)) {
-        keys.push(tk);
-      }
-    }
-  } catch (err) {
-    writeLog('warn', 'Failed to load tenant API keys', {
-      error: err instanceof Error ? err.message : String(err),
-    });
+function buildAuthResult(storedKey: IApiKeyMeta): IAuthResult {
+  if (storedKey.expires_at && storedKey.expires_at < Date.now()) {
+    return { valid: false, error: 'API key expired' };
   }
-
-  return keys;
+  if (storedKey.tenant_id) {
+    const tenant = getTenant(storedKey.tenant_id);
+    if (tenant && tenant.status !== 'active') {
+      return { valid: false, error: 'Tenant is not active' };
+    }
+  }
+  return {
+    valid: true,
+    tenant_id: storedKey.tenant_id,
+    api_key_meta: storedKey,
+  };
 }
 
 /**
@@ -46,40 +37,23 @@ function validateApiKey(apiKey: string): IAuthResult {
     return { valid: true };
   }
 
-  const allKeys = getAllApiKeys();
-  const storedKey = allKeys.find((k) => verifyApiKey(apiKey, k.key));
-
-  if (!storedKey) {
-    return {
-      valid: false,
-      error: 'Invalid API key',
-    };
-  }
-
-  // 检查是否过期
-  if (storedKey.expires_at && storedKey.expires_at < Date.now()) {
-    return {
-      valid: false,
-      error: 'API key expired',
-    };
-  }
-
-  // 检查租户状态
-  if (storedKey.tenant_id) {
-    const tenant = getTenant(storedKey.tenant_id);
-    if (tenant && tenant.status !== 'active') {
-      return {
-        valid: false,
-        error: 'Tenant is not active',
-      };
+  const configKeys = config.auth.api_keys || [];
+  for (const keyMeta of configKeys) {
+    if (verifyApiKey(apiKey, keyMeta.key)) {
+      return buildAuthResult(keyMeta);
     }
   }
 
-  return {
-    valid: true,
-    tenant_id: storedKey.tenant_id,
-    api_key_meta: storedKey,
-  };
+  const prefix = apiKey.slice(0, 10);
+  const candidateHashes = findApiKeyByPrefix(prefix);
+  for (const hashedKey of candidateHashes) {
+    const keyMeta = findTenantApiKeyByHash(hashedKey);
+    if (keyMeta && verifyApiKey(apiKey, keyMeta.key)) {
+      return buildAuthResult(keyMeta);
+    }
+  }
+
+  return { valid: false, error: 'Invalid API key' };
 }
 
 /**

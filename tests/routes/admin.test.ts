@@ -94,6 +94,7 @@ jest.mock('../../src/services/tenant', () => ({
   createTenantApiKey: jest.fn(() => ({ key: 'test-key' })),
   deleteTenantApiKey: jest.fn(() => true),
   findTenantApiKeyByHash: jest.fn(() => null),
+  findApiKeyByPrefix: jest.fn(() => []),
   updateTenantApiKeyPolicy: jest.fn(() => null),
   getAllTenantApiKeys: jest.fn(() => []),
 }));

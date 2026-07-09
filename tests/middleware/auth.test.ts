@@ -3,6 +3,20 @@
  */
 import { Hono } from 'hono';
 import { authMiddleware, generateTestApiKey } from '../../src/../src/middleware/auth';
+import {
+  createTenant,
+  createTenantApiKey,
+  resetTenantStore,
+  findApiKeyByPrefix,
+} from '../../src/../src/services/tenant';
+
+let app: Hono;
+
+beforeEach(() => {
+  app = new Hono();
+  app.use('*', authMiddleware);
+  app.get('/test', (c) => c.json({ ok: true }));
+});
 
 // Mock config — keys are always hashed
 // Note: hash computation is inside the factory to avoid jest.mock hoisting issues
@@ -46,14 +60,6 @@ describe('Auth Middleware', () => {
   });
 
   describe('authMiddleware with Hono app', () => {
-    let app: Hono;
-
-    beforeEach(() => {
-      app = new Hono();
-      app.use('*', authMiddleware);
-      app.get('/test', (c) => c.json({ ok: true }));
-    });
-
     it('should return 401 when no API key provided', async () => {
       const res = await app.request('/test');
       expect(res.status).toBe(401);
@@ -103,5 +109,90 @@ describe('Auth Middleware', () => {
       expect(res1.status).toBe(200);
       expect(res2.status).toBe(200);
     });
+  });
+});
+
+describe('authMiddleware with tenant keys', () => {
+  beforeEach(() => {
+    resetTenantStore();
+  });
+
+  it('should authenticate a tenant key using the prefix index', async () => {
+    const tenant = await createTenant({
+      name: 'Prefix Tenant',
+      status: 'active',
+      plan: 'free',
+      settings: {},
+      limits: {
+        daily_requests: 1000,
+        daily_tokens: 100000,
+        max_api_keys: 10,
+        concurrent_requests: 10,
+      },
+    });
+    const key = await createTenantApiKey(tenant.tenant_id, 'prefix-key');
+    expect(key).toBeDefined();
+
+    const res = await app.request('/test', {
+      headers: { 'x-api-key': key!.key },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('should reject an invalid tenant key', async () => {
+    const res = await app.request('/test', {
+      headers: { 'x-api-key': 'sk-tenant-invalid' },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe('invalid_api_key');
+  });
+
+  it('should find candidate keys by prefix', async () => {
+    const tenant = await createTenant({
+      name: 'Prefix Tenant 2',
+      status: 'active',
+      plan: 'free',
+      settings: {},
+      limits: {
+        daily_requests: 1000,
+        daily_tokens: 100000,
+        max_api_keys: 200,
+        concurrent_requests: 100,
+      },
+    });
+    const key = await createTenantApiKey(tenant.tenant_id, 'prefix-key');
+    const prefix = key!.key.slice(0, 10);
+    const candidates = findApiKeyByPrefix(prefix);
+    expect(candidates.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should authenticate quickly with 100 tenant keys', async () => {
+    const keys: string[] = [];
+    for (let i = 0; i < 100; i++) {
+      const tenant = await createTenant({
+        name: `Perf Tenant ${i}`,
+        status: 'active',
+        plan: 'free',
+        settings: {},
+        limits: {
+          daily_requests: 100000,
+          daily_tokens: 10000000,
+          max_api_keys: 200,
+          concurrent_requests: 100,
+        },
+      });
+      const k = await createTenantApiKey(tenant.tenant_id, `perf-key-${i}`);
+      keys.push(k!.key);
+    }
+
+    const start = Date.now();
+    const res = await app.request('/test', {
+      headers: { 'x-api-key': keys[50] },
+    });
+    const elapsed = Date.now() - start;
+
+    expect(res.status).toBe(200);
+    expect(elapsed).toBeLessThan(1000);
   });
 });

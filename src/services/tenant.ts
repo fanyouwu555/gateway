@@ -330,7 +330,7 @@ class TenantStore {
     if (!validation.valid) return null;
     const validatedPolicy = validation.policy;
 
-    const plaintextKey = `sk-v1-${tenantId.slice(0, 8)}-${Date.now()}-${generateSecureRandomString(12)}`;
+    const plaintextKey = `sk-v1-${generateSecureRandomString(8)}-${Date.now()}-${generateSecureRandomString(12)}`;
     // 存储哈希值，与 auth middleware 的 verifyApiKey() 兼容
     const hashedKey = hashApiKey(plaintextKey);
     const meta: IApiKeyMeta = {
@@ -365,6 +365,13 @@ class TenantStore {
    */
   private getKeyPrefix(plaintextKey: string): string {
     return plaintextKey.slice(0, 10);
+  }
+
+  /**
+   * 通过前缀查找候选 hashed keys
+   */
+  findByPrefix(prefix: string): string[] {
+    return this.keyPrefixIndex.get(prefix) || [];
   }
 
   /**
@@ -660,6 +667,13 @@ export async function updateTenantApiKeyPolicy(
  */
 export function verifyTenantApiKey(key: string) {
   return tenantStore.verifyApiKey(key);
+}
+
+/**
+ * 通过前缀查找候选 API Key 哈希值
+ */
+export function findApiKeyByPrefix(prefix: string): string[] {
+  return tenantStore.findByPrefix(prefix);
 }
 
 /**
