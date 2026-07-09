@@ -1,9 +1,11 @@
 /**
  * 存储工厂 - 创建 Memory 或 Redis 存储
  */
+import Redis from 'ioredis';
 import type { IKVStore, StorageType } from './interface';
 import { MemoryKVStore } from './memory';
-import { RedisKVStore, createRedisConfigFromEnv, type RedisConfig } from './redis';
+import { RedisKVStore } from './redis';
+import { getRedisConfig } from '../config';
 import { writeLog } from '../utils/logger';
 
 /**
@@ -11,7 +13,33 @@ import { writeLog } from '../utils/logger';
  */
 export interface StorageConfig {
   type: StorageType;
-  redis?: RedisConfig;
+}
+
+let globalRedisClient: Redis | null = null;
+
+function getSharedRedisClient(): Redis {
+  if (!globalRedisClient) {
+    const cfg = getRedisConfig();
+    globalRedisClient = new Redis({
+      host: cfg.host,
+      port: cfg.port,
+      password: cfg.password,
+      db: cfg.db,
+      retryStrategy: (times) => Math.min(times * 200, 2000),
+    });
+  }
+  return globalRedisClient;
+}
+
+export function resetSharedRedisClient(): void {
+  if (globalRedisClient) {
+    globalRedisClient.disconnect();
+    globalRedisClient = null;
+  }
+}
+
+function shouldUseRedis(): boolean {
+  return (process.env.STORAGE_TYPE as StorageType) === 'redis';
 }
 
 /**
@@ -26,14 +54,8 @@ export class StorageFactory {
 
   createKVStore(prefix: string): IKVStore {
     if (this.config.type === 'redis') {
-      if (this.config.redis) {
-        return new RedisKVStore({ ...this.config.redis, prefix });
-      }
-      // 从环境变量创建
-      const redisConfig = createRedisConfigFromEnv();
-      if (redisConfig) {
-        return new RedisKVStore({ ...redisConfig, prefix });
-      }
+      const client = getSharedRedisClient();
+      return new RedisKVStore(client, prefix);
     }
 
     // 默认使用内存
@@ -73,13 +95,19 @@ export function getStorageFactory(): StorageFactory {
  */
 export function resetStorageFactory(): void {
   globalFactory = null;
+  resetSharedRedisClient();
 }
 
 /**
  * 创建 KV 存储的便捷方法
  */
 export function createKVStore(prefix: string): IKVStore {
-  return getStorageFactory().createKVStore(prefix);
+  const useRedis = shouldUseRedis();
+  if (useRedis) {
+    const client = getSharedRedisClient();
+    return new RedisKVStore(client, prefix);
+  }
+  return new MemoryKVStore(prefix);
 }
 
 export type { IKVStore } from './interface';

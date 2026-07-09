@@ -16,25 +16,34 @@ jest.mock('../../src/utils/logger', () => ({
 }));
 
 const MockRedisKVStore = jest.fn();
-const mockCreateRedisConfigFromEnv = jest.fn();
 jest.mock('../../src/stores/redis', () => ({
   RedisKVStore: class {
-    constructor(config: unknown) {
-      MockRedisKVStore(config);
+    constructor(client: unknown, prefix: string) {
+      MockRedisKVStore({ client, prefix });
     }
   },
-  createRedisConfigFromEnv: () => mockCreateRedisConfigFromEnv(),
 }));
+
+jest.mock('../../src/config', () => ({
+  getRedisConfig: () => ({ host: 'localhost', port: 6379 }),
+}));
+
+jest.mock('ioredis', () => {
+  const MockRedis = jest.fn().mockImplementation(() => ({
+    status: 'ready',
+    on: jest.fn(),
+    once: jest.fn(),
+    disconnect: jest.fn(),
+  }));
+  return MockRedis;
+});
 
 describe('StorageFactory', () => {
   beforeEach(() => {
     resetStorageFactory();
     MockRedisKVStore.mockClear();
-    mockCreateRedisConfigFromEnv.mockClear();
     mockWriteLog.mockClear();
     delete process.env.STORAGE_TYPE;
-    delete process.env.REDIS_URL;
-    delete process.env.REDIS_HOST;
   });
 
   describe('createKVStore', () => {
@@ -45,34 +54,12 @@ describe('StorageFactory', () => {
       expect(store.type).toBe('memory');
     });
 
-    it('should create RedisKVStore when type is redis with explicit config', () => {
-      mockCreateRedisConfigFromEnv.mockReturnValue(null);
-      const factory = new StorageFactory({
-        type: 'redis',
-        redis: { host: 'localhost', port: 6379 },
-      });
-      factory.createKVStore('test');
-      expect(MockRedisKVStore).toHaveBeenCalledWith(
-        expect.objectContaining({ host: 'localhost', port: 6379, prefix: 'test' })
-      );
-    });
-
-    it('should create RedisKVStore from env when type is redis and no explicit config', () => {
-      mockCreateRedisConfigFromEnv.mockReturnValue({ host: 'redis-host', port: 6380 });
+    it('should create RedisKVStore when type is redis', () => {
       const factory = new StorageFactory({ type: 'redis' });
       factory.createKVStore('test');
-      expect(mockCreateRedisConfigFromEnv).toHaveBeenCalled();
       expect(MockRedisKVStore).toHaveBeenCalledWith(
-        expect.objectContaining({ host: 'redis-host', port: 6380, prefix: 'test' })
+        expect.objectContaining({ prefix: 'test' })
       );
-    });
-
-    it('should fallback to MemoryKVStore when redis config is unavailable', () => {
-      mockCreateRedisConfigFromEnv.mockReturnValue(null);
-      const factory = new StorageFactory({ type: 'redis' });
-      const store = factory.createKVStore('test');
-      expect(store).toBeInstanceOf(MemoryKVStore);
-      expect(MockRedisKVStore).not.toHaveBeenCalled();
     });
 
     it('should fallback to MemoryKVStore for unknown type', () => {
@@ -91,7 +78,6 @@ describe('StorageFactory', () => {
 
     it('should create factory with env STORAGE_TYPE', () => {
       process.env.STORAGE_TYPE = 'redis';
-      mockCreateRedisConfigFromEnv.mockReturnValue({ host: 'localhost' });
       const factory = initStorageFactory();
       expect(factory).toBeInstanceOf(StorageFactory);
       expect(mockWriteLog).toHaveBeenCalledWith('info', 'Storage initialized', { type: 'redis' });
@@ -129,11 +115,18 @@ describe('StorageFactory', () => {
   });
 
   describe('createKVStore convenience', () => {
-    it('should create store via global factory', () => {
-      initStorageFactory({ type: 'memory' });
+    it('should create MemoryKVStore by default', () => {
       const store = createKVStore('convenience');
       expect(store).toBeInstanceOf(MemoryKVStore);
       expect(store.type).toBe('memory');
+    });
+
+    it('should create RedisKVStore when STORAGE_TYPE is redis', () => {
+      process.env.STORAGE_TYPE = 'redis';
+      createKVStore('redis-test');
+      expect(MockRedisKVStore).toHaveBeenCalledWith(
+        expect.objectContaining({ prefix: 'redis-test' })
+      );
     });
   });
 });

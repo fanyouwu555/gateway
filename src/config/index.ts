@@ -524,4 +524,30 @@ export function setConfig(updates: Partial<IGatewayConfig>): IGatewayConfig {
   return _config;
 }
 
+export interface RedisConnectionConfig {
+  host: string;
+  port: number;
+  password?: string;
+  db: number;
+  url?: string;
+}
+
+export function getRedisConfig(): RedisConnectionConfig {
+  const url = getEnv('REDIS_URL');
+  if (url) {
+    return {
+      host: url,
+      port: 6379,
+      db: parseInt(getEnv('REDIS_DB', '0') || '0', 10),
+      url,
+    };
+  }
+  return {
+    host: getEnv('REDIS_HOST', 'localhost') || 'localhost',
+    port: parseInt(getEnv('REDIS_PORT', '6379') || '6379', 10),
+    password: getEnv('REDIS_PASSWORD') || undefined,
+    db: parseInt(getEnv('REDIS_DB', '0') || '0', 10),
+  };
+}
+
 export type { IGatewayConfig } from '../types';
