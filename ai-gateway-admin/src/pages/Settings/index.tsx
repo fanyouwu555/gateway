@@ -305,7 +305,7 @@ const Settings: React.FC = () => {
             <Col xs={24} sm={12}>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ fontWeight: 500, marginBottom: 4 }}>月度预算上限</div>
-                <Input disabled value="$100" style={{ maxWidth: 200 }} />
+                <Input disabled value="¥100" style={{ maxWidth: 200 }} />
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginTop: 4 }}>环境变量: COST_CONTROL_MONTHLY_BUDGET</div>
               </div>
             </Col>
