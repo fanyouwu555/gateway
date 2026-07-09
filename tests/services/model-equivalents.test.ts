@@ -1,5 +1,5 @@
 /**
- * Model Equivalents �?�?Provider Failover 模型名自动重映射测试
+ * Model Equivalents �?�?Provider Failover 模型名自动重映射测试
  */
 import {
   resolveModelForProvider,
@@ -9,6 +9,12 @@ import {
   setProviderDeps,
   resetProviderDeps,
 } from '../../src/providers';
+
+function providerError(message: string): Error {
+  const error = new Error(message);
+  (error as { status?: number }).status = 503;
+  return error;
+}
 
 jest.mock('../../src/config', () => ({
   getConfig: () => ({
@@ -129,7 +135,7 @@ describe('resolveModelForProvider()', () => {
       }));
     });
     // Can't truly test isolate here, but the function logic is clear:
-    // no equivalents �?return model as-is
+    // no equivalents �?return model as-is
   });
 });
 
@@ -144,7 +150,7 @@ describe('chatComplete() model_equivalents integration', () => {
   });
 
   it('should remap model when failing over to deepseek with model_equivalent', async () => {
-    mockOpenAI.chat.mockRejectedValue(new Error('OpenAI down'));
+    mockOpenAI.chat.mockRejectedValue(providerError('OpenAI down'));
     mockDeepSeek.chat.mockImplementation(async (_req: { model: string }) => ({
       id: 'ds-1',
       object: 'chat.completion',
@@ -170,8 +176,8 @@ describe('chatComplete() model_equivalents integration', () => {
   });
 
   it('should remap model for each fallback provider in the chain', async () => {
-    mockOpenAI.chat.mockRejectedValue(new Error('OpenAI down'));
-    mockDeepSeek.chat.mockRejectedValue(new Error('DeepSeek down'));
+    mockOpenAI.chat.mockRejectedValue(providerError('OpenAI down'));
+    mockDeepSeek.chat.mockRejectedValue(providerError('DeepSeek down'));
     mockAnthropic.chat.mockImplementation(async (_req: { model: string }) => ({
       id: 'an-1',
       object: 'chat.completion',
@@ -219,7 +225,7 @@ describe('chatComplete() model_equivalents integration', () => {
   });
 
   it('should use original model when no model_equivalent for that fallback', async () => {
-    mockOpenAI.chat.mockRejectedValue(new Error('OpenAI down'));
+    mockOpenAI.chat.mockRejectedValue(providerError('OpenAI down'));
     // No equivalent for openai→mistral, so model stays as-is
     mockFailover.getFailoverChain.mockReturnValue(['mistral']);
 

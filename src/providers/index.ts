@@ -17,7 +17,7 @@ import { loadBalanceManager as defaultLoadBalancer } from '../services/loadbalan
 
 type FailoverManager = typeof defaultFailover;
 type LoadBalanceManager = typeof defaultLoadBalancer;
-import { withRetry } from '../services/retry';
+import { withRetry, isRetryableError } from '../services/retry';
 
 // 可注入依赖（默认使用全局单例）
 let activeFailover: FailoverManager = defaultFailover;
@@ -113,15 +113,6 @@ function getFallbackProviders(excludeProvider: string, requestModel: string): st
     result.push(strategy.fallback);
   }
   return [...new Set(result)];
-}
-
-/**
- * Check if an error is retryable for model-level fallback
- */
-function isRetryableError(statusCode: number | undefined, message: string): boolean {
-  if (statusCode === 429 || statusCode === 503 || statusCode === 502) return true;
-  if (message.includes('timeout') || message.includes('ETIMEDOUT') || message.includes('ECONNRESET')) return true;
-  return false;
 }
 
 /**
@@ -257,9 +248,13 @@ export async function chatComplete(
       const errMsg = error instanceof Error ? error.message : String(error);
       const statusCode = (error as { status?: number }).status;
 
-      // Check for model-level fallback on retryable errors
+      const retryable = statusCode === 429 || (statusCode ?? 0) >= 500 || isRetryableError(error);
+      if (!retryable) {
+        throw error;
+      }
+
       const fallbackModels = getConfig().model_fallbacks?.[request.model];
-      if (fallbackModels && fallbackModels.length > 0 && isRetryableError(statusCode, errMsg)) {
+      if (fallbackModels && fallbackModels.length > 0) {
         for (const fallbackModel of fallbackModels) {
           try {
             const fallbackRequest = { ...providerRequest, model: fallbackModel };
@@ -273,7 +268,6 @@ export async function chatComplete(
       }
 
       errors.push({ provider: currentProvider, error: errMsg });
-      // 继续尝试下一个 Provider
     }
   }
 
@@ -337,8 +331,12 @@ export async function chatCompleteStream(
       return result as ReadableStream;
     } catch (error) {
       await activeFailover.recordProviderRequest(currentProvider, false, Date.now() - startTime);
-      const errMsg = error instanceof Error ? error.message : String(error);
-      errors.push({ provider: currentProvider, error: errMsg });
+      const statusCode = (error as { status?: number }).status;
+      const retryable = statusCode === 429 || (statusCode ?? 0) >= 500 || isRetryableError(error);
+      if (!retryable) {
+        throw error;
+      }
+      errors.push({ provider: currentProvider, error: error instanceof Error ? error.message : String(error) });
     }
   }
 

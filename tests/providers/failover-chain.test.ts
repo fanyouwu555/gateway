@@ -90,10 +90,13 @@ describe('Cross-Provider Failover Chain', () => {
     registerProvider('openai', mockOpenAI);
     registerProvider('deepseek', mockDeepSeek);
     jest.clearAllMocks();
+    mockFailover.isProviderHealthy.mockReturnValue(true);
   });
 
   it('should fallback to deepseek when openai fails', async () => {
-    mockOpenAI.chat.mockRejectedValue(new Error('OpenAI down'));
+    const error = new Error('OpenAI down');
+    (error as { status?: number }).status = 503;
+    mockOpenAI.chat.mockRejectedValue(error);
     mockDeepSeek.chat.mockResolvedValue({
       id: 'ds-1',
       object: 'chat.completion',
@@ -139,8 +142,12 @@ describe('Cross-Provider Failover Chain', () => {
   });
 
   it('should throw when all providers in chain fail', async () => {
-    mockOpenAI.chat.mockRejectedValue(new Error('OpenAI down'));
-    mockDeepSeek.chat.mockRejectedValue(new Error('DeepSeek down'));
+    const openaiError = new Error('OpenAI down');
+    (openaiError as { status?: number }).status = 503;
+    const deepseekError = new Error('DeepSeek down');
+    (deepseekError as { status?: number }).status = 503;
+    mockOpenAI.chat.mockRejectedValue(openaiError);
+    mockDeepSeek.chat.mockRejectedValue(deepseekError);
 
     setProviderDeps({ failoverManager: mockFailover, loadBalanceManager: mockLoadBalancer });
 
@@ -150,5 +157,47 @@ describe('Cross-Provider Failover Chain', () => {
         messages: [{ role: 'user', content: 'hello' }],
       })
     ).rejects.toThrow(/All providers failed/);
+  });
+
+  it('should not failover on 4xx client errors', async () => {
+    const error = new Error('Unauthorized');
+    (error as { status?: number }).status = 401;
+    mockOpenAI.chat.mockRejectedValue(error);
+    mockDeepSeek.chat.mockResolvedValue({
+      id: 'ds-401',
+      object: 'chat.completion',
+      created: 1,
+      model: 'deepseek-chat',
+      choices: [],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+
+    setProviderDeps({ failoverManager: mockFailover, loadBalanceManager: mockLoadBalancer });
+
+    await expect(
+      chatComplete('openai', { model: 'gpt-4o', messages: [{ role: 'user', content: 'hello' }] })
+    ).rejects.toThrow('Unauthorized');
+
+    expect(mockDeepSeek.chat).not.toHaveBeenCalled();
+  });
+
+  it('should failover on 429 rate limit errors', async () => {
+    const error = new Error('Too many requests');
+    (error as { status?: number }).status = 429;
+    mockOpenAI.chat.mockRejectedValue(error);
+    mockDeepSeek.chat.mockResolvedValue({
+      id: 'ds-429',
+      object: 'chat.completion',
+      created: 1,
+      model: 'deepseek-chat',
+      choices: [],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+
+    setProviderDeps({ failoverManager: mockFailover, loadBalanceManager: mockLoadBalancer });
+
+    const result = await chatComplete('openai', { model: 'gpt-4o', messages: [{ role: 'user', content: 'hello' }] });
+    expect(result.model).toBe('deepseek-chat');
+    expect(mockDeepSeek.chat).toHaveBeenCalled();
   });
 });
