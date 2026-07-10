@@ -86,6 +86,11 @@ router.get('/v1/cache', (c: Context) => {
   return c.json(stats);
 });
 
+router.get('/v1/cache/stats', (c: Context) => {
+  const stats = getCacheStats();
+  return c.json(stats);
+});
+
 router.post('/v1/cache/clean', async (c: Context) => {
   const count = await flushCache();
   return c.json({ cleaned: true, count });

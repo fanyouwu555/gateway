@@ -558,7 +558,29 @@ async function handleWSMessage(connectionId: string, data: string): Promise<void
 
     // 处理聊天完成请求
     if (message.type === 'chat.completion') {
+      if (!message.payload || typeof message.payload !== 'object') {
+        wsManager.send(connectionId, {
+          type: 'error',
+          error: {
+            message: 'Missing payload. Expected: { payload: { model, messages } }',
+            type: 'invalid_request_error',
+            code: 'missing_payload',
+          },
+        });
+        return;
+      }
       const request = message.payload as ChatCompletionRequest;
+      if (!request.model || !Array.isArray(request.messages)) {
+        wsManager.send(connectionId, {
+          type: 'error',
+          error: {
+            message: 'Invalid payload. Required fields: model, messages',
+            type: 'invalid_request_error',
+            code: 'invalid_payload',
+          },
+        });
+        return;
+      }
       await handleChatCompletion(connectionId, request);
       return;
     }

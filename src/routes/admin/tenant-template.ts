@@ -28,11 +28,14 @@ router.get('/v1/tenant-templates/:id', (c: Context) => {
 router.post('/v1/tenant-templates', async (c: Context) => {
   const parsed = tenantTemplateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
+    const firstError = parsed.error.errors[0];
+    const field = firstError?.path?.join('.') || 'unknown';
     return c.json({
       error: {
-        message: parsed.error.errors[0]?.message || 'Invalid template',
+        message: `${field}: ${firstError?.message || 'Invalid template'}`,
         type: 'invalid_request_error',
         code: 'invalid_request',
+        param: field,
       },
     }, 400);
   }

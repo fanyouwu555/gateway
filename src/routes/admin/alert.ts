@@ -11,6 +11,7 @@ import {
   evaluateAlerts,
 } from '../../services/alert';
 import { alertRuleSchema } from '../../validation';
+import { generateRequestId } from '../../utils';
 
 const router = new Hono();
 
@@ -32,7 +33,7 @@ router.post('/v1/alerts', async (c: Context) => {
   }
 
   addAlertRule({
-    id: parsed.data.id,
+    id: parsed.data.id || generateRequestId(),
     name: parsed.data.name,
     metric: parsed.data.metric,
     threshold: parsed.data.threshold,

@@ -57,9 +57,18 @@ export abstract class BaseProvider implements IProvider {
       });
 
       if (!response.ok) {
-        const errBody = await response.json().catch(() => ({})) as { message?: string };
+        let errMsg: string | undefined;
+        try {
+          const errBody = await response.json() as { message?: string; error?: { message?: string } };
+          errMsg = errBody.message || errBody.error?.message;
+        } catch {
+          try {
+            const text = await response.text();
+            if (text) errMsg = text.slice(0, 200);
+          } catch { /* ignore */ }
+        }
         throw new Error(
-          errBody.message || `HTTP ${response.status}: ${response.statusText}`
+          errMsg || `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`
         );
       }
 

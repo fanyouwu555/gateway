@@ -15,8 +15,10 @@ import {
   createTenantApiKey,
   deleteTenantApiKey,
   findTenantApiKeyByHash,
+  getAllTenantApiKeys,
   updateTenantApiKeyPolicy,
 } from '../../services/tenant';
+import { verifyApiKey } from '../../utils';
 import { getTenantTemplate } from '../../services/tenant-template';
 import { getAllTenantsStats } from '../../services/metrics';
 import { tenantUpdateSchema, createApiKeySchema, updateKeyPolicySchema, createTenantWithTemplateSchema } from '../../validation';
@@ -281,23 +283,35 @@ router.delete('/v1/tenants/:id', async (c: Context) => {
 
 // ===== Wallet / Billing Routes =====
 
+function resolveKeyHash(param: string): string | undefined {
+  const keyMeta = findTenantApiKeyByHash(param);
+  if (keyMeta) return param;
+  // 参数不是 hash，尝试作为明文 key 验证并找到对应 hash
+  for (const k of getAllTenantApiKeys()) {
+    if (verifyApiKey(param, k.key)) {
+      return k.key;
+    }
+  }
+  return undefined;
+}
+
 router.get('/v1/tenants/:id/keys/:keyHash/balance', (c: Context) => {
-  const keyHash = c.req.param('keyHash')!;
-  const keyMeta = findTenantApiKeyByHash(keyHash);
-  if (!keyMeta) {
+  const keyHash = resolveKeyHash(c.req.param('keyHash')!);
+  if (!keyHash) {
     return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
+  const keyMeta = findTenantApiKeyByHash(keyHash)!;
   const balance = getBalance(keyHash);
   return c.json({ key: keyMeta, balance_micro_yuan: balance });
 });
 
 router.post('/v1/tenants/:id/keys/:keyHash/recharge', async (c: Context) => {
   const tenantId = c.req.param('id')!;
-  const keyHash = c.req.param('keyHash')!;
-  const keyMeta = findTenantApiKeyByHash(keyHash);
-  if (!keyMeta) {
+  const keyHash = resolveKeyHash(c.req.param('keyHash')!);
+  if (!keyHash) {
     return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
+  const keyMeta = findTenantApiKeyByHash(keyHash)!;
 
   const body = await c.req.json();
   const amountYuan = body.amount;
@@ -324,11 +338,11 @@ router.post('/v1/tenants/:id/keys/:keyHash/recharge', async (c: Context) => {
 });
 
 router.get('/v1/tenants/:id/keys/:keyHash/transactions', (c: Context) => {
-  const keyHash = c.req.param('keyHash')!;
-  const keyMeta = findTenantApiKeyByHash(keyHash);
-  if (!keyMeta) {
+  const keyHash = resolveKeyHash(c.req.param('keyHash')!);
+  if (!keyHash) {
     return c.json({ error: { message: 'API key not found', type: 'invalid_request_error', code: 'not_found' } }, 404);
   }
+  const keyMeta = findTenantApiKeyByHash(keyHash)!;
   const limit = parseInt(c.req.query('limit') || '50', 10);
   const transactions = getTransactions(keyHash, limit);
   return c.json({ key: keyMeta, transactions });
