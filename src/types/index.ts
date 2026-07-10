@@ -536,6 +536,8 @@ export interface IGatewayConfig {
   dynamicProviders?: DynamicProviderConfig[];
   /** 租户套餐默认限额 */
   plan_defaults?: Record<string, { daily_requests: number; daily_tokens: number; max_api_keys: number; concurrent_requests: number }>;
+  /** 全局 Provider 请求最大重试次数 */
+  max_retries?: number;
 }
 
 /** 动态 Provider 配置 */
