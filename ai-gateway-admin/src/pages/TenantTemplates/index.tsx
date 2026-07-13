@@ -102,9 +102,14 @@ const TenantTemplates: React.FC = () => {
 
   const fetchProviderAndModelOptions = async () => {
     try {
-      const [configData, modelsData] = await Promise.all([getConfig(), getModels()])
+      const configData = await getConfig()
       const providers = Object.keys(configData.providers || {})
       setProviderOptions(providers)
+    } catch {
+      // 静默失败，不影响主流程
+    }
+    try {
+      const modelsData = await getModels()
       setModelList(modelsData.data || [])
     } catch {
       // 静默失败，不影响主流程

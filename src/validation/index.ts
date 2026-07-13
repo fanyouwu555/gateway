@@ -324,7 +324,7 @@ export const promptTemplateUpdateSchema = z.object({
 // ===== Alert Rule =====
 
 export const alertRuleSchema = z.object({
-  id: z.string().min(1, 'Alert rule id is required'),
+  id: z.string().min(1, 'Alert rule id is required').optional(),
   name: z.string().min(1, 'Alert rule name is required'),
   metric: z.enum(['error_rate', 'avg_latency_ms', 'total_requests']),
   threshold: z.number({ required_error: 'threshold is required' }),

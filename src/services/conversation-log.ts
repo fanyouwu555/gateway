@@ -19,7 +19,7 @@ export interface ConversationLogConfig {
 const DEFAULT_CONFIG: ConversationLogConfig = {
   enabled: true,
   maxMemorySessions: 100,
-  redisTtlDays: 7,
+  redisTtlDays: 0, // 0 表示永不过期，数据永久保留
   maxTurnsPerSession: 500,
 };
 
@@ -93,10 +93,14 @@ export class ConversationLogService {
         const store = await this.getStore();
         await store.hSet(turnKey, `turn_${turnIndex}`, JSON.stringify(turn));
         const ttlMs = this.config.redisTtlDays * DAY_MS;
-        await store.expire(turnKey, ttlMs);
+        if (ttlMs > 0) {
+          await store.expire(turnKey, ttlMs);
+        }
         await this.updateSessionMeta(turn);
         await store.hSet(INDEX_KEY, session_id, String(turn.timestamp));
-        await store.expire(INDEX_KEY, ttlMs);
+        if (ttlMs > 0) {
+          await store.expire(INDEX_KEY, ttlMs);
+        }
       } catch (err) {
         writeLog('warn', 'Failed to save conversation turn', {
           session_id: turn.session_id,
@@ -302,7 +306,9 @@ export class ConversationLogService {
       await store.hSet(metaKey, 'client_info_inferred_from', meta.client_info.inferred_from);
     }
     if (meta.user_agent) await store.hSet(metaKey, 'user_agent', meta.user_agent);
-    await store.expire(metaKey, ttlMs);
+    if (ttlMs > 0) {
+      await store.expire(metaKey, ttlMs);
+    }
   }
 
   private parseSessionMeta(hash: Record<string, string>): ISessionMeta | null {

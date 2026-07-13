@@ -56,6 +56,14 @@ export class RedisKVStore implements IKVStore {
       };
       this.client.once('ready', onReady);
       this.client.once('error', onError);
+      // lazyConnect: true 时需要主动触发连接（避免重复调用）
+      if (this.client.status === 'wait') {
+        this.client.connect().catch((err: Error) => {
+          this.client.removeListener('ready', onReady);
+          this.client.removeListener('error', onError);
+          reject(err);
+        });
+      }
     });
   }
 

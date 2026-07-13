@@ -4,6 +4,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { getConfig, setConfig } from '../../config';
+import { getProviderNames } from '../../providers';
 import { configUpdateSchema, modelAliasesSchema } from '../../validation';
 import { auditAdmin } from '../../utils/audit';
 
@@ -11,6 +12,7 @@ const router = new Hono();
 
 router.get('/v1/config', (c: Context) => {
   const config = getConfig();
+  const registered = getProviderNames();
   const safe = {
     port: config.port,
     host: config.host,
@@ -21,10 +23,10 @@ router.get('/v1/config', (c: Context) => {
     failover: config.failover,
     loadBalance: config.loadBalance,
     providers: Object.fromEntries(
-      Object.entries(config.providers || {}).map(([k, v]) => [
-        k,
-        { provider: v.provider, base_url: v.base_url, timeout: v.timeout },
-      ])
+      registered.map((name) => {
+        const cfg = config.providers?.[name];
+        return [name, cfg ? { provider: cfg.provider, base_url: cfg.base_url, timeout: cfg.timeout } : { provider: name }];
+      })
     ),
   };
   return c.json(safe);

@@ -85,7 +85,7 @@ const DEFAULT_CONFIG: IGatewayConfig = {
   rate_limit_clean_interval: 60000,
   model_rate_limits: {},
   request_logging: { enabled: false, max_body_size: 4096, sample_rate: 1.0 },
-  conversation_logging: { enabled: false, max_memory_sessions: 100, redis_ttl_days: 7, max_turns_per_session: 500 },
+  conversation_logging: { enabled: false, max_memory_sessions: 100, redis_ttl_days: 0, max_turns_per_session: 500 },
   pricing: {},
   max_retries: 3,
   dynamicProviders: [],

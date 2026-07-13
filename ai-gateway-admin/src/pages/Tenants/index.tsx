@@ -312,7 +312,16 @@ const Tenants: React.FC = () => {
 
   const keyColumns = [
     { title: '名称', dataIndex: 'name', key: 'name', width: 120 },
-    { title: 'Key', dataIndex: 'key', key: 'key', width: 180, render: (v: string) => `${v.slice(0, 16)}...` },
+    {
+      title: 'Key Hash',
+      dataIndex: 'key',
+      key: 'key',
+      width: 120,
+      render: (v: string) => {
+        const hashPart = v.includes(':') ? v.slice(v.indexOf(':') + 1) : v
+        return `${hashPart.slice(0, 8)}...`
+      },
+    },
     {
       title: '默认模型',
       key: 'default_model',

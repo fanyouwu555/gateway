@@ -100,7 +100,7 @@
   "conversation_logging": {
     "enabled": true,
     "max_memory_sessions": 100,
-    "redis_ttl_days": 7,
+    "redis_ttl_days": 0,
     "max_turns_per_session": 500
   },
   "model_equivalents": {
